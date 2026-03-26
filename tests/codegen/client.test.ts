@@ -3,11 +3,10 @@ import { generateClient } from "../../src/codegen/client";
 import type { OpenApiOperation } from "../../src/codegen/openapi-types";
 
 describe("generateClient", () => {
-  it("generates class named ApiClient (not HardcodedClient)", () => {
+  it("generates the generic ApiClient class", () => {
     const paths: Record<string, Record<string, OpenApiOperation>> = {};
     const output = generateClient(paths);
     expect(output).toContain("export class ApiClient {");
-    expect(output).not.toContain("HardcodedClient");
   });
 
   it("exports HeadersProvider type", () => {

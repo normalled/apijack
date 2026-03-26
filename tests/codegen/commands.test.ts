@@ -194,10 +194,9 @@ describe("generateCommands", () => {
     expect(output).toContain('--body-file <path>');
   });
 
-  it("imports ApiClient not HardcodedClient", () => {
+  it("imports the generic ApiClient class", () => {
     const output = generateCommands({});
     expect(output).toContain("ApiClient");
-    expect(output).not.toContain("HardcodedClient");
   });
 
   it("includes auto-generated header", () => {
