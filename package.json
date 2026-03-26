@@ -1,0 +1,21 @@
+{
+  "name": "openapi-cli-gen",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "bun test"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "cli-table3": "^0.6.5",
+    "js-yaml": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.9"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
