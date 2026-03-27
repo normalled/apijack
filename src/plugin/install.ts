@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, cpSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 export interface InstallOptions {
@@ -21,104 +21,62 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
         version,
         claudeDir,
         userDataDir,
-        sourceDir,
         cliInvocation,
         generatedDir,
     } = opts;
 
-    const pluginCacheDir = join(claudeDir, 'plugins', 'cache', 'local', 'apijack', version);
+    // 1. Register in local marketplace with npm source
+    const marketplaceDir = join(claudeDir, 'plugins', 'marketplaces', 'local');
+    const marketplacePath = join(marketplaceDir, '.claude-plugin', 'marketplace.json');
+    mkdirSync(join(marketplaceDir, '.claude-plugin'), { recursive: true });
 
-    // 1. Copy plugin files to cache
-    mkdirSync(join(pluginCacheDir, '.claude-plugin'), { recursive: true });
-    mkdirSync(join(pluginCacheDir, 'skills', 'apijack'), { recursive: true });
+    let marketplace: any = {
+        $schema: 'https://anthropic.com/claude-code/marketplace.schema.json',
+        name: 'local',
+        owner: { name: 'Local Plugins' },
+        plugins: [],
+    };
+    if (existsSync(marketplacePath)) {
+        try {
+            marketplace = JSON.parse(readFileSync(marketplacePath, 'utf-8'));
+        } catch {
+            // Use fresh marketplace
+        }
+    }
 
-    // Copy .claude-plugin/plugin.json
-    const manifestSrc = join(sourceDir, '.claude-plugin', 'plugin.json');
-    if (existsSync(manifestSrc)) {
-        cpSync(manifestSrc, join(pluginCacheDir, '.claude-plugin', 'plugin.json'));
+    // Add or update apijack entry pointing to npm package
+    const existingIdx = marketplace.plugins.findIndex((p: any) => p.name === 'apijack');
+    const pluginEntry = {
+        name: 'apijack',
+        description: 'Jack into any OpenAPI spec — full CLI with AI-agentic workflow automation',
+        category: 'development',
+        source: {
+            source: 'npm',
+            package: '@apijack/core',
+            version,
+        },
+    };
+    if (existingIdx >= 0) {
+        marketplace.plugins[existingIdx] = pluginEntry;
     } else {
-        writeFileSync(
-            join(pluginCacheDir, '.claude-plugin', 'plugin.json'),
-            JSON.stringify({
-                name: 'apijack',
-                description: 'Jack into any OpenAPI spec — full CLI with AI-agentic workflow automation',
-                version,
-            }, null, 2),
-        );
+        marketplace.plugins.push(pluginEntry);
     }
+    writeFileSync(marketplacePath, JSON.stringify(marketplace, null, 2) + '\n');
 
-    // Copy .mcp.json
-    const mcpSrc = join(sourceDir, '.mcp.json');
-    if (existsSync(mcpSrc)) {
-        cpSync(mcpSrc, join(pluginCacheDir, '.mcp.json'));
-    }
-
-    // Copy skills
-    const skillSrc = join(sourceDir, 'skills', 'apijack', 'SKILL.md');
-    if (existsSync(skillSrc)) {
-        cpSync(skillSrc, join(pluginCacheDir, 'skills', 'apijack', 'SKILL.md'));
-    }
-
-    // Copy dist bundle if it exists
-    const bundleSrc = join(sourceDir, 'dist', 'mcp-server.bundle.js');
-    if (existsSync(bundleSrc)) {
-        mkdirSync(join(pluginCacheDir, 'dist'), { recursive: true });
-        cpSync(bundleSrc, join(pluginCacheDir, 'dist', 'mcp-server.bundle.js'));
-    }
-
-    // 2. Register in installed_plugins.json
-    const installedPath = join(claudeDir, 'plugins', 'installed_plugins.json');
-    mkdirSync(join(claudeDir, 'plugins'), { recursive: true });
-
-    let installed: any = { version: 'v2', plugins: {} };
-    if (existsSync(installedPath)) {
-        try {
-            installed = JSON.parse(readFileSync(installedPath, 'utf-8'));
-        } catch {
-            console.warn('Warning: could not parse installed_plugins.json, creating fresh');
-        }
-    }
-
-    const now = new Date().toISOString();
-    installed.plugins['apijack@local'] = [{
-        scope: 'user',
-        installPath: pluginCacheDir,
-        version,
-        installedAt: now,
-        lastUpdated: now,
-        gitCommitSha: '',
-    }];
-
-    writeFileSync(installedPath, JSON.stringify(installed, null, 2) + '\n');
-
-    // 3. Enable in settings.json
-    const settingsPath = join(claudeDir, 'settings.json');
-    let settings: any = {};
-    if (existsSync(settingsPath)) {
-        try {
-            settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
-        } catch {
-            console.warn('Warning: could not parse settings.json, creating fresh');
-        }
-    }
-
-    if (!settings.enabledPlugins) settings.enabledPlugins = {};
-    settings.enabledPlugins['apijack@local'] = true;
-
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-
-    // 4. Create user data directory
+    // 2. Create user data directory
     mkdirSync(join(userDataDir, 'routines'), { recursive: true });
 
-    // 5. Write plugin config for the MCP entry point
+    // 3. Write plugin config for the MCP entry point
     writeFileSync(
         join(userDataDir, 'plugin.json'),
         JSON.stringify({ cliInvocation, generatedDir }, null, 2) + '\n',
     );
 
+    const pluginCacheDir = join(claudeDir, 'plugins', 'cache', 'local', 'apijack', version);
+
     return {
         success: true,
         pluginCacheDir,
-        message: `apijack plugin v${version} installed successfully`,
+        message: `apijack plugin v${version} registered in local marketplace`,
     };
 }

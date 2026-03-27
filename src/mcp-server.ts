@@ -440,6 +440,34 @@ export function createHandlers(opts: McpServerOptions) {
 
 // ── Server startup ──────────────────────────────────────────────────
 
+/**
+ * Convert a JSON schema property definition to a Zod schema.
+ */
+function jsonPropToZod(z: any, prop: Record<string, any>): any {
+    if (prop.type === 'string') return z.string().optional();
+    if (prop.type === 'object' && prop.additionalProperties) return z.record(z.string()).optional();
+    if (prop.type === 'object') return z.record(z.unknown()).optional();
+    return z.unknown().optional();
+}
+
+/**
+ * Convert a ToolDefinition's inputSchema to a Zod object schema.
+ */
+function toZodSchema(z: any, inputSchema: ToolDefinition['inputSchema']): any {
+    const shape: Record<string, any> = {};
+    for (const [key, prop] of Object.entries(inputSchema.properties)) {
+        const zodProp = jsonPropToZod(z, prop as Record<string, any>);
+        if (inputSchema.required?.includes(key)) {
+            // Strip .optional() for required fields — rebuild as non-optional
+            if ((prop as any).type === 'string') shape[key] = z.string();
+            else shape[key] = zodProp;
+        } else {
+            shape[key] = zodProp;
+        }
+    }
+    return z.object(shape);
+}
+
 export async function startMcpServer(opts: McpServerOptions): Promise<void> {
     // Dynamic import -- fails gracefully if SDK not installed
     const { McpServer } = await import(
@@ -448,6 +476,7 @@ export async function startMcpServer(opts: McpServerOptions): Promise<void> {
     const { StdioServerTransport } = await import(
         '@modelcontextprotocol/sdk/server/stdio.js',
     );
+    const { z } = await import('zod');
 
     const server = new McpServer({
         name: `${opts.cliName}-mcp`,
@@ -457,13 +486,14 @@ export async function startMcpServer(opts: McpServerOptions): Promise<void> {
     const handlers = createHandlers(opts);
     const tools = getToolDefinitions();
 
-    // Register each tool
+    // Register each tool with Zod schemas
     for (const tool of tools) {
         const handler = handlers[tool.name as keyof typeof handlers];
+        const zodSchema = toZodSchema(z, tool.inputSchema);
         server.tool(
             tool.name,
             tool.description,
-            tool.inputSchema.properties,
+            zodSchema.shape,
             async (input: Record<string, unknown>) => {
                 const result = await (handler as (input: any) => Promise<ToolResult>)(
                     input,
