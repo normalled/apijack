@@ -11,6 +11,7 @@ jobs:
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -20,6 +21,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
 
       - run: bun install
 
@@ -60,9 +66,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           npm version ${{ steps.bump.outputs.level }} -m "chore(release): v%s"
 
-      # Publish to npm
+      # Publish to npm via trusted publishing (OIDC)
       - name: Publish to npm
-        run: npm publish
+        run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
