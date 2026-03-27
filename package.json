@@ -39,8 +39,30 @@
     "sdk-generator"
   ],
   "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Premo-Cloud/apijack.git"
+  },
+  "homepage": "https://github.com/Premo-Cloud/apijack#readme",
+  "bugs": {
+    "url": "https://github.com/Premo-Cloud/apijack/issues"
+  },
   "type": "module",
   "main": "src/index.ts",
+  "files": [
+    "src",
+    "bin",
+    "skills",
+    "dist",
+    ".claude-plugin",
+    ".mcp.json",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "GEMINI.md",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "apijack": "bin/apijack.ts"
   },
