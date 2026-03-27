@@ -1,5 +1,5 @@
 import type { OpenApiSchema } from './openapi-types';
-import { resolveType, refToName, buildJsDoc } from './util';
+import { resolveType, refToName, buildJsDoc, sanitizeTypeName } from './util';
 
 /**
  * Generate TypeScript type definitions from OpenAPI component schemas.
@@ -26,7 +26,8 @@ export function generateTypes(
 
     const lines: string[] = ['// Auto-generated — do not edit', ''];
 
-    for (const [name, schema] of Object.entries(allSchemas)) {
+    for (const [rawName, schema] of Object.entries(allSchemas)) {
+        const name = sanitizeTypeName(rawName);
         if (schema.const !== undefined) {
             // OAS 3.1: const — literal type alias
             const schemaDoc = buildJsDoc(schema);

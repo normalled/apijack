@@ -158,11 +158,19 @@ export function resolveType(
 }
 
 /**
+ * Sanitize a schema name into a valid TypeScript identifier.
+ * Replaces dots, dashes, and other non-alphanumeric/underscore characters.
+ */
+export function sanitizeTypeName(name: string): string {
+    return name.replace(/[^a-zA-Z0-9_$]/g, '_');
+}
+
+/**
  * Extract the type name from a JSON $ref string.
  * e.g. "#/components/schemas/Foo" -> "Foo"
  */
 export function refToName(ref: string): string {
-    return ref.split('/').pop()!;
+    return sanitizeTypeName(ref.split('/').pop()!);
 }
 
 /**

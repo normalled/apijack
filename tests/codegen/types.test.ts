@@ -150,6 +150,68 @@ describe("generateTypes — unit tests", () => {
     expect(output).toContain("export type Mixed = Base &");
     expect(output).toContain("extra");
   });
+
+  it("sanitizes dot-notation schema names in interface declarations", () => {
+    const schemas: Record<string, OpenApiSchema> = {
+      "billing.alert": {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          status: { type: "string" },
+        },
+      },
+    };
+    const output = generateTypes(schemas);
+    expect(output).toContain("export interface billing_alert {");
+    expect(output).not.toContain("export interface billing.alert {");
+  });
+
+  it("sanitizes dot-notation schema names in type alias declarations", () => {
+    const schemas: Record<string, OpenApiSchema> = {
+      "account.updated": {
+        anyOf: [
+          { $ref: "#/components/schemas/account" },
+          { $ref: "#/components/schemas/event" },
+        ],
+      },
+    };
+    const output = generateTypes(schemas);
+    expect(output).toContain("export type account_updated = ");
+    expect(output).not.toContain("export type account.updated = ");
+  });
+
+  it("sanitizes dot-notation in $ref references within properties", () => {
+    const schemas: Record<string, OpenApiSchema> = {
+      "apps.secret": {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+        },
+      },
+      Container: {
+        type: "object",
+        properties: {
+          secret: { $ref: "#/components/schemas/apps.secret" },
+        },
+      },
+    };
+    const output = generateTypes(schemas);
+    expect(output).toContain("secret?: apps_secret;");
+    expect(output).not.toContain("secret?: apps.secret;");
+  });
+
+  it("sanitizes multi-dot schema names", () => {
+    const schemas: Record<string, OpenApiSchema> = {
+      "account.application.authorized": {
+        type: "object",
+        properties: {
+          object: { $ref: "#/components/schemas/application" },
+        },
+      },
+    };
+    const output = generateTypes(schemas);
+    expect(output).toContain("export interface account_application_authorized {");
+  });
 });
 
 describe("generateTypes — petstore fixture", () => {

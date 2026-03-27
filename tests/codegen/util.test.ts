@@ -9,6 +9,7 @@ import {
   resolveSchemaProps,
   buildJsDoc,
   resolveResponseType,
+  sanitizeTypeName,
 } from "../../src/codegen/util";
 import type { OpenApiSchema } from "../../src/codegen/openapi-types";
 
@@ -155,6 +156,32 @@ describe("refToName", () => {
 
   it("handles deeply nested refs", () => {
     expect(refToName("#/a/b/c/d/MyType")).toBe("MyType");
+  });
+
+  it("sanitizes dot-notation schema names", () => {
+    expect(refToName("#/components/schemas/billing.alert")).toBe("billing_alert");
+  });
+
+  it("sanitizes multi-dot schema names", () => {
+    expect(refToName("#/components/schemas/account.application.authorized")).toBe("account_application_authorized");
+  });
+});
+
+describe("sanitizeTypeName", () => {
+  it("replaces dots with underscores", () => {
+    expect(sanitizeTypeName("billing.alert")).toBe("billing_alert");
+  });
+
+  it("handles multiple dots", () => {
+    expect(sanitizeTypeName("account.application.authorized")).toBe("account_application_authorized");
+  });
+
+  it("leaves clean names unchanged", () => {
+    expect(sanitizeTypeName("payment_intent")).toBe("payment_intent");
+  });
+
+  it("handles names with mixed problematic characters", () => {
+    expect(sanitizeTypeName("foo.bar-baz")).toBe("foo_bar_baz");
   });
 });
 
