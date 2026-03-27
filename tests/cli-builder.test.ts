@@ -176,7 +176,7 @@ describe("built-in commands", () => {
 
     expect(output).toContain("--table");
     expect(output).toContain("--quiet");
-    expect(output).toContain("-o, --output");
+    expect(output).toContain("-o <format>");
   });
 
   test("output mode flags respect outputModes option", async () => {
@@ -202,7 +202,7 @@ describe("built-in commands", () => {
     expect(output).not.toContain("--table");
     expect(output).not.toContain("--quiet");
     // -o should still be registered
-    expect(output).toContain("-o, --output");
+    expect(output).toContain("-o <format>");
   });
 
   test("custom help separates core commands from API commands", async () => {

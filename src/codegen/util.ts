@@ -412,10 +412,7 @@ export function resolveSchemaProps(
     // Skip readOnly properties — server-generated, shouldn't be CLI flags
         if (prop.readOnly) continue;
 
-        const flag = name
-            .replace(/([A-Z])/g, '-$1')
-            .toLowerCase()
-            .replace(/^-/, '');
+        const flag = name;
         if (seenFlags.has(flag)) continue; // Skip duplicate CLI flags
         seenFlags.add(flag);
 

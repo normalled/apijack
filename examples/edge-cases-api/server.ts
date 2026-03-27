@@ -184,6 +184,9 @@ async function handleRequest(req: Request): Promise<Response> {
   const path = url.pathname;
   const method = req.method;
 
+  // Simulate latency for realistic progress output
+  await new Promise(resolve => setTimeout(resolve, 250));
+
   // OpenAPI spec — no auth required
   if (method === "GET" && path === "/v3/api-docs") {
     return json(openapiSpec);

@@ -18,7 +18,7 @@ export async function executeRoutine(
     options?: {
         dryRun?: boolean;
         onStep?: (step: RoutineStep, index: number, total: number) => void;
-        onIteration?: (step: RoutineStep, current: number, total: number) => void;
+        onIteration?: (step: RoutineStep, current: number, total: number, stepIndex: number, stepTotal: number) => void;
     },
 ): Promise<RoutineResult> {
     const builtins: Record<string, unknown> = {
@@ -64,7 +64,7 @@ export async function executeRoutine(
                 const asName = step.as || 'item';
                 inIteration = true;
                 for (let j = 0; j < items.length; j++) {
-                    if (options?.onIteration) options.onIteration(step, j + 1, items.length);
+                    if (options?.onIteration) options.onIteration(step, j + 1, items.length, i, steps.length);
                     const iterCtx: RoutineContext = {
                         ...parentCtx,
                         forEachItem: { name: asName, value: items[j] },
@@ -89,7 +89,7 @@ export async function executeRoutine(
                 const asName = step.as || 'item';
                 inIteration = true;
                 for (let j = 0; j < items.length; j++) {
-                    if (options?.onIteration) options.onIteration(step, j + 1, items.length);
+                    if (options?.onIteration) options.onIteration(step, j + 1, items.length, i, steps.length);
                     const iterCtx: RoutineContext = {
                         ...parentCtx,
                         forEachItem: { name: asName, value: items[j] },

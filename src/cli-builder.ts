@@ -111,7 +111,7 @@ export function createCli(options: CliOptions): Cli {
                 program.option('--quiet', 'Suppress output');
             }
             program.option(
-                '-o, --output <format>',
+                '-o <format>',
                 `Output format (${(options.outputModes || ['json', 'table', 'quiet']).join(', ')}, routine-step)`,
             );
 
@@ -549,11 +549,8 @@ export function createCli(options: CliOptions): Cli {
 
             // 11. Handle -o routine-step
             const isRoutineStep
-                = (process.argv.includes('-o')
-                    && process.argv[process.argv.indexOf('-o') + 1] === 'routine-step')
-                || (process.argv.includes('--output')
-                    && process.argv[process.argv.indexOf('--output') + 1]
-                    === 'routine-step');
+                = process.argv.includes('-o')
+                    && process.argv[process.argv.indexOf('-o') + 1] === 'routine-step';
             if (isRoutineStep) {
                 program.hook('preAction', (_thisCommand, actionCommand) => {
                     const cmdParts: string[] = [];
@@ -570,9 +567,7 @@ export function createCli(options: CliOptions): Cli {
                     const providedArgs: Record<string, unknown> = {};
                     for (const [key, val] of Object.entries(opts)) {
                         if (val !== undefined && key !== 'output') {
-                            const flag
-                                = '--' + key.replace(/([A-Z])/g, '-$1').toLowerCase();
-                            providedArgs[flag] = val;
+                            providedArgs[`--${key}`] = val;
                         }
                     }
 
@@ -585,13 +580,10 @@ export function createCli(options: CliOptions): Cli {
                     // Get all options from the command definition
                     const allOptions = (actionCommand as any).options || [];
                     const skipFlags = new Set([
-                        '--body',
-                        '--body-file',
-                        '--output',
                         '-o',
-                        '--verbose',
+                        '-V',
                     ]);
-                    const isVerbose = process.argv.includes('--verbose');
+                    const isVerbose = process.argv.includes('-V');
 
                     if (
                         allOptions.length > 0
@@ -612,7 +604,7 @@ export function createCli(options: CliOptions): Cli {
                             const flag = opt.long || opt.short;
                             if (!flag || skipFlags.has(flag) || emitted.has(flag))
                                 continue;
-                            // Skip hidden (variant-specific) options unless --verbose
+                            // Skip hidden (variant-specific) options unless -V
                             if (opt.hidden && !isVerbose) continue;
                             const desc = opt.description || '';
                             lines.push(
@@ -812,8 +804,8 @@ function registerRoutineCommand(
                 onStep: (step, i, total) => {
                     console.log(`\x1b[36m[${i + 1}/${total}]\x1b[0m ${step.name}`);
                 },
-                onIteration: (step, current, total) => {
-                    process.stderr.write(`\r\x1b[36m  ${step.name} [${current}/${total}]\x1b[0m\x1b[K`);
+                onIteration: (step, current, total, stepIndex, stepTotal) => {
+                    process.stderr.write(`\r\x1b[36m[${stepIndex + 1}/${stepTotal}]\x1b[0m ${step.name} \x1b[36m[${current}/${total}]\x1b[0m\x1b[K`);
                 },
             });
 
@@ -885,8 +877,8 @@ function registerRoutineCommand(
                         `\x1b[36m[${i + 1}/${total}]\x1b[0m ${step.name}${step.assert ? ' \x1b[33m(assert)\x1b[0m' : ''}`,
                     );
                 },
-                onIteration: (step, current, total) => {
-                    process.stderr.write(`\r\x1b[36m  ${step.name} [${current}/${total}]\x1b[0m\x1b[K`);
+                onIteration: (step, current, total, stepIndex, stepTotal) => {
+                    process.stderr.write(`\r\x1b[36m[${stepIndex + 1}/${stepTotal}]\x1b[0m ${step.name} \x1b[36m[${current}/${total}]\x1b[0m\x1b[K`);
                 },
             });
 

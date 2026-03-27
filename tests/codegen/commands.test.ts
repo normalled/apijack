@@ -168,31 +168,7 @@ describe("generateCommands — unit tests", () => {
     const output = generateCommands(paths, schemas);
     expect(output).toContain('--name <value>');
     expect(output).toContain('--description <value>');
-    expect(output).toContain('--item-count <value>');
-  });
-
-  it("includes --body and --body-file overrides for endpoints with body", () => {
-    const paths: Record<string, Record<string, OpenApiOperation>> = {
-      "/items": {
-        post: {
-          operationId: "createItem",
-          tags: ["items"],
-          requestBody: {
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: { name: { type: "string" } },
-                },
-              },
-            },
-          },
-        },
-      },
-    };
-    const output = generateCommands(paths);
-    expect(output).toContain('--body <json>');
-    expect(output).toContain('--body-file <path>');
+    expect(output).toContain('--itemCount <value>');
   });
 
   it("imports the generic ApiClient class", () => {
@@ -293,11 +269,6 @@ describe("generateCommands — petstore fixture", () => {
 
   it("adds query params as options", () => {
     expect(output).toContain("--status");
-  });
-
-  it("adds --body and --body-file options for POST endpoints", () => {
-    expect(output).toContain('--body <json>');
-    expect(output).toContain('--body-file <path>');
   });
 
   // Operation descriptions

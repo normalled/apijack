@@ -43,45 +43,37 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
             const callArgs: unknown[] = [];
             const posArgs = positionalArgs ? [...positionalArgs] : [];
 
-            // Path params from positional args or flags — accept both --camelCase and --kebab-case
+            // Path params from positional args or flags
             for (const param of mapping.pathParams) {
-                const kebab = `--${param.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
-                const camel = `--${param}`;
-                callArgs.push(posArgs.shift() ?? args[kebab] ?? args[camel]);
+                callArgs.push(posArgs.shift() ?? args[`--${param}`]);
             }
 
             // Body from args
             if (mapping.hasBody) {
-                if (args['--body']) {
-                    callArgs.push(JSON.parse(args['--body'] as string));
-                } else {
-                    const body: Record<string, unknown> = {};
-                    for (const [key, val] of Object.entries(args)) {
-                        if (key.startsWith('--') && key !== '--body' && key !== '--body-file') {
-                            // Skip path params and query params — they're handled separately
-                            const isPathParam = mapping.pathParams.some(
-                                (p: string) => `--${p.replace(/([A-Z])/g, '-$1').toLowerCase()}` === key || `--${p}` === key,
-                            );
-                            const isQueryParam = mapping.queryParams.some(
-                                (p: string) => `--${p.replace(/([A-Z])/g, '-$1').toLowerCase()}` === key || `--${p}` === key,
-                            );
-                            if (!isPathParam && !isQueryParam) {
-                                const propName = key.slice(2).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-                                body[propName] = val;
-                            }
+                const body: Record<string, unknown> = {};
+                for (const [key, val] of Object.entries(args)) {
+                    if (key.startsWith('--')) {
+                        // Skip path params and query params — they're handled separately
+                        const isPathParam = mapping.pathParams.some(
+                            (p: string) => `--${p}` === key,
+                        );
+                        const isQueryParam = mapping.queryParams.some(
+                            (p: string) => `--${p}` === key,
+                        );
+                        if (!isPathParam && !isQueryParam) {
+                            const propName = key.slice(2);
+                            body[propName] = val;
                         }
                     }
-                    if (Object.keys(body).length > 0) callArgs.push(body);
                 }
+                if (Object.keys(body).length > 0) callArgs.push(body);
             }
 
-            // Query params — accept both --camelCase and --kebab-case flags
+            // Query params
             if (mapping.queryParams.length > 0) {
                 const queryObj: Record<string, unknown> = {};
                 for (const param of mapping.queryParams) {
-                    const kebab = `--${param.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
-                    const camel = `--${param}`;
-                    const val = args[kebab] ?? args[camel];
+                    const val = args[`--${param}`];
                     if (val !== undefined) queryObj[param] = val;
                 }
                 if (Object.keys(queryObj).length > 0) callArgs.push(queryObj);

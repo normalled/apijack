@@ -285,14 +285,13 @@ Run `mycli mcp` to start a Model Context Protocol server outside of the plugin c
 | JSON request bodies | :white_check_mark: | Property decomposition to CLI flags |
 | Primitive body types | :white_check_mark: | `string`, `number`, `boolean`, `string[]`, `number[]` |
 | Array request bodies | :white_check_mark: | |
-| `--body` / `--body-file` overrides | :white_check_mark: | Raw JSON escape hatch |
 | Typed response resolution | :white_check_mark: | 200, 201, 202, 204 |
 | Operation `summary` / `description` | :white_check_mark: | CLI descriptions, JSDoc |
 | `deprecated` operations | :white_check_mark: | `[DEPRECATED]` marker, JSDoc |
 | Tag-based command grouping | :white_check_mark: | Normalized (lowercase, split on whitespace/slashes/colons) |
 | Verb deduplication | :white_check_mark: | Falls back to operationId kebab-case |
 | `-o routine-step` YAML export | :white_check_mark: | Build workflows interactively |
-| Variant-specific flags | :white_check_mark: | Hidden by default, `--verbose` to show |
+| Variant-specific flags | :white_check_mark: | Hidden by default, `-V` to show |
 | **Not Yet Supported** | | |
 | `multipart/form-data` bodies | :x: | Use custom commands |
 | Multiple content types per operation | :x: | |

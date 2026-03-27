@@ -278,7 +278,7 @@ describe("resolveSchemaProps", () => {
     expect(result[1].type).toBe("number");
   });
 
-  it("converts camelCase property names to kebab-case CLI flags", () => {
+  it("preserves camelCase property names as CLI flags", () => {
     const schema: OpenApiSchema = {
       type: "object",
       properties: {
@@ -287,8 +287,8 @@ describe("resolveSchemaProps", () => {
       },
     };
     const result = resolveSchemaProps(schema, {});
-    expect(result[0].cliFlag).toBe("first-name");
-    expect(result[1].cliFlag).toBe("last-name");
+    expect(result[0].cliFlag).toBe("firstName");
+    expect(result[1].cliFlag).toBe("lastName");
   });
 
   it("resolves $ref schemas", () => {

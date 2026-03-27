@@ -241,11 +241,11 @@ export function generateCommands(
                         if (cmd.bodyPrimitiveType.endsWith('[]')) {
                             const itemType = cmd.bodyPrimitiveType.slice(0, -2);
                             lines.push(
-                                `    .option("--values <values>", "Comma-separated ${itemType} values")`,
+                                `    .option("-vals <values>", "Comma-separated ${itemType} values")`,
                             );
                         } else {
                             lines.push(
-                                `    .option("--value <value>", "Body value (${cmd.bodyPrimitiveType})")`,
+                                `    .option("-val <value>", "Body value (${cmd.bodyPrimitiveType})")`,
                             );
                         }
                     } else {
@@ -261,7 +261,7 @@ export function generateCommands(
                             const escapedDesc = desc.replace(/"/g, '\\"');
 
                             if (bp.variant) {
-                                // Variant-specific: hidden by default, shown with --verbose
+                                // Variant-specific: hidden by default, shown with -V
                                 lines.push(
                                     `    .addOption(new Option("--${bp.cliFlag} <value>", "${escapedDesc}${variantTag}").hideHelp())`,
                                 );
@@ -276,15 +276,9 @@ export function generateCommands(
                             }
                         }
                     }
-                    lines.push(
-                        '    .option("--body <json>", "Raw JSON body (overrides individual flags)")',
-                    );
-                    lines.push(
-                        '    .option("--body-file <path>", "Read body from file (overrides individual flags)")',
-                    );
                     if (hasVariantProps) {
                         lines.push(
-                            '    .option("--verbose", "Show all variant-specific flags in help")',
+                            '    .option("-V", "Show all variant-specific flags in help")',
                         );
                     }
                 }
@@ -307,54 +301,44 @@ export function generateCommands(
                 for (const pp of cmd.pathParams) callArgs.push(pp.name);
                 if (cmd.hasBody) {
                     lines.push('      let body: any;');
-                    lines.push(
-                        '      if (opts.bodyFile) { body = JSON.parse(await Bun.file(opts.bodyFile as string).text()); }',
-                    );
-                    lines.push(
-                        '      else if (opts.body) { body = JSON.parse(opts.body as string); }',
-                    );
                     if (cmd.bodyPrimitiveType) {
                         // Primitive body — convert from CLI flag
                         if (cmd.bodyPrimitiveType === 'string[]') {
                             lines.push(
-                                '      else if (opts.values) { body = (opts.values as string).split(","); }',
+                                '      if (opts.vals) { body = (opts.vals as string).split(","); }',
                             );
                         } else if (cmd.bodyPrimitiveType === 'number[]') {
                             lines.push(
-                                '      else if (opts.values) { body = (opts.values as string).split(",").map(Number); }',
+                                '      if (opts.vals) { body = (opts.vals as string).split(",").map(Number); }',
                             );
                         } else if (cmd.bodyPrimitiveType === 'number') {
                             lines.push(
-                                '      else if (opts.value !== undefined) { body = Number(opts.value); }',
+                                '      if (opts.val !== undefined) { body = Number(opts.val); }',
                             );
                         } else if (cmd.bodyPrimitiveType === 'boolean') {
                             lines.push(
-                                '      else if (opts.value !== undefined) { body = opts.value === "true"; }',
+                                '      if (opts.val !== undefined) { body = opts.val === "true"; }',
                             );
                         } else {
                             // string
                             lines.push(
-                                '      else if (opts.value !== undefined) { body = opts.value; }',
+                                '      if (opts.val !== undefined) { body = opts.val; }',
                             );
                         }
                     } else if (cmd.bodyProps.length > 0) {
-                        lines.push('      else {');
-                        lines.push(
-                            '        const obj: Record<string, unknown> = {};',
-                        );
+                        lines.push('      const obj: Record<string, unknown> = {};');
                         for (const bp of cmd.bodyProps) {
                             lines.push(
-                                `        if (opts.${bp.camelName} !== undefined) obj["${bp.name}"] = opts.${bp.camelName};`,
+                                `      if (opts.${bp.camelName} !== undefined) obj["${bp.name}"] = opts.${bp.camelName};`,
                             );
                         }
                         if (cmd.bodyIsArray) {
                             lines.push(
-                                '        body = [obj]; // API expects an array',
+                                '      body = [obj]; // API expects an array',
                             );
                         } else {
-                            lines.push('        body = obj;');
+                            lines.push('      body = obj;');
                         }
-                        lines.push('      }');
                     }
                     callArgs.push('body');
                 }
@@ -376,7 +360,7 @@ export function generateCommands(
                     lines.push(`  _${cmd.operationId}.configureHelp({`);
                     lines.push('    visibleOptions: (cmd) => {');
                     lines.push(
-                        '      if (process.argv.includes("--verbose")) {',
+                        '      if (process.argv.includes("-V")) {',
                     );
                     lines.push('        return cmd.options;');
                     lines.push('      }');

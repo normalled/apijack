@@ -69,7 +69,7 @@ describe("buildDispatcher", () => {
     expect(result).toEqual({ id: 42, name: "Alice" });
   });
 
-  test("dispatches to command-map with path params from flags (kebab-case)", async () => {
+  test("dispatches to command-map with path params from flags (camelCase)", async () => {
     const client = makeClient();
     const ctx = makeCtx({ client });
     const dispatch = buildDispatcher({
@@ -79,7 +79,7 @@ describe("buildDispatcher", () => {
       routinesDir: "/tmp/routines",
     });
 
-    const result = await dispatch("get-user", { "--user-id": 99 }, []);
+    const result = await dispatch("get-user", { "--userId": 99 }, []);
 
     expect(client.getUserById).toHaveBeenCalledWith(99);
   });
@@ -100,21 +100,6 @@ describe("buildDispatcher", () => {
     expect(client.createUser).toHaveBeenCalledWith({ name: "Bob", email: "bob@test.com" });
   });
 
-  test("dispatches to command-map with --body override (JSON string)", async () => {
-    const client = makeClient();
-    const ctx = makeCtx({ client });
-    const dispatch = buildDispatcher({
-      commandMap: makeCommandMap(),
-      client,
-      ctx,
-      routinesDir: "/tmp/routines",
-    });
-
-    await dispatch("create-user", { "--body": '{"name":"Charlie"}' });
-
-    expect(client.createUser).toHaveBeenCalledWith({ name: "Charlie" });
-  });
-
   test("dispatches to command-map with query params", async () => {
     const client = makeClient();
     const ctx = makeCtx({ client });
@@ -125,7 +110,7 @@ describe("buildDispatcher", () => {
       routinesDir: "/tmp/routines",
     });
 
-    await dispatch("search-users", { "--name": "Alice", "--page-size": 10 });
+    await dispatch("search-users", { "--name": "Alice", "--pageSize": 10 });
 
     expect(client.searchUsers).toHaveBeenCalledTimes(1);
     expect(client.searchUsers).toHaveBeenCalledWith({ name: "Alice", pageSize: 10 });
@@ -440,7 +425,7 @@ describe("buildDispatcher", () => {
 
     // update-item has pathParams: ["itemId"], queryParams: ["force"], hasBody: true
     await dispatch("update-item", {
-      "--item-id": 5,   // path param (should NOT end up in body)
+      "--itemId": 5,    // path param (should NOT end up in body)
       "--force": true,  // query param (should NOT end up in body)
       "--title": "New", // body param
     });

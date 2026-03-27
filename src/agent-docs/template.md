@@ -178,5 +178,5 @@ apijack CLIs can be driven by any AI agent or automation tool:
 - **Routine YAML**: Compose multi-step workflows in declarative YAML
 - **MCP server**: `<cli> mcp` exposes all commands via the Model Context Protocol
 - **Discovery**: Use `-o routine-step` on any command to get its YAML step template
-- **Structured output**: Use `--output json` for machine-readable responses
+- **Structured output**: Use `-o json` for machine-readable responses
 {{/if}}

@@ -245,8 +245,8 @@ describe("edge cases: operations", () => {
     const idx = commandsOutput.indexOf("client.allReadonlyBodyOp");
     const preceding = commandsOutput.lastIndexOf('.command("', idx);
     const block = commandsOutput.substring(preceding, idx);
-    expect(block).toContain("--body");
-    expect(block).toContain("--body-file");
+    expect(block).not.toContain("--body");
+    expect(block).not.toContain("--body-file");
     expect(block).not.toContain('"--id ');
     expect(block).not.toContain("--created-at");
   });

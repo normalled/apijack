@@ -92,7 +92,7 @@ This project uses the GEMINI.md convention. The `{{cliName}}` CLI is available a
 
 The `{{cliName}}` CLI supports automation via:
 
-- **Direct CLI**: Run `{{cliName}}` commands with `--output json` for structured responses
+- **Direct CLI**: Run `{{cliName}}` commands with `-o json` for structured responses
 - **MCP server**: Start with `{{cliName}} mcp` to expose commands via Model Context Protocol
 - **Routines**: Compose multi-step workflows in YAML under `~/.{{cliName}}/routines/`
 - **Discovery**: Use `-o routine-step` on any command for its YAML step template
