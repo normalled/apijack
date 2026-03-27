@@ -1,5 +1,8 @@
 {
-  "name": "apijack",
+  "name": "@apijack/core",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "Jack into any OpenAPI spec and rip a full-featured CLI with AI-agentic workflow automation",
   "keywords": [
     "openapi",
