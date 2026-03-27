@@ -1,9 +1,11 @@
 # apijack
 
+Jack into any OpenAPI spec and rip a full-featured CLI with AI-agentic workflow automation.
+
 [![tests](https://github.com/Premo-Cloud/apijack/actions/workflows/ci.yml/badge.svg)](https://github.com/Premo-Cloud/apijack/actions/workflows/ci.yml)
 [![e2e](https://github.com/Premo-Cloud/apijack/actions/workflows/e2e.yml/badge.svg)](https://github.com/Premo-Cloud/apijack/actions/workflows/e2e.yml)
+[![buy me a coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-orange?logo=buy-me-a-coffee)](https://www.buymeacoffee.com/garreta)
 
-Jack into any OpenAPI spec and rip a full-featured CLI with AI-agentic workflow automation.
 
 ## Install
 
