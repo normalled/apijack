@@ -18,6 +18,7 @@ import { buildDispatcher } from './routine/dispatcher';
 import { existsSync, mkdirSync, cpSync, readdirSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { resolve, join } from 'path';
+import { registerPluginCommand } from './plugin/register';
 
 export interface Cli {
     command(name: string, registrar: CommandRegistrar): void;
@@ -32,6 +33,7 @@ const CORE_COMMANDS = new Set([
     'generate',
     'routine',
     'mcp',
+    'plugin',
 ]);
 
 function showCustomHelp(program: Command, cliName: string, showAll: boolean): void {
@@ -380,6 +382,9 @@ export function createCli(options: CliOptions): Cli {
                     }
                 });
 
+            // plugin
+            registerPluginCommand(program, cliName, options.version);
+
             // 4. Resolve auth
             let resolved = resolveAuth(cliName);
 
@@ -391,6 +396,7 @@ export function createCli(options: CliOptions): Cli {
                 'routine',
                 'generate',
                 'mcp',
+                'plugin',
             ]);
             if (
                 !resolved
