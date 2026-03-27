@@ -15,7 +15,11 @@ export async function executeRoutine(
     routine: RoutineDefinition,
     overrides: Record<string, unknown>,
     dispatch: CommandDispatcher,
-    options?: { dryRun?: boolean; onStep?: (step: RoutineStep, index: number, total: number) => void },
+    options?: {
+        dryRun?: boolean;
+        onStep?: (step: RoutineStep, index: number, total: number) => void;
+        onIteration?: (step: RoutineStep, current: number, total: number) => void;
+    },
 ): Promise<RoutineResult> {
     const builtins: Record<string, unknown> = {
         _timestamp: Math.floor(Date.now() / 1000),
@@ -41,6 +45,7 @@ export async function executeRoutine(
     let stepsRun = 0;
     let stepsSkipped = 0;
     let stepsFailed = 0;
+    let inIteration = false;
 
     async function runSteps(steps: RoutineStep[], parentCtx: RoutineContext): Promise<boolean> {
         for (let i = 0; i < steps.length; i++) {
@@ -48,23 +53,27 @@ export async function executeRoutine(
 
             if (!evaluateCondition(step.condition, parentCtx)) {
                 stepsSkipped++;
-                if (options?.onStep) options.onStep(step, i, steps.length);
+                if (options?.onStep && !inIteration) options.onStep(step, i, steps.length);
                 continue;
             }
 
-            // range — generates an array for forEach
+            // range — generates an array for iteration
             if (step.range && step.steps) {
                 const [start, end] = step.range;
                 const items = Array.from({ length: end - start + 1 }, (_, i) => i + start);
                 const asName = step.as || 'item';
-                for (const item of items) {
+                inIteration = true;
+                for (let j = 0; j < items.length; j++) {
+                    if (options?.onIteration) options.onIteration(step, j + 1, items.length);
                     const iterCtx: RoutineContext = {
                         ...parentCtx,
-                        forEachItem: { name: asName, value: item },
+                        forEachItem: { name: asName, value: items[j] },
                     };
                     const ok = await runSteps(step.steps, iterCtx);
-                    if (!ok && !step.continueOnError) return false;
+                    if (!ok && !step.continueOnError) { inIteration = false; return false; }
                 }
+                inIteration = false;
+                if (options?.onIteration) process.stderr.write('\n');
                 continue;
             }
 
@@ -78,20 +87,24 @@ export async function executeRoutine(
                 }
 
                 const asName = step.as || 'item';
-                for (const item of items) {
+                inIteration = true;
+                for (let j = 0; j < items.length; j++) {
+                    if (options?.onIteration) options.onIteration(step, j + 1, items.length);
                     const iterCtx: RoutineContext = {
                         ...parentCtx,
-                        forEachItem: { name: asName, value: item },
+                        forEachItem: { name: asName, value: items[j] },
                     };
                     const ok = await runSteps(step.steps, iterCtx);
-                    if (!ok && !step.continueOnError) return false;
+                    if (!ok && !step.continueOnError) { inIteration = false; return false; }
                 }
+                inIteration = false;
+                if (options?.onIteration) process.stderr.write('\n');
                 continue;
             }
 
             if (!step.command) continue;
 
-            if (options?.onStep) options.onStep(step, i, steps.length);
+            if (options?.onStep && !inIteration) options.onStep(step, i, steps.length);
 
             const resolvedArgs = resolveArgs(step.args, parentCtx);
             const resolvedPositional = resolvePositionalArgs(step['args-positional'], parentCtx);

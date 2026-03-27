@@ -812,6 +812,9 @@ function registerRoutineCommand(
                 onStep: (step, i, total) => {
                     console.log(`\x1b[36m[${i + 1}/${total}]\x1b[0m ${step.name}`);
                 },
+                onIteration: (step, current, total) => {
+                    process.stderr.write(`\r\x1b[36m  ${step.name} [${current}/${total}]\x1b[0m\x1b[K`);
+                },
             });
 
             const elapsed = Date.now() - startTime;
@@ -881,6 +884,9 @@ function registerRoutineCommand(
                     console.log(
                         `\x1b[36m[${i + 1}/${total}]\x1b[0m ${step.name}${step.assert ? ' \x1b[33m(assert)\x1b[0m' : ''}`,
                     );
+                },
+                onIteration: (step, current, total) => {
+                    process.stderr.write(`\r\x1b[36m  ${step.name} [${current}/${total}]\x1b[0m\x1b[K`);
                 },
             });
 
