@@ -1,13 +1,15 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { listRoutinesStructured } from './agent-docs/render';
-import { getActiveEnvConfig } from './config';
+import { getActiveEnvConfig, saveEnvironment } from './config';
+import { classifyUrl } from './url-classifier';
 
 export interface McpServerOptions {
     cliName: string;
     cliInvocation: string[]; // e.g. ["bun", "run", "src/cli.ts"] or ["/path/to/binary"]
     generatedDir: string;
     routinesDir: string;
+    allowedCidrs?: string[];
 }
 
 // ── Tool definitions ────────────────────────────────────────────────
@@ -137,6 +139,35 @@ export function getToolDefinitions(): ToolDefinition[] {
             inputSchema: {
                 type: 'object',
                 properties: {},
+            },
+        },
+        {
+            name: 'setup',
+            description:
+        'Configure API credentials for an environment. Only works for development URLs '
+        + '(localhost, .local, .dev, .test, .staging, and configured CIDR ranges). '
+        + 'For production APIs, use environment variables.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    name: {
+                        type: 'string',
+                        description: 'Environment name, e.g. "dev" or "staging"',
+                    },
+                    url: {
+                        type: 'string',
+                        description: 'API base URL, e.g. "http://localhost:8080"',
+                    },
+                    user: {
+                        type: 'string',
+                        description: 'Username or email for authentication',
+                    },
+                    password: {
+                        type: 'string',
+                        description: 'Password for authentication',
+                    },
+                },
+                required: ['name', 'url', 'user', 'password'],
             },
         },
     ];
@@ -359,6 +390,47 @@ export function createHandlers(opts: McpServerOptions) {
             } catch {
                 return textResult(
                     'Types file not available. Run generate first.',
+                    true,
+                );
+            }
+        },
+
+        setup: async (input: {
+            name: string;
+            url: string;
+            user: string;
+            password: string;
+        }): Promise<ToolResult> => {
+            const classification = classifyUrl(input.url, opts.allowedCidrs);
+            if (!classification.safe) {
+                let hostname: string;
+                try {
+                    hostname = new URL(input.url).hostname;
+                } catch {
+                    hostname = input.url;
+                }
+                return textResult(
+                    `Production API detected (${hostname}).\n`
+                    + 'The MCP setup tool cannot store credentials for production APIs.\n\n'
+                    + 'Use environment variables instead:\n'
+                    + `  ${opts.cliName.toUpperCase()}_URL=${input.url}\n`
+                    + `  ${opts.cliName.toUpperCase()}_USER=${input.user}\n`
+                    + `  ${opts.cliName.toUpperCase()}_PASS=<password>\n\n`
+                    + 'Or add this network to allowedCidrs in ~/.apijack/plugin.json',
+                    true,
+                );
+            }
+
+            try {
+                await saveEnvironment(opts.cliName, input.name, {
+                    url: input.url,
+                    user: input.user,
+                    password: input.password,
+                }, true, { allowedCidrs: opts.allowedCidrs });
+                return textResult(`Environment "${input.name}" configured (${input.url})`);
+            } catch (err) {
+                return textResult(
+                    `Setup failed: ${err instanceof Error ? err.message : String(err)}`,
                     true,
                 );
             }

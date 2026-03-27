@@ -22,8 +22,8 @@ function makeOpts(overrides: Partial<McpServerOptions> = {}): McpServerOptions {
 describe("getToolDefinitions()", () => {
   const tools = getToolDefinitions();
 
-  test("returns exactly 9 tool definitions", () => {
-    expect(tools).toHaveLength(9);
+  test("returns exactly 10 tool definitions", () => {
+    expect(tools).toHaveLength(10);
   });
 
   test("all tools have required fields", () => {
@@ -49,6 +49,7 @@ describe("getToolDefinitions()", () => {
       "list_routines",
       "run_command",
       "run_routine",
+      "setup",
     ]);
   });
 
@@ -574,5 +575,76 @@ describe("get_spec handler", () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("Types file not available");
+  });
+});
+
+// ── Handler: setup ──────────────────────────────────────────────────
+
+describe("setup handler", () => {
+  test("stores credentials for localhost URL", async () => {
+    const { mkdirSync, rmSync, readFileSync } = await import("fs");
+    const { homedir } = await import("os");
+    const configDir = homedir() + "/.testcli-mcp-setup";
+    mkdirSync(configDir, { recursive: true });
+
+    const opts = makeOpts({ cliName: "testcli-mcp-setup" });
+    const handlers = createHandlers(opts);
+    const result = await handlers.setup({
+      name: "dev",
+      url: "http://localhost:8080",
+      user: "admin",
+      password: "secret",
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain("dev");
+
+    const config = JSON.parse(readFileSync(configDir + "/config.json", "utf-8"));
+    expect(config.active).toBe("dev");
+    expect(config.environments.dev.url).toBe("http://localhost:8080");
+    expect(config.environments.dev.password).toBe("secret");
+
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  test("rejects production URL", async () => {
+    const opts = makeOpts({ cliName: "testcli-mcp-prod" });
+    const handlers = createHandlers(opts);
+    const result = await handlers.setup({
+      name: "prod",
+      url: "https://api.example.com",
+      user: "admin",
+      password: "secret",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Production API detected");
+    expect(result.content[0].text).toContain("environment variable");
+  });
+
+  test("allows IP in configured CIDRs", async () => {
+    const { mkdirSync, rmSync, readFileSync } = await import("fs");
+    const { homedir } = await import("os");
+    const configDir = homedir() + "/.testcli-mcp-cidr";
+    mkdirSync(configDir, { recursive: true });
+
+    const opts = makeOpts({
+      cliName: "testcli-mcp-cidr",
+      allowedCidrs: ["192.168.1.0/24"],
+    });
+    const handlers = createHandlers(opts);
+    const result = await handlers.setup({
+      name: "internal",
+      url: "http://192.168.1.50:8080",
+      user: "admin",
+      password: "secret",
+    });
+
+    expect(result.isError).toBeUndefined();
+
+    const config = JSON.parse(readFileSync(configDir + "/config.json", "utf-8"));
+    expect(config.environments.internal.url).toBe("http://192.168.1.50:8080");
+
+    rmSync(configDir, { recursive: true, force: true });
   });
 });

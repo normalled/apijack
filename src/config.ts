@@ -3,6 +3,7 @@ import { mkdir } from 'fs/promises';
 import { dirname, join } from 'path';
 import { homedir } from 'os';
 import type { ResolvedAuth } from './auth/types';
+import { classifyUrl } from './url-classifier';
 
 /**
  * Multi-environment config stored at ~/.<cliName>/config.json
@@ -31,6 +32,8 @@ export interface EnvironmentConfig {
 
 interface ConfigOpts {
     configPath?: string;
+    allowInsecureStorage?: boolean;
+    allowedCidrs?: string[];
 }
 
 function defaultConfigPath(cliName: string): string {
@@ -141,6 +144,26 @@ export async function saveEnvironment(
     opts?: ConfigOpts,
 ): Promise<void> {
     const configPath = resolveConfigPath(cliName, opts);
+
+    // Check URL safety before storing credentials
+    const classification = classifyUrl(env.url, opts?.allowedCidrs);
+    if (!classification.safe && !opts?.allowInsecureStorage) {
+        let hostname: string;
+        try {
+            hostname = new URL(env.url).hostname;
+        } catch {
+            hostname = env.url;
+        }
+        throw new Error(
+            `Production API detected (${hostname}).\n`
+            + 'Credentials cannot be stored in plaintext for non-development environments.\n\n'
+            + 'Options:\n'
+            + `  1. Use environment variables: ${cliName.toUpperCase()}_URL, ${cliName.toUpperCase()}_USER, ${cliName.toUpperCase()}_PASS\n`
+            + '  2. Add this network to your allowed CIDRs if it\'s internal\n'
+            + '  3. Pass --allow-insecure-storage to override (not recommended)',
+        );
+    }
+
     const config = (await loadConfig(cliName, opts)) || {
         active: '',
         environments: {},

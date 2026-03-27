@@ -37,9 +37,9 @@ export function classifyUrl(
         }
     }
 
-    // Check .staging. in hostname
-    if (cleanHost.includes('.staging.')) {
-        return { safe: true, reason: '.staging.' };
+    // Check staging in hostname (as subdomain or path segment)
+    if (cleanHost.includes('.staging.') || cleanHost.startsWith('staging.')) {
+        return { safe: true, reason: 'staging' };
     }
 
     // Check CIDR allowlist (only for IP addresses)

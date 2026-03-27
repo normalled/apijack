@@ -54,7 +54,7 @@ describe("config management", () => {
         url: "https://file.example.com",
         user: "fileuser",
         password: "filepass",
-      }, true, { configPath });
+      }, true, { configPath, allowInsecureStorage: true });
 
       process.env.TESTCLI_URL = "https://env.example.com";
       process.env.TESTCLI_USER = "envuser";
@@ -145,13 +145,13 @@ describe("config management", () => {
         url: "http://first.example.com",
         user: "u1",
         password: "p1",
-      }, true, { configPath });
+      }, true, { configPath, allowInsecureStorage: true });
 
       await saveEnvironment("myapp", "second", {
         url: "http://second.example.com",
         user: "u2",
         password: "p2",
-      }, true, { configPath });
+      }, true, { configPath, allowInsecureStorage: true });
 
       const raw = JSON.parse(readFileSync(configPath, "utf-8"));
       expect(raw.active).toBe("second");
@@ -184,7 +184,7 @@ describe("config management", () => {
         url: "https://prod.example.com",
         user: "u2",
         password: "p2",
-      }, false, { configPath });
+      }, false, { configPath, allowInsecureStorage: true });
 
       const switched = await switchEnvironment("myapp", "prod", { configPath });
       expect(switched).toBe(true);
@@ -362,6 +362,61 @@ describe("config management", () => {
       expect(config).not.toBeNull();
       expect(config!.active).toBe("local");
       expect(config!.environments.local.url).toBe("http://localhost");
+    });
+  });
+
+  describe("saveEnvironment() URL classification", () => {
+    test("allows localhost URLs", async () => {
+      await saveEnvironment("testcli", "local", {
+        url: "http://localhost:8080",
+        user: "admin",
+        password: "pass",
+      }, true, { configPath });
+
+      const config = await loadConfig("testcli", { configPath });
+      expect(config!.environments.local.password).toBe("pass");
+    });
+
+    test("blocks production URLs by default", async () => {
+      expect(
+        saveEnvironment("testcli", "prod", {
+          url: "https://api.example.com",
+          user: "admin",
+          password: "pass",
+        }, true, { configPath }),
+      ).rejects.toThrow("Production API detected");
+    });
+
+    test("allows production URLs with allowInsecureStorage", async () => {
+      await saveEnvironment("testcli", "prod", {
+        url: "https://api.example.com",
+        user: "admin",
+        password: "pass",
+      }, true, { configPath, allowInsecureStorage: true });
+
+      const config = await loadConfig("testcli", { configPath });
+      expect(config!.environments.prod.password).toBe("pass");
+    });
+
+    test("allows IPs in allowed CIDRs", async () => {
+      await saveEnvironment("testcli", "internal", {
+        url: "http://192.168.1.50:8080",
+        user: "admin",
+        password: "pass",
+      }, true, { configPath, allowedCidrs: ["192.168.1.0/24"] });
+
+      const config = await loadConfig("testcli", { configPath });
+      expect(config!.environments.internal.password).toBe("pass");
+    });
+
+    test("blocks IPs outside allowed CIDRs", async () => {
+      expect(
+        saveEnvironment("testcli", "external", {
+          url: "http://54.231.10.5:8080",
+          user: "admin",
+          password: "pass",
+        }, true, { configPath, allowedCidrs: ["192.168.1.0/24"] }),
+      ).rejects.toThrow("Production API detected");
     });
   });
 });

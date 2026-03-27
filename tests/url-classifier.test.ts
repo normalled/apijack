@@ -31,6 +31,10 @@ describe('classifyUrl()', () => {
             expect(classifyUrl('https://api.staging.example.com').safe).toBe(true);
         });
 
+        test('staging. at start of hostname is safe', () => {
+            expect(classifyUrl('https://staging.example.com').safe).toBe(true);
+        });
+
         test('includes reason for safe classification', () => {
             const result = classifyUrl('http://localhost:8080');
             expect(result.reason).toBe('localhost');
