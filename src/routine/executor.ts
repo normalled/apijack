@@ -70,7 +70,10 @@ export async function executeRoutine(
                         forEachItem: { name: asName, value: items[j] },
                     };
                     const ok = await runSteps(step.steps, iterCtx);
-                    if (!ok && !step.continueOnError) { inIteration = false; return false; }
+                    if (!ok && !step.continueOnError) {
+                        inIteration = false;
+                        return false;
+                    }
                 }
                 inIteration = false;
                 if (options?.onIteration) process.stderr.write('\n');
@@ -95,7 +98,10 @@ export async function executeRoutine(
                         forEachItem: { name: asName, value: items[j] },
                     };
                     const ok = await runSteps(step.steps, iterCtx);
-                    if (!ok && !step.continueOnError) { inIteration = false; return false; }
+                    if (!ok && !step.continueOnError) {
+                        inIteration = false;
+                        return false;
+                    }
                 }
                 inIteration = false;
                 if (options?.onIteration) process.stderr.write('\n');
