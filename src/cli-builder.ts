@@ -419,11 +419,15 @@ export function createCli(options: CliOptions): Cli {
                 'mcp',
                 'plugin',
             ]);
+            const isHelpOrVersion = cmd === '--help' || cmd === '-h'
+                || cmd === '--version' || cmd === '-V'
+                || process.argv.includes('--help') || process.argv.includes('-h');
             if (
                 !resolved
                 && process.stdin.isTTY
                 && cmd
                 && !skipAuthCommands.has(cmd)
+                && !isHelpOrVersion
             ) {
                 await interactiveSetup(cliName);
                 resolved = resolveAuth(cliName, configOpts);
