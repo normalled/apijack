@@ -162,7 +162,7 @@ describe("generateTypes — unit tests", () => {
       },
     };
     const output = generateTypes(schemas);
-    expect(output).toContain("export interface billing_alert {");
+    expect(output).toContain("export interface billing__alert {");
     expect(output).not.toContain("export interface billing.alert {");
   });
 
@@ -176,7 +176,7 @@ describe("generateTypes — unit tests", () => {
       },
     };
     const output = generateTypes(schemas);
-    expect(output).toContain("export type account_updated = ");
+    expect(output).toContain("export type account__updated = ");
     expect(output).not.toContain("export type account.updated = ");
   });
 
@@ -196,7 +196,7 @@ describe("generateTypes — unit tests", () => {
       },
     };
     const output = generateTypes(schemas);
-    expect(output).toContain("secret?: apps_secret;");
+    expect(output).toContain("secret?: apps__secret;");
     expect(output).not.toContain("secret?: apps.secret;");
   });
 
@@ -210,7 +210,7 @@ describe("generateTypes — unit tests", () => {
       },
     };
     const output = generateTypes(schemas);
-    expect(output).toContain("export interface account_application_authorized {");
+    expect(output).toContain("export interface account__application__authorized {");
   });
 });
 

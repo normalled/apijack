@@ -159,10 +159,13 @@ export function resolveType(
 
 /**
  * Sanitize a schema name into a valid TypeScript identifier.
- * Replaces dots, dashes, and other non-alphanumeric/underscore characters.
+ * Dots become double underscores to avoid collisions with names
+ * that already contain underscores (e.g. "billing.alert_triggered"
+ * vs "billing.alert.triggered"). Other non-identifier characters
+ * become single underscores.
  */
 export function sanitizeTypeName(name: string): string {
-    return name.replace(/[^a-zA-Z0-9_$]/g, '_');
+    return name.replace(/\./g, '__').replace(/[^a-zA-Z0-9_$]/g, '_');
 }
 
 /**

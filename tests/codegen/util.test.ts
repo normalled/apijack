@@ -159,21 +159,21 @@ describe("refToName", () => {
   });
 
   it("sanitizes dot-notation schema names", () => {
-    expect(refToName("#/components/schemas/billing.alert")).toBe("billing_alert");
+    expect(refToName("#/components/schemas/billing.alert")).toBe("billing__alert");
   });
 
   it("sanitizes multi-dot schema names", () => {
-    expect(refToName("#/components/schemas/account.application.authorized")).toBe("account_application_authorized");
+    expect(refToName("#/components/schemas/account.application.authorized")).toBe("account__application__authorized");
   });
 });
 
 describe("sanitizeTypeName", () => {
-  it("replaces dots with underscores", () => {
-    expect(sanitizeTypeName("billing.alert")).toBe("billing_alert");
+  it("replaces dots with double underscores", () => {
+    expect(sanitizeTypeName("billing.alert")).toBe("billing__alert");
   });
 
   it("handles multiple dots", () => {
-    expect(sanitizeTypeName("account.application.authorized")).toBe("account_application_authorized");
+    expect(sanitizeTypeName("account.application.authorized")).toBe("account__application__authorized");
   });
 
   it("leaves clean names unchanged", () => {
@@ -181,7 +181,13 @@ describe("sanitizeTypeName", () => {
   });
 
   it("handles names with mixed problematic characters", () => {
-    expect(sanitizeTypeName("foo.bar-baz")).toBe("foo_bar_baz");
+    expect(sanitizeTypeName("foo.bar-baz")).toBe("foo__bar_baz");
+  });
+
+  it("avoids collisions between dot and underscore variants", () => {
+    expect(sanitizeTypeName("billing.alert_triggered")).not.toBe(
+      sanitizeTypeName("billing.alert.triggered"),
+    );
   });
 });
 
