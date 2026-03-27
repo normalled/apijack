@@ -176,6 +176,7 @@ export function getToolDefinitions(): ToolDefinition[] {
 // ── Helpers ─────────────────────────────────────────────────────────
 
 interface ToolResult {
+    [key: string]: unknown;
     content: Array<{ type: 'text'; text: string }>;
     isError?: boolean;
 }
@@ -440,68 +441,53 @@ export function createHandlers(opts: McpServerOptions) {
 
 // ── Server startup ──────────────────────────────────────────────────
 
-/**
- * Convert a JSON schema property definition to a Zod schema.
- */
-function jsonPropToZod(z: any, prop: Record<string, any>): any {
-    if (prop.type === 'string') return z.string().optional();
-    if (prop.type === 'object' && prop.additionalProperties) return z.record(z.string()).optional();
-    if (prop.type === 'object') return z.record(z.unknown()).optional();
-    return z.unknown().optional();
-}
-
-/**
- * Convert a ToolDefinition's inputSchema to a Zod object schema.
- */
-function toZodSchema(z: any, inputSchema: ToolDefinition['inputSchema']): any {
-    const shape: Record<string, any> = {};
-    for (const [key, prop] of Object.entries(inputSchema.properties)) {
-        const zodProp = jsonPropToZod(z, prop as Record<string, any>);
-        if (inputSchema.required?.includes(key)) {
-            // Strip .optional() for required fields — rebuild as non-optional
-            if ((prop as any).type === 'string') shape[key] = z.string();
-            else shape[key] = zodProp;
-        } else {
-            shape[key] = zodProp;
-        }
-    }
-    return z.object(shape);
-}
-
 export async function startMcpServer(opts: McpServerOptions): Promise<void> {
-    // Dynamic import -- fails gracefully if SDK not installed
-    const { McpServer } = await import(
-        '@modelcontextprotocol/sdk/server/mcp.js',
+    // Use the low-level Server API with SDK request schemas — avoids Zod compat issues
+    const { Server } = await import(
+        '@modelcontextprotocol/sdk/server/index.js',
     );
     const { StdioServerTransport } = await import(
         '@modelcontextprotocol/sdk/server/stdio.js',
     );
-    const { z } = await import('zod');
+    const types = await import('@modelcontextprotocol/sdk/types.js');
 
-    const server = new McpServer({
-        name: `${opts.cliName}-mcp`,
-        version: '1.0.0',
-    });
+    type CallToolRequest = typeof types.CallToolRequestSchema extends { _zod: { output: infer O } } ? O : never;
+    type ToolHandler = (input: Record<string, string>) => Promise<ToolResult>;
+
+    const server = new Server(
+        { name: `${opts.cliName}-mcp`, version: '1.0.0' },
+        { capabilities: { tools: { listChanged: true } } },
+    );
 
     const handlers = createHandlers(opts);
     const tools = getToolDefinitions();
 
-    // Register each tool with Zod schemas
-    for (const tool of tools) {
-        const handler = handlers[tool.name as keyof typeof handlers];
-        const zodSchema = toZodSchema(z, tool.inputSchema);
-        server.tool(
-            tool.name,
-            tool.description,
-            zodSchema.shape,
-            async (input: Record<string, unknown>) => {
-                const result = await (handler as (input: any) => Promise<ToolResult>)(
-                    input,
-                );
-                return result;
-            },
-        );
-    }
+    server.setRequestHandler(
+        types.ListToolsRequestSchema,
+        async () => ({
+            tools: tools.map(t => ({
+                name: t.name,
+                description: t.description,
+                inputSchema: t.inputSchema,
+            })),
+        }),
+    );
+
+    server.setRequestHandler(
+        types.CallToolRequestSchema,
+        async (request: CallToolRequest) => {
+            const { name } = request.params;
+            const args = request.params.arguments ?? {};
+            const handler = handlers[name as keyof typeof handlers] as ToolHandler | undefined;
+            if (!handler) {
+                return {
+                    content: [{ type: 'text' as const, text: `Unknown tool: ${name}` }],
+                    isError: true,
+                };
+            }
+            return handler(args as Record<string, string>);
+        },
+    );
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
