@@ -144,7 +144,7 @@ steps:
 `);
     const errors = validateRoutine(routine);
     expect(errors.length).toBe(1);
-    expect(errors[0]).toContain("must have 'command' or 'forEach'");
+    expect(errors[0]).toContain("must have 'command', 'forEach', or 'range'");
   });
 
   test("validates nested forEach steps", () => {

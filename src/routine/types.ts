@@ -8,6 +8,7 @@ export interface RoutineStep {
     'assert'?: string;
     'continueOnError'?: boolean;
     'forEach'?: string;
+    'range'?: [number, number];
     'as'?: string;
     'steps'?: RoutineStep[];
 }

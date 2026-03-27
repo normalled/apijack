@@ -52,6 +52,22 @@ export async function executeRoutine(
                 continue;
             }
 
+            // range — generates an array for forEach
+            if (step.range && step.steps) {
+                const [start, end] = step.range;
+                const items = Array.from({ length: end - start + 1 }, (_, i) => i + start);
+                const asName = step.as || 'item';
+                for (const item of items) {
+                    const iterCtx: RoutineContext = {
+                        ...parentCtx,
+                        forEachItem: { name: asName, value: item },
+                    };
+                    const ok = await runSteps(step.steps, iterCtx);
+                    if (!ok && !step.continueOnError) return false;
+                }
+                continue;
+            }
+
             // forEach
             if (step.forEach && step.steps) {
                 const items = resolveValue(step.forEach, parentCtx);

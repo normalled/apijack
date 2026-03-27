@@ -47,11 +47,11 @@ export function validateRoutine(routine: RoutineDefinition): string[] {
                 aliases.add(step.output);
             }
 
-            if (!step.command && !step.forEach) {
-                errors.push(`Step ${loc} must have 'command' or 'forEach'`);
+            if (!step.command && !step.forEach && !step.range) {
+                errors.push(`Step ${loc} must have 'command', 'forEach', or 'range'`);
             }
 
-            if (step.forEach && step.steps) {
+            if ((step.forEach || step.range) && step.steps) {
                 validateSteps(step.steps, `${loc}.steps`);
             }
         }
