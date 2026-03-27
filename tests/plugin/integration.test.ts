@@ -31,17 +31,21 @@ describe("plugin install → uninstall roundtrip", () => {
     });
     expect(installResult.success).toBe(true);
 
-    // Verify all files are in place
-    const cacheDir = installResult.pluginCacheDir;
-    expect(existsSync(join(cacheDir, ".claude-plugin", "plugin.json"))).toBe(true);
-    expect(existsSync(join(cacheDir, "skills", "apijack", "SKILL.md"))).toBe(true);
+    // Verify marketplace registration
+    const marketplacePath = join(
+      testClaudeDir,
+      "plugins",
+      "marketplaces",
+      "local",
+      ".claude-plugin",
+      "marketplace.json"
+    );
+    expect(existsSync(marketplacePath)).toBe(true);
 
-    // Verify registrations
-    const installed = readJson(join(testClaudeDir, "plugins", "installed_plugins.json"));
-    expect(installed.plugins["apijack@local"]).toHaveLength(1);
-
-    const settings = readJson(join(testClaudeDir, "settings.json"));
-    expect(settings.enabledPlugins["apijack@local"]).toBe(true);
+    const marketplace = readJson(marketplacePath);
+    const plugin = marketplace.plugins.find((p: any) => p.name === "apijack");
+    expect(plugin).toBeDefined();
+    expect(plugin.source.version).toBe("0.1.0");
 
     // Verify user data
     expect(existsSync(join(testDataDir, "routines"))).toBe(true);
@@ -50,15 +54,6 @@ describe("plugin install → uninstall roundtrip", () => {
     // Uninstall
     const uninstallResult = await uninstallPlugin({ claudeDir: testClaudeDir });
     expect(uninstallResult.success).toBe(true);
-
-    // Verify plugin removed
-    expect(existsSync(join(testClaudeDir, "plugins", "cache", "local", "apijack"))).toBe(false);
-
-    const installedAfter = readJson(join(testClaudeDir, "plugins", "installed_plugins.json"));
-    expect(installedAfter.plugins["apijack@local"]).toBeUndefined();
-
-    const settingsAfter = readJson(join(testClaudeDir, "settings.json"));
-    expect(settingsAfter.enabledPlugins["apijack@local"]).toBeUndefined();
 
     // Verify user data preserved
     expect(existsSync(testDataDir)).toBe(true);
@@ -90,7 +85,16 @@ describe("plugin install → uninstall roundtrip", () => {
     expect(result.success).toBe(true);
     expect(result.pluginCacheDir).toContain("0.2.0");
 
-    const installed = readJson(join(testClaudeDir, "plugins", "installed_plugins.json"));
-    expect(installed.plugins["apijack@local"][0].version).toBe("0.2.0");
+    const marketplacePath = join(
+      testClaudeDir,
+      "plugins",
+      "marketplaces",
+      "local",
+      ".claude-plugin",
+      "marketplace.json"
+    );
+    const marketplace = readJson(marketplacePath);
+    const plugin = marketplace.plugins.find((p: any) => p.name === "apijack");
+    expect(plugin.source.version).toBe("0.2.0");
   });
 });

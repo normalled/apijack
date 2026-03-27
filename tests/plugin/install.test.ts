@@ -21,7 +21,7 @@ describe("installPlugin()", () => {
     rmSync(testRoot, { recursive: true, force: true });
   });
 
-  test("creates plugin cache directory with expected files", async () => {
+  test("registers in local marketplace", async () => {
     const result = await installPlugin({
       version: "0.1.0",
       claudeDir: testClaudeDir,
@@ -33,13 +33,26 @@ describe("installPlugin()", () => {
 
     expect(result.success).toBe(true);
 
-    const cacheDir = join(testClaudeDir, "plugins", "cache", "local", "apijack", "0.1.0");
-    expect(existsSync(join(cacheDir, ".claude-plugin", "plugin.json"))).toBe(true);
-    expect(existsSync(join(cacheDir, "skills", "apijack", "SKILL.md"))).toBe(true);
+    const marketplacePath = join(
+      testClaudeDir,
+      "plugins",
+      "marketplaces",
+      "local",
+      ".claude-plugin",
+      "marketplace.json"
+    );
+    expect(existsSync(marketplacePath)).toBe(true);
+
+    const marketplace = readJson(marketplacePath);
+    const plugin = marketplace.plugins.find((p: any) => p.name === "apijack");
+    expect(plugin).toBeDefined();
+    expect(plugin.source.source).toBe("npm");
+    expect(plugin.source.package).toBe("@apijack/core");
+    expect(plugin.source.version).toBe("0.1.0");
   });
 
-  test("registers in installed_plugins.json", async () => {
-    await installPlugin({
+  test("returns pluginCacheDir with version", async () => {
+    const result = await installPlugin({
       version: "0.1.0",
       claudeDir: testClaudeDir,
       userDataDir: testDataDir,
@@ -48,24 +61,7 @@ describe("installPlugin()", () => {
       generatedDir: "src/generated",
     });
 
-    const installed = readJson(join(testClaudeDir, "plugins", "installed_plugins.json"));
-    expect(installed.plugins["apijack@local"]).toBeDefined();
-    expect(installed.plugins["apijack@local"][0].version).toBe("0.1.0");
-    expect(installed.plugins["apijack@local"][0].scope).toBe("user");
-  });
-
-  test("enables in settings.json", async () => {
-    await installPlugin({
-      version: "0.1.0",
-      claudeDir: testClaudeDir,
-      userDataDir: testDataDir,
-      sourceDir: join(import.meta.dir, "../.."),
-      cliInvocation: ["bun", "run", "src/cli.ts"],
-      generatedDir: "src/generated",
-    });
-
-    const settings = readJson(join(testClaudeDir, "settings.json"));
-    expect(settings.enabledPlugins["apijack@local"]).toBe(true);
+    expect(result.pluginCacheDir).toContain("0.1.0");
   });
 
   test("creates user data directory", async () => {
@@ -97,13 +93,26 @@ describe("installPlugin()", () => {
     expect(pluginConfig.generatedDir).toBe("src/generated");
   });
 
-  test("preserves existing settings.json fields", async () => {
-    mkdirSync(testClaudeDir, { recursive: true });
-    const settingsPath = join(testClaudeDir, "settings.json");
-    await Bun.write(settingsPath, JSON.stringify({
-      enabledPlugins: { "other-plugin@local": true },
-      mcpServers: { existing: { type: "stdio" } },
-    }));
+  test("preserves existing marketplace entries", async () => {
+    // Pre-populate marketplace with another plugin
+    const marketplaceDir = join(
+      testClaudeDir,
+      "plugins",
+      "marketplaces",
+      "local",
+      ".claude-plugin"
+    );
+    mkdirSync(marketplaceDir, { recursive: true });
+    const marketplacePath = join(marketplaceDir, "marketplace.json");
+    await Bun.write(
+      marketplacePath,
+      JSON.stringify({
+        $schema: "https://anthropic.com/claude-code/marketplace.schema.json",
+        name: "local",
+        owner: { name: "Local Plugins" },
+        plugins: [{ name: "other-plugin", description: "Other" }],
+      })
+    );
 
     await installPlugin({
       version: "0.1.0",
@@ -114,9 +123,8 @@ describe("installPlugin()", () => {
       generatedDir: "src/generated",
     });
 
-    const settings = readJson(settingsPath);
-    expect(settings.enabledPlugins["other-plugin@local"]).toBe(true);
-    expect(settings.enabledPlugins["apijack@local"]).toBe(true);
-    expect(settings.mcpServers.existing).toBeDefined();
+    const marketplace = readJson(marketplacePath);
+    expect(marketplace.plugins.find((p: any) => p.name === "other-plugin")).toBeDefined();
+    expect(marketplace.plugins.find((p: any) => p.name === "apijack")).toBeDefined();
   });
 });
