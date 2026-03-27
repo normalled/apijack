@@ -4,8 +4,11 @@ import type {
   OpenApiOperation,
   OpenApiSchema,
 } from "../../src/codegen/openapi-types";
+import fixture from "../fixtures/petstore.json";
 
-describe("generateCommands", () => {
+const schemas = fixture.components.schemas as Record<string, any>;
+
+describe("generateCommands — unit tests", () => {
   it("groups commands by normalized tags", () => {
     const paths: Record<string, Record<string, OpenApiOperation>> = {
       "/admin/users": {
@@ -132,8 +135,6 @@ describe("generateCommands", () => {
       },
     };
     const output = generateCommands(paths);
-    // Both are GET without path params, so both get "list" verb initially
-    // With dedup, they fall back to operationId kebab-case
     expect(output).toContain('.command("list-items")');
     expect(output).toContain('.command("search-items")');
   });
@@ -254,5 +255,95 @@ describe("generateCommands", () => {
     const output = generateCommands(paths);
     expect(output).toContain("client.getItem(id)");
     expect(output).toContain("onResult(result)");
+  });
+});
+
+describe("generateCommands — petstore fixture", () => {
+  const output = generateCommands(fixture.paths as any, schemas);
+
+  it("accepts onResult callback parameter", () => {
+    expect(output).toContain("onResult: OutputHandler");
+  });
+
+  it("creates tag-based subcommand groups", () => {
+    expect(output).toContain('.command("admin")');
+    expect(output).toContain('.command("matters")');
+    expect(output).toContain('.command("users")');
+  });
+
+  it("maps GET collection to list verb", () => {
+    expect(output).toContain('.command("list")');
+  });
+
+  it("maps GET with path param to get verb", () => {
+    expect(output).toContain('.command("get');
+  });
+
+  it("maps POST to create verb", () => {
+    expect(output).toContain('.command("create")');
+  });
+
+  it("maps DELETE to delete verb", () => {
+    expect(output).toContain('.command("delete');
+  });
+
+  it("adds path params as required arguments", () => {
+    expect(output).toContain("<matterId>");
+  });
+
+  it("adds query params as options", () => {
+    expect(output).toContain("--status");
+  });
+
+  it("adds --body and --body-file options for POST endpoints", () => {
+    expect(output).toContain('--body <json>');
+    expect(output).toContain('--body-file <path>');
+  });
+
+  // Operation descriptions
+  it("uses operation summary in command description", () => {
+    expect(output).toContain("List all items");
+  });
+
+  it("includes HTTP method and path in description", () => {
+    expect(output).toContain("GET /described/items");
+  });
+
+  // Property descriptions on options
+  it("uses property description in option help text", () => {
+    expect(output).toContain("Display name of the item");
+  });
+
+  // Required flags
+  it("uses requiredOption for required body properties", () => {
+    expect(output).toContain(".requiredOption(");
+    expect(output).toContain("(required)");
+  });
+
+  // readOnly exclusion
+  it("excludes readOnly properties from CLI flags", () => {
+    const describedCreateBlock = output.split('"createItem"')[1]?.split(".action(")[0] || "";
+    expect(describedCreateBlock).not.toContain("--id ");
+    expect(describedCreateBlock).not.toContain("--created-on");
+  });
+
+  // Format hints
+  it("includes format hint in option description", () => {
+    expect(output).toContain("(email)");
+  });
+
+  // Default values
+  it("includes default value in option description", () => {
+    expect(output).toContain("(default: 0)");
+  });
+
+  // Deprecated
+  it("marks deprecated operations in description", () => {
+    expect(output).toContain("[DEPRECATED]");
+  });
+
+  // Query param descriptions
+  it("uses query parameter description in option help", () => {
+    expect(output).toContain("Page number to retrieve");
   });
 });

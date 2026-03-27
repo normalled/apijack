@@ -7,6 +7,8 @@ import {
   sanitizeVar,
   capitalize,
   resolveSchemaProps,
+  buildJsDoc,
+  resolveResponseType,
 } from "../../src/codegen/util";
 import type { OpenApiSchema } from "../../src/codegen/openapi-types";
 
@@ -88,18 +90,61 @@ describe("resolveType", () => {
     ).toBe('"A" | "B" | "C"');
   });
 
-  it("resolves object type as Record", () => {
+  it("resolves plain object type as Record", () => {
     expect(resolveType({ type: "object" })).toBe("Record<string, unknown>");
   });
 
-  it("resolves schema with properties as Record", () => {
-    expect(
-      resolveType({ properties: { foo: { type: "string" } } }),
-    ).toBe("Record<string, unknown>");
+  it("resolves object with properties as inline object literal at depth 0", () => {
+    const result = resolveType({ type: "object", properties: { foo: { type: "string" } } });
+    expect(result).toContain("{");
+    expect(result).toContain("foo");
+    expect(result).toContain("string");
+  });
+
+  it("resolves object at depth 3+ as Record", () => {
+    const result = resolveType(
+      { type: "object", properties: { foo: { type: "string" } } },
+      {},
+      3,
+    );
+    expect(result).toBe("Record<string, unknown>");
   });
 
   it("returns unknown for unrecognized schemas", () => {
     expect(resolveType({})).toBe("unknown");
+  });
+
+  it("wraps union items in parens for array", () => {
+    const result = resolveType({
+      type: "array",
+      items: {
+        oneOf: [
+          { $ref: "#/components/schemas/A" },
+          { $ref: "#/components/schemas/B" },
+        ],
+      },
+    });
+    expect(result).toBe("(A | B)[]");
+  });
+
+  it("resolves allOf in property type", () => {
+    const result = resolveType({
+      allOf: [
+        { $ref: "#/components/schemas/Base" },
+        { $ref: "#/components/schemas/Extra" },
+      ],
+    });
+    expect(result).toBe("Base & Extra");
+  });
+
+  it("resolves oneOf in property type", () => {
+    const result = resolveType({
+      oneOf: [
+        { $ref: "#/components/schemas/A" },
+        { $ref: "#/components/schemas/B" },
+      ],
+    });
+    expect(result).toBe("A | B");
   });
 });
 
@@ -327,7 +372,6 @@ describe("resolveSchemaProps", () => {
     const result = resolveSchemaProps(schema, schemas);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("field");
-    // single variant doesn't tag with variant name
     expect(result[0].variant).toBeUndefined();
   });
 
@@ -369,5 +413,70 @@ describe("resolveSchemaProps", () => {
     const result = resolveSchemaProps(schema, {});
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("name");
+  });
+
+  it("skips readOnly properties", () => {
+    const schema: OpenApiSchema = {
+      type: "object",
+      properties: {
+        id: { type: "integer", readOnly: true },
+        name: { type: "string" },
+      },
+    };
+    const result = resolveSchemaProps(schema, {});
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("name");
+  });
+
+  it("tracks required properties", () => {
+    const schema: OpenApiSchema = {
+      type: "object",
+      required: ["name"],
+      properties: {
+        name: { type: "string" },
+        optional: { type: "string" },
+      },
+    };
+    const result = resolveSchemaProps(schema, {});
+    expect(result[0].required).toBe(true);
+    expect(result[1].required).toBe(false);
+  });
+
+  it("includes description, format, default, deprecated from property schema", () => {
+    const schema: OpenApiSchema = {
+      type: "object",
+      properties: {
+        email: {
+          type: "string",
+          description: "User email",
+          format: "email",
+          default: "test@example.com",
+          deprecated: true,
+        },
+      },
+    };
+    const result = resolveSchemaProps(schema, {});
+    expect(result[0].description).toBe("User email");
+    expect(result[0].format).toBe("email");
+    expect(result[0].default).toBe("test@example.com");
+    expect(result[0].deprecated).toBe(true);
+  });
+
+  it("inherits description from $ref schema", () => {
+    const schemas: Record<string, OpenApiSchema> = {
+      StatusEnum: {
+        type: "string",
+        enum: ["ACTIVE", "INACTIVE"],
+        description: "Status of the resource",
+      },
+    };
+    const schema: OpenApiSchema = {
+      type: "object",
+      properties: {
+        status: { $ref: "#/components/schemas/StatusEnum" },
+      },
+    };
+    const result = resolveSchemaProps(schema, schemas);
+    expect(result[0].description).toBe("Status of the resource");
   });
 });

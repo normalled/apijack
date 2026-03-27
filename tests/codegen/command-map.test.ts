@@ -4,8 +4,11 @@ import type {
   OpenApiOperation,
   OpenApiSchema,
 } from "../../src/codegen/openapi-types";
+import fixture from "../fixtures/petstore.json";
 
-describe("generateCommandMap", () => {
+const schemas = fixture.components.schemas as Record<string, any>;
+
+describe("generateCommandMap — unit tests", () => {
   it("generates correct command path to operationId mapping", () => {
     const paths: Record<string, Record<string, OpenApiOperation>> = {
       "/items": {
@@ -107,7 +110,6 @@ describe("generateCommandMap", () => {
       },
     };
     const output = generateCommandMap(paths);
-    // Both are GET without path params -> "list" verb -> dedup to operationId kebab
     expect(output).toContain('"items list-items"');
     expect(output).toContain('"items search-items"');
   });
@@ -158,5 +160,39 @@ describe("generateCommandMap", () => {
     const output = generateCommandMap(paths);
     expect(output).toContain("pathParams: []");
     expect(output).toContain("queryParams: []");
+  });
+});
+
+describe("generateCommandMap — petstore fixture", () => {
+  const output = generateCommandMap(fixture.paths as any, schemas);
+
+  it("exports a commandMap object", () => {
+    expect(output).toContain("export const commandMap");
+  });
+
+  it("maps command path to operationId", () => {
+    expect(output).toContain("adminGetMatters");
+  });
+
+  it("includes pathParams list", () => {
+    expect(output).toContain('"matterId"');
+  });
+
+  it("includes hasBody flag", () => {
+    expect(output).toContain("hasBody: true");
+    expect(output).toContain("hasBody: false");
+  });
+
+  it("CommandMapping interface includes description field", () => {
+    expect(output).toContain("description?: string;");
+  });
+
+  it("includes operation summary as description", () => {
+    expect(output).toContain('description: "List all items"');
+  });
+
+  it("omits description when operation has no summary", () => {
+    const adminLine = output.split("\n").find((l) => l.includes("adminGetMatters"));
+    expect(adminLine).not.toContain("description:");
   });
 });

@@ -2,15 +2,38 @@ import type { OpenApiSchema, BodyProp } from "./openapi-types";
 
 /**
  * Resolve an OpenAPI schema to a TypeScript type string.
- * Handles $ref, arrays, primitives, enums, objects, and nullable.
+ * Handles $ref, arrays, primitives, enums, objects, allOf, oneOf, anyOf,
+ * inline object literals (up to depth 3), and nullable.
  */
-export function resolveType(schema: OpenApiSchema): string {
+export function resolveType(
+  schema: OpenApiSchema,
+  schemas: Record<string, OpenApiSchema> = {},
+  depth: number = 0,
+  visited: Set<string> = new Set(),
+): string {
   let base: string;
 
   if (schema.$ref) {
     base = refToName(schema.$ref);
+  } else if (schema.allOf) {
+    const parts = schema.allOf.map((s) => {
+      if (s.$ref) return refToName(s.$ref);
+      if (s.properties) return resolveType(s, schemas, depth, visited);
+      return "unknown";
+    });
+    base = parts.join(" & ");
+  } else if (schema.oneOf || schema.anyOf) {
+    const variants = (schema.oneOf || schema.anyOf)!;
+    const parts = variants.map((s) => resolveType(s, schemas, depth, visited));
+    base = parts.join(" | ");
   } else if (schema.type === "array" && schema.items) {
-    base = `${resolveType(schema.items)}[]`;
+    const itemType = resolveType(schema.items, schemas, depth, visited);
+    // Wrap union/intersection types in parens for array
+    if (itemType.includes(" | ") || itemType.includes(" & ")) {
+      base = `(${itemType})[]`;
+    } else {
+      base = `${itemType}[]`;
+    }
   } else if (schema.type === "integer" || schema.type === "number") {
     base = "number";
   } else if (schema.type === "boolean") {
@@ -21,7 +44,31 @@ export function resolveType(schema: OpenApiSchema): string {
     } else {
       base = "string";
     }
-  } else if (schema.type === "object" || schema.properties) {
+  } else if ((schema.type === "object" || schema.properties) && schema.properties) {
+    if (depth < 3) {
+      // Emit inline object literal type
+      const innerLines: string[] = ["{"];
+      const requiredSet = new Set(schema.required || []);
+      for (const [propName, propSchema] of Object.entries(schema.properties)) {
+        const propDoc = buildJsDoc(propSchema, "  ");
+        innerLines.push(...propDoc);
+        const tsType = resolveType(propSchema, schemas, depth + 1, visited);
+        const optional = requiredSet.has(propName) ? "" : "?";
+        innerLines.push(`  ${propName}${optional}: ${tsType};`);
+      }
+      // additionalProperties inside inline objects
+      if (schema.additionalProperties && schema.additionalProperties !== true) {
+        const addType = resolveType(schema.additionalProperties, schemas, depth + 1, visited);
+        innerLines.push(`  [key: string]: ${addType} | undefined;`);
+      } else if (schema.additionalProperties === true) {
+        innerLines.push(`  [key: string]: unknown;`);
+      }
+      innerLines.push("}");
+      base = innerLines.join("\n");
+    } else {
+      base = "Record<string, unknown>";
+    }
+  } else if (schema.type === "object") {
     base = "Record<string, unknown>";
   } else {
     base = "unknown";
@@ -67,27 +114,157 @@ export function normalizeTag(tag: string): string[] {
 }
 
 /**
+ * Build JSDoc comment lines from OpenAPI schema metadata.
+ * Returns an array of comment lines (including delimiters) or empty array if no metadata.
+ */
+export function buildJsDoc(
+  schema: Partial<OpenApiSchema>,
+  indent: string = "",
+): string[] {
+  const tags: string[] = [];
+
+  // Collect tags in specified order
+  if (schema.format !== undefined) tags.push(`@format ${schema.format}`);
+  if (schema.minimum !== undefined) tags.push(`@minimum ${schema.minimum}`);
+  if (schema.maximum !== undefined) tags.push(`@maximum ${schema.maximum}`);
+  if (schema.exclusiveMinimum !== undefined && schema.exclusiveMinimum !== false) {
+    tags.push(`@exclusiveMinimum ${schema.exclusiveMinimum}`);
+  }
+  if (schema.exclusiveMaximum !== undefined && schema.exclusiveMaximum !== false) {
+    tags.push(`@exclusiveMaximum ${schema.exclusiveMaximum}`);
+  }
+  if (schema.minLength !== undefined) tags.push(`@minLength ${schema.minLength}`);
+  if (schema.maxLength !== undefined) tags.push(`@maxLength ${schema.maxLength}`);
+  if (schema.pattern !== undefined) tags.push(`@pattern ${schema.pattern}`);
+  if (schema.minItems !== undefined) tags.push(`@minItems ${schema.minItems}`);
+  if (schema.maxItems !== undefined) tags.push(`@maxItems ${schema.maxItems}`);
+  if (schema.uniqueItems === true) tags.push(`@uniqueItems`);
+  if (schema.default !== undefined) {
+    if (typeof schema.default === "object" && schema.default !== null) {
+      tags.push(`@default ${JSON.stringify(schema.default)}`);
+    } else {
+      tags.push(`@default ${schema.default}`);
+    }
+  }
+  if (schema.example !== undefined) {
+    if (typeof schema.example === "string") {
+      tags.push(`@example "${schema.example}"`);
+    } else if (typeof schema.example === "object" && schema.example !== null) {
+      tags.push(`@example ${JSON.stringify(schema.example)}`);
+    } else {
+      tags.push(`@example ${schema.example}`);
+    }
+  }
+  if (schema.readOnly === true) tags.push(`@readonly`);
+  if (schema.writeOnly === true) tags.push(`@writeonly`);
+
+  // Handle description, escaping */ sequences (but not the final closing */)
+  let desc = schema.description;
+  if (desc) {
+    desc = desc.replace(/\*\//g, "*\\/");
+  }
+
+  const isDeprecated = schema.deprecated === true;
+
+  // Determine if there is anything to emit
+  if (!desc && !isDeprecated && tags.length === 0) {
+    return [];
+  }
+
+  // Build content lines (description lines + tag lines)
+  const contentLines: string[] = [];
+
+  if (isDeprecated) {
+    // @deprecated goes first, incorporating description
+    if (desc) {
+      contentLines.push(`@deprecated ${desc}`);
+    } else {
+      contentLines.push("@deprecated");
+    }
+  } else if (desc) {
+    // Split multi-line descriptions into separate lines
+    const descLines = desc.split("\n");
+    contentLines.push(...descLines);
+  }
+
+  // Add tag lines
+  contentLines.push(...tags);
+
+  if (contentLines.length === 0) {
+    return [];
+  }
+
+  // Single content line -> single-line JSDoc
+  if (contentLines.length === 1) {
+    return [`${indent}/** ${contentLines[0]} */`];
+  }
+
+  // Multi-line JSDoc
+  const result: string[] = [];
+  result.push(`${indent}/** ${contentLines[0]}`);
+  for (let i = 1; i < contentLines.length; i++) {
+    if (i === contentLines.length - 1) {
+      result.push(`${indent} * ${contentLines[i]} */`);
+    } else {
+      result.push(`${indent} * ${contentLines[i]}`);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Resolve response type from OpenAPI operation responses.
+ * Scans 200/201/202/204 responses for JSON schema and returns the TypeScript type.
+ */
+export function resolveResponseType(
+  responses: Record<string, { description?: string; content?: Record<string, { schema: OpenApiSchema }> }>,
+  schemas: Record<string, OpenApiSchema>,
+): string {
+  for (const status of ["200", "201", "202", "204"]) {
+    const response = responses[status];
+    if (!response) continue;
+    const jsonSchema = response.content?.["application/json"]?.schema;
+    if (!jsonSchema) continue;
+    return resolveType(jsonSchema, schemas);
+  }
+  return "void";
+}
+
+/**
  * Resolve an OpenAPI request body schema into a flat list of BodyProp entries
  * suitable for generating CLI flags. Handles $ref, allOf, oneOf/anyOf, and arrays.
+ * Skips readOnly properties and tracks required fields.
  */
 export function resolveSchemaProps(
   schema: OpenApiSchema | undefined,
   schemas: Record<string, OpenApiSchema>,
+  parentRequired?: Set<string>,
 ): BodyProp[] {
   if (!schema) return [];
 
   // Resolve $ref
   if (schema.$ref) {
     const name = schema.$ref.split("/").pop()!;
-    return resolveSchemaProps(schemas[name], schemas);
+    const refSchema = schemas[name];
+    return resolveSchemaProps(refSchema, schemas, parentRequired);
   }
 
   // Resolve allOf — merge properties from all parts
   if (schema.allOf) {
     const merged: BodyProp[] = [];
     const seen = new Set<string>();
+    const mergedRequired = new Set<string>(parentRequired || []);
     for (const part of schema.allOf) {
-      for (const prop of resolveSchemaProps(part, schemas)) {
+      if (part.required) part.required.forEach((r) => mergedRequired.add(r));
+      if (part.$ref) {
+        const refName = part.$ref.split("/").pop()!;
+        const refSchema = schemas[refName];
+        if (refSchema?.required) refSchema.required.forEach((r) => mergedRequired.add(r));
+      }
+    }
+    for (const part of schema.allOf) {
+      for (const prop of resolveSchemaProps(part, schemas, mergedRequired)) {
         if (!seen.has(prop.name) && !seen.has(prop.cliFlag)) {
           seen.add(prop.name);
           seen.add(prop.cliFlag);
@@ -102,7 +279,7 @@ export function resolveSchemaProps(
   if (schema.oneOf || schema.anyOf) {
     const variants = (schema.oneOf || schema.anyOf)!;
     if (variants.length === 1) {
-      return resolveSchemaProps(variants[0], schemas);
+      return resolveSchemaProps(variants[0], schemas, parentRequired);
     }
 
     const all: BodyProp[] = [];
@@ -110,7 +287,7 @@ export function resolveSchemaProps(
 
     for (const v of variants) {
       const variantName = v.$ref ? v.$ref.split("/").pop()! : undefined;
-      const props = resolveSchemaProps(v, schemas);
+      const props = resolveSchemaProps(v, schemas, parentRequired);
       for (const prop of props) {
         if (!seen.has(prop.cliFlag)) {
           seen.add(prop.cliFlag);
@@ -123,14 +300,22 @@ export function resolveSchemaProps(
 
   // Unwrap arrays — expose the item properties
   if (schema.type === "array" && schema.items) {
-    return resolveSchemaProps(schema.items, schemas);
+    return resolveSchemaProps(schema.items, schemas, parentRequired);
   }
 
   if (!schema.properties) return [];
 
+  const requiredSet = new Set([
+    ...(parentRequired || []),
+    ...(schema.required || []),
+  ]);
+
   const results: BodyProp[] = [];
   const seenFlags = new Set<string>();
   for (const [name, prop] of Object.entries(schema.properties)) {
+    // Skip readOnly properties — server-generated, shouldn't be CLI flags
+    if (prop.readOnly) continue;
+
     const flag = name
       .replace(/([A-Z])/g, "-$1")
       .toLowerCase()
@@ -148,12 +333,25 @@ export function resolveSchemaProps(
       if (refSchema?.enum) enumValues = refSchema.enum;
     }
 
+    let description = prop.description;
+    if (!description && prop.$ref) {
+      const refName = prop.$ref.split("/").pop()!;
+      const refSchema = schemas[refName];
+      if (refSchema?.description) description = refSchema.description;
+    }
+
     results.push({
       name,
       type: schemaToTsType(prop),
       cliFlag: flag,
       camelName: name,
       enumValues,
+      description,
+      required: requiredSet.has(name),
+      format: prop.format,
+      default: prop.default,
+      deprecated: prop.deprecated,
+      readOnly: prop.readOnly,
     });
   }
   return results;

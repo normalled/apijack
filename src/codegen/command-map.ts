@@ -4,7 +4,7 @@ import { normalizeTag } from "./util";
 
 /**
  * Generate a command map that maps CLI command paths to their
- * operationId, path params, query params, and body presence.
+ * operationId, path params, query params, body presence, and description.
  * Uses the same grouping and verb deduplication logic as generateCommands.
  */
 export function generateCommandMap(
@@ -22,6 +22,7 @@ export function generateCommandMap(
         pathParams: string[];
         queryParams: string[];
         hasBody: boolean;
+        summary?: string;
       }>
     >
   >();
@@ -79,6 +80,7 @@ export function generateCommandMap(
         pathParams: pathParams.map((p) => p.name),
         queryParams: queryParams.map((p) => p.name),
         hasBody,
+        summary: op.summary || op.description,
       });
     }
   }
@@ -108,8 +110,9 @@ export function generateCommandMap(
             ? `${groupName} ${cmdName}`
             : `${groupName} ${resourceName} ${cmdName}`;
 
+        const descPart = cmd.summary ? `, description: "${cmd.summary.replace(/"/g, '\\"')}"` : "";
         entries.push(
-          `  "${cmdPath}": { operationId: "${cmd.operationId}", pathParams: [${cmd.pathParams.map((p) => `"${p}"`).join(", ")}], queryParams: [${cmd.queryParams.map((p) => `"${p}"`).join(", ")}], hasBody: ${cmd.hasBody} },`,
+          `  "${cmdPath}": { operationId: "${cmd.operationId}", pathParams: [${cmd.pathParams.map((p) => `"${p}"`).join(", ")}], queryParams: [${cmd.queryParams.map((p) => `"${p}"`).join(", ")}], hasBody: ${cmd.hasBody}${descPart} },`,
         );
       }
     }
@@ -123,6 +126,7 @@ export function generateCommandMap(
     "  pathParams: string[];",
     "  queryParams: string[];",
     "  hasBody: boolean;",
+    "  description?: string;",
     "}",
     "",
     `export const commandMap: Record<string, CommandMapping> = {`,

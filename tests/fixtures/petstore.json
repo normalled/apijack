@@ -1,0 +1,281 @@
+{
+  "openapi": "3.0.1",
+  "info": { "title": "Test API", "version": "1.0.0" },
+  "paths": {
+    "/admin/matters": {
+      "get": {
+        "tags": ["Admin - Matters"],
+        "operationId": "adminGetMatters",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["active", "archived"] } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MatterDto" } } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Admin - Matters"],
+        "operationId": "adminCreateMatter",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateMatterRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatterDto" } } }
+          }
+        }
+      }
+    },
+    "/admin/matters/{matterId}": {
+      "get": {
+        "tags": ["Admin - Matters"],
+        "operationId": "adminGetMatter",
+        "parameters": [
+          { "name": "matterId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatterDto" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Admin - Matters"],
+        "operationId": "adminDeleteMatter",
+        "parameters": [
+          { "name": "matterId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": ["users"],
+        "operationId": "getUsers",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/UserDto" } } } }
+          }
+        }
+      }
+    },
+    "/described/items": {
+      "get": {
+        "tags": ["described"],
+        "operationId": "listItems",
+        "summary": "List all items",
+        "description": "Returns a paginated list of items matching the filter criteria",
+        "parameters": [
+          { "name": "page", "in": "query", "description": "Page number to retrieve", "schema": { "type": "integer", "default": 0 } },
+          { "name": "size", "in": "query", "description": "Number of items per page", "schema": { "type": "integer", "default": 25, "minimum": 1, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/DescribedDto" } } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["described"],
+        "operationId": "createItem",
+        "summary": "Create a new item",
+        "description": "Creates a new item with the given properties and returns the created item",
+        "requestBody": {
+          "required": true,
+          "description": "Item to create",
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DescribedDto" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DescribedDto" } } }
+          }
+        }
+      }
+    },
+    "/described/items/{itemId}": {
+      "get": {
+        "tags": ["described"],
+        "operationId": "getItem",
+        "summary": "Get item by ID",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "description": "The unique item identifier", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DescribedDto" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["described"],
+        "operationId": "deleteItem",
+        "summary": "Delete an item",
+        "deprecated": true,
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "description": "The unique item identifier", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "204": { "description": "No Content" }
+        }
+      }
+    },
+    "/described/items/{itemId}/notify": {
+      "post": {
+        "tags": ["described"],
+        "operationId": "sendNotification",
+        "summary": "Send a notification about an item",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Notification" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Notification" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "MatterDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/MatterStatus" },
+          "users": { "type": "array", "items": { "$ref": "#/components/schemas/UserDto" } }
+        }
+      },
+      "MatterStatus": {
+        "type": "string",
+        "enum": ["active", "archived", "deleted"]
+      },
+      "CreateMatterRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true }
+        }
+      },
+      "UserDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "email": { "type": "string" },
+          "firstName": { "type": "string" },
+          "lastName": { "type": "string" }
+        }
+      },
+      "MatterWithUsers": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MatterDto" },
+          { "$ref": "#/components/schemas/UserDto" }
+        ]
+      },
+      "SearchResult": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/MatterDto" },
+          { "$ref": "#/components/schemas/UserDto" }
+        ]
+      },
+      "DescribedDto": {
+        "type": "object",
+        "description": "A well-described DTO for testing JSDoc generation",
+        "required": ["name", "email"],
+        "properties": {
+          "id": { "type": "integer", "readOnly": true, "description": "Server-assigned unique identifier" },
+          "name": { "type": "string", "description": "Display name of the item", "minLength": 1, "maxLength": 255 },
+          "email": { "type": "string", "format": "email", "description": "Contact email address" },
+          "createdOn": { "type": "string", "format": "date-time", "readOnly": true, "description": "Timestamp when the item was created" },
+          "score": { "type": "number", "minimum": 0, "maximum": 100, "default": 50, "description": "Quality score from 0 to 100" },
+          "tags": { "type": "array", "items": { "type": "string" }, "minItems": 0, "maxItems": 10, "description": "Categorization tags" },
+          "status": { "$ref": "#/components/schemas/MatterStatus" },
+          "config": {
+            "type": "object",
+            "description": "Configuration settings",
+            "properties": {
+              "enabled": { "type": "boolean", "default": true, "description": "Whether the feature is active" },
+              "threshold": { "type": "number", "description": "Activation threshold" }
+            }
+          },
+          "password": { "type": "string", "writeOnly": true, "description": "User password, never returned in responses" },
+          "legacyField": { "type": "string", "deprecated": true, "description": "Use newField instead" },
+          "codeFormat": { "type": "string", "pattern": "^[A-Z]{2}\\d{4}$", "description": "Code in format like AB1234", "example": "XY9876" }
+        }
+      },
+      "ExtendedMatter": {
+        "description": "Matter with additional priority and notes fields",
+        "allOf": [
+          { "$ref": "#/components/schemas/MatterDto" },
+          {
+            "type": "object",
+            "required": ["priority"],
+            "properties": {
+              "priority": { "type": "integer", "description": "Processing priority level", "minimum": 1, "maximum": 10 },
+              "notes": { "type": "string", "description": "Additional notes" }
+            }
+          }
+        ]
+      },
+      "EmailNotification": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string", "description": "Notification channel type" },
+          "subject": { "type": "string", "description": "Email subject line" },
+          "body": { "type": "string", "description": "Email body content" }
+        }
+      },
+      "SmsNotification": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string", "description": "Notification channel type" },
+          "phoneNumber": { "type": "string", "description": "Recipient phone number" },
+          "message": { "type": "string", "description": "SMS message text" }
+        }
+      },
+      "Notification": {
+        "description": "A notification sent via email or SMS",
+        "oneOf": [
+          { "$ref": "#/components/schemas/EmailNotification" },
+          { "$ref": "#/components/schemas/SmsNotification" }
+        ],
+        "discriminator": {
+          "propertyName": "channel",
+          "mapping": {
+            "email": "#/components/schemas/EmailNotification",
+            "sms": "#/components/schemas/SmsNotification"
+          }
+        }
+      },
+      "MetadataMap": {
+        "type": "object",
+        "description": "Flexible key-value metadata store",
+        "properties": {
+          "name": { "type": "string", "description": "Metadata set name" }
+        },
+        "additionalProperties": { "type": "string" }
+      },
+      "DeprecatedDto": {
+        "type": "object",
+        "deprecated": true,
+        "description": "Use DescribedDto instead",
+        "properties": {
+          "id": { "type": "integer" }
+        }
+      }
+    }
+  }
+}

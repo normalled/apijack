@@ -1,0 +1,504 @@
+{
+  "openapi": "3.0.1",
+  "info": { "title": "Edge Case Torture Test API", "version": "1.0.0" },
+  "paths": {
+    "/edge/no-operation-id": {
+      "get": {
+        "tags": ["edge-cases"],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/edge/no-tags": {
+      "get": {
+        "operationId": "noTagsOp",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TreeNode" } } }
+          }
+        }
+      }
+    },
+    "/edge/multi-tag": {
+      "get": {
+        "tags": ["edge-cases", "secondary-tag"],
+        "operationId": "multiTagOp",
+        "summary": "Operation with multiple tags",
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TreeNode" } } }
+          }
+        }
+      }
+    },
+    "/edge/multi-response": {
+      "post": {
+        "tags": ["edge-cases"],
+        "operationId": "multiResponseOp",
+        "summary": "Has both 200 and 201 responses",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TreeNode" } } }
+        },
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChainA" } } }
+          },
+          "201": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChainB" } } }
+          }
+        }
+      }
+    },
+    "/edge/no-response": {
+      "delete": {
+        "tags": ["edge-cases"],
+        "operationId": "noResponseOp",
+        "summary": "Operation with empty responses",
+        "responses": {}
+      }
+    },
+    "/edge/primitive-body": {
+      "post": {
+        "tags": ["edge-cases"],
+        "operationId": "primitiveBodyOp",
+        "summary": "Request body is a plain string",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "string" } } }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/edge/array-body": {
+      "post": {
+        "tags": ["edge-cases"],
+        "operationId": "arrayBodyOp",
+        "summary": "Request body is an array of refs",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TreeNode" } } } }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/edge/all-readonly-body": {
+      "put": {
+        "tags": ["edge-cases"],
+        "operationId": "allReadonlyBodyOp",
+        "summary": "Every body property is readOnly",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "createdAt": { "type": "string", "readOnly": true }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/edge/inline-response": {
+      "get": {
+        "tags": ["edge-cases"],
+        "operationId": "inlineResponseOp",
+        "summary": "Response is an inline schema",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": { "type": "string" },
+                    "count": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/edge/inline-body": {
+      "post": {
+        "tags": ["edge-cases"],
+        "operationId": "inlineBodyOp",
+        "summary": "Request body is an inline schema",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "value": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/edge/union-response": {
+      "get": {
+        "tags": ["edge-cases"],
+        "operationId": "unionResponseOp",
+        "summary": "Response type is a oneOf without named wrapper",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/ChainA" },
+                    { "$ref": "#/components/schemas/ChainB" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/edge/shared-params/{id}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "description": "Shared path parameter", "schema": { "type": "integer" } }
+      ],
+      "get": {
+        "tags": ["edge-cases"],
+        "operationId": "sharedParamGet",
+        "summary": "GET with shared path param",
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TreeNode" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["edge-cases"],
+        "operationId": "sharedParamDelete",
+        "summary": "DELETE with shared path param",
+        "responses": { "204": { "description": "No Content" } }
+      }
+    },
+    "/edge/rich-query": {
+      "get": {
+        "tags": ["edge-cases"],
+        "operationId": "richQueryOp",
+        "summary": "Query param with everything",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by status",
+            "schema": { "type": "string", "enum": ["active", "inactive", "pending"], "default": "active", "format": "custom-status" }
+          }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/edge/dangerous-summary": {
+      "get": {
+        "tags": ["edge-cases"],
+        "operationId": "dangerousSummaryOp",
+        "summary": "Has \"quotes\" and special chars <>&",
+        "responses": { "200": { "description": "OK" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TreeNode": {
+        "type": "object",
+        "description": "Self-referencing tree structure",
+        "properties": {
+          "name": { "type": "string", "description": "Node name" },
+          "children": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/TreeNode" },
+            "description": "Child nodes"
+          }
+        }
+      },
+      "CycleA": {
+        "type": "object",
+        "description": "Indirect cycle: A -> B -> A",
+        "properties": {
+          "name": { "type": "string" },
+          "b": { "$ref": "#/components/schemas/CycleB" }
+        }
+      },
+      "CycleB": {
+        "type": "object",
+        "description": "Indirect cycle: B -> A -> B",
+        "properties": {
+          "name": { "type": "string" },
+          "a": { "$ref": "#/components/schemas/CycleA" }
+        }
+      },
+      "ChainA": {
+        "type": "object",
+        "description": "Multi-hop ref chain: A -> B -> C",
+        "properties": {
+          "label": { "type": "string" },
+          "next": { "$ref": "#/components/schemas/ChainB" }
+        }
+      },
+      "ChainB": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string" },
+          "next": { "$ref": "#/components/schemas/ChainC" }
+        }
+      },
+      "ChainC": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "string" }
+        }
+      },
+      "TripleAllOf": {
+        "description": "allOf with 3 parts including inline",
+        "allOf": [
+          { "$ref": "#/components/schemas/ChainA" },
+          { "$ref": "#/components/schemas/ChainB" },
+          {
+            "type": "object",
+            "required": ["extra"],
+            "properties": {
+              "extra": { "type": "string", "description": "Additional field" }
+            }
+          }
+        ]
+      },
+      "AllOfWithEnum": {
+        "description": "allOf where one part is an enum type",
+        "allOf": [
+          { "$ref": "#/components/schemas/LargeEnum" },
+          {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" }
+            }
+          }
+        ]
+      },
+      "SingleVariantOneOf": {
+        "description": "oneOf with exactly one variant — should unwrap",
+        "oneOf": [
+          { "$ref": "#/components/schemas/TreeNode" }
+        ]
+      },
+      "AnyOfExample": {
+        "description": "anyOf behaves like oneOf for type generation",
+        "anyOf": [
+          { "$ref": "#/components/schemas/ChainA" },
+          { "$ref": "#/components/schemas/ChainB" }
+        ]
+      },
+      "InlineOneOf": {
+        "description": "oneOf with inline schemas, no $refs",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "enum": ["alpha"] },
+              "alphaField": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "enum": ["beta"] },
+              "betaField": { "type": "number" }
+            }
+          }
+        ]
+      },
+      "DiscriminatorNoMapping": {
+        "description": "Discriminator without explicit mapping — derives from schema names",
+        "oneOf": [
+          { "$ref": "#/components/schemas/ChainA" },
+          { "$ref": "#/components/schemas/ChainB" }
+        ],
+        "discriminator": {
+          "propertyName": "nodeType"
+        }
+      },
+      "NestedComposition": {
+        "type": "object",
+        "description": "Property whose type is itself an allOf",
+        "properties": {
+          "simple": { "type": "string" },
+          "nested": {
+            "allOf": [
+              { "$ref": "#/components/schemas/TreeNode" },
+              {
+                "type": "object",
+                "properties": {
+                  "depth": { "type": "integer", "description": "Nesting depth" }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "DeeplyNested": {
+        "type": "object",
+        "description": "Tests inline object depth cap",
+        "properties": {
+          "level1": {
+            "type": "object",
+            "description": "Depth 1",
+            "properties": {
+              "level2": {
+                "type": "object",
+                "description": "Depth 2",
+                "properties": {
+                  "level3": {
+                    "type": "object",
+                    "description": "Depth 3",
+                    "properties": {
+                      "level4": {
+                        "type": "object",
+                        "description": "Depth 4 — should fall back to Record",
+                        "properties": {
+                          "value": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "InlineArrayItems": {
+        "type": "object",
+        "description": "Array items with inline object schema",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "AdditionalPropsOnly": {
+        "type": "object",
+        "description": "Only additionalProperties, no named properties",
+        "additionalProperties": { "type": "string" }
+      },
+      "AdditionalPropsTrue": {
+        "type": "object",
+        "description": "Named properties with additionalProperties: true",
+        "properties": {
+          "name": { "type": "string" }
+        },
+        "additionalProperties": true
+      },
+      "AdditionalPropsFalse": {
+        "type": "object",
+        "description": "Named properties with additionalProperties: false",
+        "properties": {
+          "name": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "AdditionalPropsConflict": {
+        "type": "object",
+        "description": "additionalProperties type conflicts with named property types",
+        "properties": {
+          "name": { "type": "string" },
+          "count": { "type": "integer" }
+        },
+        "additionalProperties": { "type": "string" }
+      },
+      "MetadataStress": {
+        "type": "object",
+        "description": "Schema with every metadata feature simultaneously",
+        "required": ["allConstraints"],
+        "properties": {
+          "allConstraints": {
+            "type": "number",
+            "description": "A field with every possible constraint",
+            "format": "double",
+            "minimum": 0,
+            "maximum": 100,
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 100,
+            "default": 50,
+            "example": 42.5
+          },
+          "dangerousDescription": {
+            "type": "string",
+            "description": "Contains */ to close JSDoc and \"quotes\" for Commander"
+          },
+          "htmlDescription": {
+            "type": "string",
+            "description": "Contains <b>HTML</b> and <a href='#'>links</a>"
+          },
+          "multilineDescription": {
+            "type": "string",
+            "description": "Line one\nLine two\nLine three"
+          },
+          "uniqueArray": {
+            "type": "array",
+            "items": { "type": "string" },
+            "uniqueItems": true,
+            "description": "Set-like array"
+          },
+          "objectDefault": {
+            "type": "object",
+            "description": "Has an object as default value",
+            "default": { "key": "value", "nested": true },
+            "properties": {
+              "key": { "type": "string" }
+            }
+          },
+          "boolExclusiveMin": {
+            "type": "integer",
+            "description": "OAS 3.0 style boolean exclusive bounds",
+            "exclusiveMinimum": true,
+            "minimum": 0
+          }
+        }
+      },
+      "LargeEnum": {
+        "type": "string",
+        "description": "Enum with 50 values to stress context windows",
+        "enum": ["V01","V02","V03","V04","V05","V06","V07","V08","V09","V10","V11","V12","V13","V14","V15","V16","V17","V18","V19","V20","V21","V22","V23","V24","V25","V26","V27","V28","V29","V30","V31","V32","V33","V34","V35","V36","V37","V38","V39","V40","V41","V42","V43","V44","V45","V46","V47","V48","V49","V50"]
+      },
+      "EmptySchema": {
+        "description": "A schema with no type, no properties, no composition"
+      },
+      "DuplicateFlags": {
+        "type": "object",
+        "description": "Properties that produce duplicate CLI flags after kebab-case",
+        "properties": {
+          "myField": { "type": "string", "description": "Lowercase variant" },
+          "MyField": { "type": "string", "description": "Capitalized variant" }
+        }
+      },
+      "ReservedWord": {
+        "type": "object",
+        "description": "Properties named after JS reserved words",
+        "properties": {
+          "type": { "type": "string" },
+          "function": { "type": "string" },
+          "class": { "type": "string" }
+        }
+      }
+    }
+  }
+}

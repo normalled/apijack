@@ -24,7 +24,7 @@ export async function generate(opts: GenerateOptions): Promise<void> {
   const paths = opts.spec.paths || {};
 
   const typesContent = generateTypes(schemas);
-  const clientContent = generateClient(paths);
+  const clientContent = generateClient(paths, schemas);
   const commandsContent = generateCommands(paths, schemas);
   const commandMapContent = generateCommandMap(paths, schemas);
 

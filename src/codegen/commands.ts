@@ -100,17 +100,23 @@ export function generateCommands(
         pathParams: pathParams.map((p) => ({
           name: p.name,
           type: schemaToTsType(p.schema),
+          description: p.description,
         })),
         queryParams: queryParams.map((p) => ({
           name: p.name,
           type: schemaToTsType(p.schema),
           enumValues: p.schema.enum,
+          description: p.description,
+          default: p.schema.default,
+          format: p.schema.format,
         })),
         hasBody,
         bodyIsArray,
         bodyProps,
         bodyPrimitiveType,
         description: `${method.toUpperCase()} ${path}`,
+        summary: op.summary || op.description,
+        deprecated: op.deprecated,
       };
 
       if (!groups.has(groupKey)) groups.set(groupKey, new Map());
@@ -189,16 +195,30 @@ export function generateCommands(
           lines.push(`  ${parent}`);
         }
         lines.push(`    .command("${cmdName}${argStr}")`);
+
+        let cmdDesc: string;
+        if (cmd.deprecated) {
+          cmdDesc = `[DEPRECATED] ${cmd.summary || cmd.description}`;
+        } else if (cmd.summary) {
+          cmdDesc = `${cmd.summary} — ${cmd.description}`;
+        } else {
+          cmdDesc = cmd.description;
+        }
         lines.push(
-          `    .description("${cmd.description}${arrayNote} (use -o routine-step to export as YAML)")`,
+          `    .description("${cmdDesc.replace(/"/g, '\\"')}${arrayNote} (use -o routine-step to export as YAML)")`,
         );
 
         for (const qp of cmd.queryParams) {
           const qpEnum = qp.enumValues
             ? ` [${qp.enumValues.join(", ")}]`
             : "";
+          const qpFormat = qp.format ? ` (${qp.format})` : "";
+          const qpDefault = qp.default !== undefined ? ` (default: ${qp.default})` : "";
+          const qpDesc = qp.description
+            ? `${qp.description}${qpEnum}${qpFormat}${qpDefault}`
+            : `${qp.name}${qpEnum}${qpFormat}${qpDefault}`;
           lines.push(
-            `    .option("--${qp.name} <${qp.name}>", "${qp.name}${qpEnum}")`,
+            `    .option("--${qp.name} <${qp.name}>", "${qpDesc.replace(/"/g, '\\"')}")`,
           );
         }
 
@@ -217,20 +237,28 @@ export function generateCommands(
             }
           } else {
             for (const bp of cmd.bodyProps) {
-              const desc = bp.enumValues
-                ? `${bp.name} [${bp.enumValues.join(", ")}]`
-                : bp.name;
+              let desc: string = bp.description || bp.name;
+              if (bp.enumValues) desc += ` [${bp.enumValues.join(", ")}]`;
+              if (bp.format) desc += ` (${bp.format})`;
+              if (bp.default !== undefined) desc += ` (default: ${bp.default})`;
+
               const variantTag = bp.variant
                 ? ` (${bp.variant})`
                 : "";
+              const escapedDesc = desc.replace(/"/g, '\\"');
+
               if (bp.variant) {
                 // Variant-specific: hidden by default, shown with --verbose
                 lines.push(
-                  `    .addOption(new Option("--${bp.cliFlag} <value>", "${desc.replace(/"/g, '\\"')}${variantTag}").hideHelp())`,
+                  `    .addOption(new Option("--${bp.cliFlag} <value>", "${escapedDesc}${variantTag}").hideHelp())`,
+                );
+              } else if (bp.required) {
+                lines.push(
+                  `    .requiredOption("--${bp.cliFlag} <value>", "${escapedDesc} (required)")`,
                 );
               } else {
                 lines.push(
-                  `    .option("--${bp.cliFlag} <value>", "${desc.replace(/"/g, '\\"')}")`,
+                  `    .option("--${bp.cliFlag} <value>", "${escapedDesc}")`,
                 );
               }
             }

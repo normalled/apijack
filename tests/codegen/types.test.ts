@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { generateTypes } from "../../src/codegen/types";
 import type { OpenApiSchema } from "../../src/codegen/openapi-types";
+import fixture from "../fixtures/petstore.json";
 
-describe("generateTypes", () => {
+describe("generateTypes — unit tests", () => {
   it("generates a simple interface with properties", () => {
     const schemas: Record<string, OpenApiSchema> = {
       User: {
@@ -136,7 +137,7 @@ describe("generateTypes", () => {
     expect(output).toContain("  value?: number;");
   });
 
-  it("handles allOf with non-$ref parts as unknown", () => {
+  it("allOf with inline schema emits inline intersection member", () => {
     const schemas: Record<string, OpenApiSchema> = {
       Mixed: {
         allOf: [
@@ -146,6 +147,143 @@ describe("generateTypes", () => {
       },
     };
     const output = generateTypes(schemas);
-    expect(output).toContain("export type Mixed = Base & unknown;");
+    expect(output).toContain("export type Mixed = Base &");
+    expect(output).toContain("extra");
+  });
+});
+
+describe("generateTypes — petstore fixture", () => {
+  const schemas = fixture.components.schemas as Record<string, any>;
+  const output = generateTypes(schemas);
+
+  it("generates interface for object schema", () => {
+    expect(output).toContain("export interface MatterDto {");
+    expect(output).toContain("id?: number;");
+    expect(output).toContain("name?: string;");
+  });
+
+  it("generates enum as union type", () => {
+    expect(output).toContain('export type MatterStatus = "active" | "archived" | "deleted";');
+  });
+
+  it("resolves $ref to type name", () => {
+    expect(output).toContain("status?: MatterStatus;");
+  });
+
+  it("generates array type", () => {
+    expect(output).toContain("users?: UserDto[];");
+  });
+
+  it("handles nullable fields", () => {
+    expect(output).toContain("description?: string | null;");
+  });
+
+  it("generates allOf as intersection type", () => {
+    expect(output).toContain("export type MatterWithUsers = MatterDto & UserDto;");
+  });
+
+  it("generates oneOf as union type", () => {
+    expect(output).toContain("export type SearchResult = MatterDto | UserDto;");
+  });
+
+  // Enum reuse
+  it("enum $ref resolves to type name, not inline values", () => {
+    expect(output).toMatch(/status\??: MatterStatus/);
+    const describedBlock = output.split("export interface DescribedDto")[1]?.split("\n}")[0] || "";
+    expect(describedBlock).not.toContain('"active"');
+  });
+
+  // Inline object types
+  it("inline object properties emit object literal type instead of Record", () => {
+    expect(output).toContain("config?:");
+    expect(output).not.toMatch(/config\??: Record<string, unknown>/);
+    const describedBlock = output.split("export interface DescribedDto")[1]?.split("\n}\n")[0] || "";
+    expect(describedBlock).toContain("enabled");
+    expect(describedBlock).toContain("threshold");
+  });
+
+  // allOf with inline schema
+  it("allOf with inline schema emits inline intersection member", () => {
+    expect(output).toContain("export type ExtendedMatter = MatterDto &");
+    expect(output).toContain("priority");
+    expect(output).toContain("notes");
+    expect(output).not.toMatch(/ExtendedMatter = MatterDto & unknown/);
+  });
+
+  // Discriminated unions
+  it("oneOf with discriminator emits discriminated union", () => {
+    expect(output).toContain('EmailNotification & { channel: "email" }');
+    expect(output).toContain('SmsNotification & { channel: "sms" }');
+  });
+
+  // additionalProperties
+  it("additionalProperties with schema emits index signature", () => {
+    expect(output).toContain("[key: string]:");
+  });
+
+  // Required properties
+  it("required properties omit the ? marker", () => {
+    const describedBlock = output.split("export interface DescribedDto")[1]?.split("\n}\n")[0] || "";
+    expect(describedBlock).toMatch(/\bname: string/);
+    expect(describedBlock).toMatch(/\bemail: string/);
+    expect(describedBlock).toMatch(/\bscore\?: number/);
+  });
+
+  it("allOf merges required arrays", () => {
+    expect(output).toMatch(/priority: number/);
+  });
+
+  // JSDoc
+  it("schema description emits JSDoc above interface", () => {
+    expect(output).toContain("/** A well-described DTO for testing JSDoc generation */");
+  });
+
+  it("property description emits JSDoc above property", () => {
+    expect(output).toContain("/** Server-assigned unique identifier");
+  });
+
+  it("property with format emits @format tag", () => {
+    expect(output).toContain("@format date-time");
+  });
+
+  it("property with constraints emits constraint tags", () => {
+    expect(output).toContain("@minimum 0");
+    expect(output).toContain("@maximum 100");
+    expect(output).toContain("@minLength 1");
+    expect(output).toContain("@maxLength 255");
+  });
+
+  it("property with default emits @default tag", () => {
+    expect(output).toContain("@default 50");
+  });
+
+  it("property with example emits @example tag", () => {
+    expect(output).toContain('@example "XY9876"');
+  });
+
+  it("property with pattern emits @pattern tag", () => {
+    expect(output).toContain("@pattern ^[A-Z]{2}\\d{4}$");
+  });
+
+  it("readOnly property emits @readonly tag", () => {
+    expect(output).toContain("@readonly");
+  });
+
+  it("writeOnly property emits @writeonly tag", () => {
+    expect(output).toContain("@writeonly");
+  });
+
+  it("deprecated property emits @deprecated tag", () => {
+    const describedBlock = output.split("export interface DescribedDto")[1]?.split("\n}\n")[0] || "";
+    expect(describedBlock).toContain("@deprecated");
+  });
+
+  it("deprecated schema emits @deprecated JSDoc", () => {
+    expect(output).toContain("/** @deprecated Use DescribedDto instead */");
+  });
+
+  it("array constraints emit @minItems and @maxItems", () => {
+    expect(output).toContain("@minItems 0");
+    expect(output).toContain("@maxItems 10");
   });
 });

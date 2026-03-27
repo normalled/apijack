@@ -137,6 +137,8 @@ describe("generate", () => {
     expect(content).toContain("getItem");
     expect(content).toContain("createItem");
     expect(content).toContain("deleteItem");
+    // Should NOT contain HardcodedClient
+    expect(content).not.toContain("HardcodedClient");
   });
 
   it("commands.ts contains registerGeneratedCommands", async () => {
