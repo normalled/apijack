@@ -28,6 +28,8 @@ export function generateCommandMap(
   >();
 
   for (const [path, methods] of Object.entries(paths)) {
+    const pathLevelParams: NonNullable<OpenApiOperation["parameters"]> = (methods as any).parameters || [];
+
     for (const method of HTTP_METHODS) {
       const op = methods[method] as OpenApiOperation | undefined;
       if (!op || !op.operationId) continue;
@@ -38,10 +40,19 @@ export function generateCommandMap(
       const resourceKey =
         tokens.length > 1 ? tokens.slice(1).join("-") : null;
 
-      const pathParams = (op.parameters || []).filter(
+      // Merge path-level params with operation params (op overrides by name+in)
+      const opParams = op.parameters || [];
+      const mergedParams: typeof opParams = [...pathLevelParams];
+      for (const opParam of opParams) {
+        const idx = mergedParams.findIndex((p) => p.name === opParam.name && p.in === opParam.in);
+        if (idx >= 0) mergedParams[idx] = opParam;
+        else mergedParams.push(opParam);
+      }
+
+      const pathParams = mergedParams.filter(
         (p) => p.in === "path",
       );
-      const queryParams = (op.parameters || []).filter(
+      const queryParams = mergedParams.filter(
         (p) => p.in === "query",
       );
       const bodySchema =

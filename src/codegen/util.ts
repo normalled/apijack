@@ -3,7 +3,8 @@ import type { OpenApiSchema, BodyProp } from "./openapi-types";
 /**
  * Resolve an OpenAPI schema to a TypeScript type string.
  * Handles $ref, arrays, primitives, enums, objects, allOf, oneOf, anyOf,
- * inline object literals (up to depth 3), and nullable.
+ * inline object literals (up to depth 3), nullable, and OAS 3.1 features
+ * (const, type arrays, prefixItems, not, patternProperties).
  */
 export function resolveType(
   schema: OpenApiSchema,
@@ -12,6 +13,64 @@ export function resolveType(
   visited: Set<string> = new Set(),
 ): string {
   let base: string;
+
+  // OAS 3.1: const — literal value
+  if (schema.const !== undefined) {
+    if (typeof schema.const === "string") return `"${schema.const}"`;
+    if (schema.const === null) return "null";
+    return String(schema.const);
+  }
+
+  // OAS 3.1: enum with non-string types (integer enums, mixed enums, type-array enums)
+  if (schema.enum && schema.type !== "string") {
+    base = schema.enum.map((v) => {
+      if (v === null) return "null";
+      if (typeof v === "string") return `"${v}"`;
+      return String(v);
+    }).join(" | ");
+    if (schema.nullable) base += " | null";
+    return base;
+  }
+
+  // OAS 3.1: type as array (e.g. ["string", "null"])
+  if (Array.isArray(schema.type)) {
+    const nonNull = schema.type.filter((t: string) => t !== "null");
+    const isNullable = schema.type.includes("null");
+    let resolved: string;
+    if (nonNull.length === 0) {
+      resolved = "null";
+    } else if (nonNull.length === 1) {
+      resolved = resolveType({ ...schema, type: nonNull[0], nullable: undefined }, schemas, depth, visited);
+    } else {
+      resolved = nonNull.map((t: string) =>
+        resolveType({ ...schema, type: t, nullable: undefined, enum: undefined }, schemas, depth, visited)
+      ).join(" | ");
+    }
+    if (isNullable && !resolved.includes("null")) {
+      resolved += " | null";
+    }
+    return resolved;
+  }
+
+  // OAS 3.1: prefixItems — tuple types
+  if (schema.prefixItems) {
+    const tupleTypes = schema.prefixItems.map((s) => resolveType(s, schemas, depth, visited));
+    if (schema.items && typeof schema.items === "object") {
+      const restType = resolveType(schema.items as OpenApiSchema, schemas, depth, visited);
+      base = `[${tupleTypes.join(", ")}, ...${restType}[]]`;
+    } else {
+      base = `[${tupleTypes.join(", ")}]`;
+    }
+    if (schema.nullable) base += " | null";
+    return base;
+  }
+
+  // OAS 3.1: not — negation (no other type info)
+  if (schema.not && !schema.type && !schema.properties && !schema.$ref && !schema.allOf && !schema.oneOf && !schema.anyOf && !schema.enum && schema.const === undefined) {
+    base = "unknown";
+    if (schema.nullable) base += " | null";
+    return base;
+  }
 
   if (schema.$ref) {
     base = refToName(schema.$ref);
@@ -27,7 +86,7 @@ export function resolveType(
     const parts = variants.map((s) => resolveType(s, schemas, depth, visited));
     base = parts.join(" | ");
   } else if (schema.type === "array" && schema.items) {
-    const itemType = resolveType(schema.items, schemas, depth, visited);
+    const itemType = typeof schema.items === "boolean" ? "unknown" : resolveType(schema.items, schemas, depth, visited);
     // Wrap union/intersection types in parens for array
     if (itemType.includes(" | ") || itemType.includes(" & ")) {
       base = `(${itemType})[]`;
@@ -40,7 +99,11 @@ export function resolveType(
     base = "boolean";
   } else if (schema.type === "string") {
     if (schema.enum) {
-      base = schema.enum.map((v) => `"${v}"`).join(" | ");
+      base = schema.enum.map((v) => {
+        if (v === null) return "null";
+        if (typeof v === "string") return `"${v}"`;
+        return String(v);
+      }).join(" | ");
     } else {
       base = "string";
     }
@@ -55,6 +118,19 @@ export function resolveType(
         const tsType = resolveType(propSchema, schemas, depth + 1, visited);
         const optional = requiredSet.has(propName) ? "" : "?";
         innerLines.push(`  ${propName}${optional}: ${tsType};`);
+      }
+      // patternProperties inside inline objects
+      if (schema.patternProperties) {
+        const patternTypes: string[] = [];
+        for (const [pattern, patternSchema] of Object.entries(schema.patternProperties)) {
+          const patType = resolveType(patternSchema, schemas, depth + 1, visited);
+          innerLines.push(`  /** Properties matching pattern: ${pattern} */`);
+          patternTypes.push(patType);
+        }
+        if (patternTypes.length > 0 && !schema.additionalProperties) {
+          const unionType = [...new Set(patternTypes)].join(" | ");
+          innerLines.push(`  [key: string]: ${unionType} | undefined;`);
+        }
       }
       // additionalProperties inside inline objects
       if (schema.additionalProperties && schema.additionalProperties !== true) {
@@ -139,6 +215,9 @@ export function buildJsDoc(
   if (schema.minItems !== undefined) tags.push(`@minItems ${schema.minItems}`);
   if (schema.maxItems !== undefined) tags.push(`@maxItems ${schema.maxItems}`);
   if (schema.uniqueItems === true) tags.push(`@uniqueItems`);
+  if (schema.multipleOf !== undefined) tags.push(`@multipleOf ${schema.multipleOf}`);
+  if (schema.minProperties !== undefined) tags.push(`@minProperties ${schema.minProperties}`);
+  if (schema.maxProperties !== undefined) tags.push(`@maxProperties ${schema.maxProperties}`);
   if (schema.default !== undefined) {
     if (typeof schema.default === "object" && schema.default !== null) {
       tags.push(`@default ${JSON.stringify(schema.default)}`);
@@ -157,6 +236,12 @@ export function buildJsDoc(
   }
   if (schema.readOnly === true) tags.push(`@readonly`);
   if (schema.writeOnly === true) tags.push(`@writeonly`);
+  // OAS 3.1: not — negation annotation
+  if (schema.not) {
+    const notSchema = schema.not as OpenApiSchema;
+    const notDesc = notSchema.type ? `type: ${notSchema.type}` : JSON.stringify(schema.not);
+    tags.push(`@not ${notDesc}`);
+  }
 
   // Handle description, escaping */ sequences (but not the final closing */)
   let desc = schema.description;
@@ -299,7 +384,7 @@ export function resolveSchemaProps(
   }
 
   // Unwrap arrays — expose the item properties
-  if (schema.type === "array" && schema.items) {
+  if (schema.type === "array" && schema.items && typeof schema.items !== "boolean") {
     return resolveSchemaProps(schema.items, schemas, parentRequired);
   }
 
@@ -324,7 +409,7 @@ export function resolveSchemaProps(
     seenFlags.add(flag);
 
     // Resolve enum values — direct or via $ref
-    let enumValues: string[] | undefined;
+    let enumValues: (string | number | boolean | null)[] | undefined;
     if (prop.enum) {
       enumValues = prop.enum;
     } else if (prop.$ref) {

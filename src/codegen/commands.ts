@@ -23,6 +23,8 @@ export function generateCommands(
   const groups = new Map<string, Map<string, CommandDef[]>>();
 
   for (const [path, methods] of Object.entries(paths)) {
+    const pathLevelParams: NonNullable<OpenApiOperation["parameters"]> = (methods as any).parameters || [];
+
     for (const method of HTTP_METHODS) {
       const op = methods[method] as OpenApiOperation | undefined;
       if (!op || !op.operationId) continue;
@@ -33,10 +35,19 @@ export function generateCommands(
       const resourceKey =
         tokens.length > 1 ? tokens.slice(1).join("-") : null;
 
-      const pathParams = (op.parameters || []).filter(
+      // Merge path-level params with operation params (op overrides by name+in)
+      const opParams = op.parameters || [];
+      const mergedParams: typeof opParams = [...pathLevelParams];
+      for (const opParam of opParams) {
+        const idx = mergedParams.findIndex((p) => p.name === opParam.name && p.in === opParam.in);
+        if (idx >= 0) mergedParams[idx] = opParam;
+        else mergedParams.push(opParam);
+      }
+
+      const pathParams = mergedParams.filter(
         (p) => p.in === "path",
       );
-      const queryParams = (op.parameters || []).filter(
+      const queryParams = mergedParams.filter(
         (p) => p.in === "query",
       );
       const bodySchema =
@@ -60,7 +71,7 @@ export function generateCommands(
             bodyPrimitiveType = "number";
           else if (resolved.type === "boolean")
             bodyPrimitiveType = "boolean";
-          else if (resolved.type === "array" && resolved.items) {
+          else if (resolved.type === "array" && resolved.items && typeof resolved.items !== "boolean") {
             const itemType = resolved.items.$ref
               ? schemas[resolved.items.$ref.split("/").pop()!]?.type
               : resolved.items.type;
@@ -109,6 +120,7 @@ export function generateCommands(
           description: p.description,
           default: p.schema.default,
           format: p.schema.format,
+          style: p.style,
         })),
         hasBody,
         bodyIsArray,
@@ -214,9 +226,10 @@ export function generateCommands(
             : "";
           const qpFormat = qp.format ? ` (${qp.format})` : "";
           const qpDefault = qp.default !== undefined ? ` (default: ${qp.default})` : "";
+          const qpStyle = qp.style ? ` (style: ${qp.style})` : "";
           const qpDesc = qp.description
-            ? `${qp.description}${qpEnum}${qpFormat}${qpDefault}`
-            : `${qp.name}${qpEnum}${qpFormat}${qpDefault}`;
+            ? `${qp.description}${qpEnum}${qpFormat}${qpDefault}${qpStyle}`
+            : `${qp.name}${qpEnum}${qpFormat}${qpDefault}${qpStyle}`;
           lines.push(
             `    .option("--${qp.name} <${qp.name}>", "${qpDesc.replace(/"/g, '\\"')}")`,
           );

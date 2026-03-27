@@ -30,12 +30,23 @@ export function generateClient(
   const methodLines: string[] = [];
 
   for (const [path, methods] of Object.entries(paths)) {
+    const pathLevelParams: NonNullable<OpenApiOperation["parameters"]> = (methods as any).parameters || [];
+
     for (const method of HTTP_METHODS) {
       const op = methods[method] as OpenApiOperation | undefined;
       if (!op || !op.operationId) continue;
 
-      const pathParams = (op.parameters || []).filter((p) => p.in === "path");
-      const queryParams = (op.parameters || []).filter((p) => p.in === "query");
+      // Merge path-level params with operation params (op overrides by name+in)
+      const opParams = op.parameters || [];
+      const mergedParams: typeof opParams = [...pathLevelParams];
+      for (const opParam of opParams) {
+        const idx = mergedParams.findIndex((p) => p.name === opParam.name && p.in === opParam.in);
+        if (idx >= 0) mergedParams[idx] = opParam;
+        else mergedParams.push(opParam);
+      }
+
+      const pathParams = mergedParams.filter((p) => p.in === "path");
+      const queryParams = mergedParams.filter((p) => p.in === "query");
 
       const args: string[] = [];
       for (const p of pathParams) {
@@ -98,11 +109,15 @@ export function generateClient(
 
       // @param tags for path parameters (always) and query parameters (when described)
       for (const p of pathParams) {
-        docLines.push(p.description ? `@param ${p.name} ${p.description}` : `@param ${p.name}`);
+        let paramDesc = p.description ? `${p.description}` : p.name;
+        if (p.style) paramDesc += ` (style: ${p.style}${p.explode !== undefined ? `, explode: ${p.explode}` : ""})`;
+        docLines.push(`@param ${p.name} ${paramDesc}`);
       }
       for (const p of queryParams) {
-        if (p.description) {
-          docLines.push(`@param ${p.name} ${p.description}`);
+        let paramDesc = p.description || p.name;
+        if (p.style) paramDesc += ` (style: ${p.style}${p.explode !== undefined ? `, explode: ${p.explode}` : ""})`;
+        if (paramDesc !== p.name || p.style) {
+          docLines.push(`@param ${p.name} ${paramDesc}`);
         }
       }
 

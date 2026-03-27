@@ -1,0 +1,219 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "OpenAPI 3.1 Test API", "version": "1.0.0" },
+  "paths": {
+    "/v31/items": {
+      "parameters": [
+        { "name": "orgId", "in": "header", "required": true, "description": "Organization context", "schema": { "type": "integer" } }
+      ],
+      "get": {
+        "tags": ["v31"],
+        "operationId": "listV31Items",
+        "summary": "List items with 3.1 features",
+        "parameters": [
+          { "name": "status", "in": "query", "description": "Filter status", "schema": { "$ref": "#/components/schemas/StatusConst" } },
+          { "name": "tags", "in": "query", "description": "Tag filter", "schema": { "type": "array", "items": { "type": "string" } }, "style": "pipeDelimited", "explode": false }
+        ],
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/NullableItem" } } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v31"],
+        "operationId": "createV31Item",
+        "summary": "Create item with tuple coordinates",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NullableItem" } } }
+        },
+        "responses": {
+          "201": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NullableItem" } } }
+          }
+        }
+      }
+    },
+    "/v31/items/{itemId}": {
+      "parameters": [
+        { "name": "itemId", "in": "path", "required": true, "description": "The item ID", "schema": { "type": "integer" } }
+      ],
+      "get": {
+        "tags": ["v31"],
+        "operationId": "getV31Item",
+        "summary": "Get a single item",
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NullableItem" } } }
+          }
+        }
+      }
+    },
+    "/v31/events": {
+      "get": {
+        "tags": ["v31"],
+        "operationId": "listEvents",
+        "summary": "List events with local $defs",
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/EventWithDefs" } } } }
+          }
+        }
+      }
+    },
+    "/v31/search": {
+      "post": {
+        "tags": ["v31"],
+        "operationId": "searchV31",
+        "summary": "Search with style/explode params",
+        "parameters": [
+          { "name": "fields", "in": "query", "description": "Fields to return", "schema": { "type": "array", "items": { "type": "string" } }, "style": "form", "explode": true },
+          { "name": "coords", "in": "query", "description": "Coordinates (pipe-separated)", "schema": { "type": "array", "items": { "type": "number" } }, "style": "pipeDelimited", "explode": false },
+          { "name": "filter", "in": "query", "description": "Deep object filter", "schema": { "type": "object", "properties": { "name": { "type": "string" }, "status": { "type": "string" } } }, "style": "deepObject", "explode": true }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotString" } } }
+        },
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/NullableItem" } } } }
+          }
+        }
+      }
+    },
+    "/v31/tuples": {
+      "post": {
+        "tags": ["v31"],
+        "operationId": "createTuple",
+        "summary": "Create a tuple record",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TupleSchema" } } }
+        },
+        "responses": {
+          "200": { "description": "OK" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "StatusConst": {
+        "type": "string",
+        "const": "active",
+        "description": "Always the literal value 'active'"
+      },
+      "IntEnum": {
+        "type": "integer",
+        "enum": [1, 2, 3, 4, 5],
+        "description": "Integer enum — not strings"
+      },
+      "MixedEnum": {
+        "type": ["string", "integer"],
+        "enum": ["auto", "manual", 0, 1, null],
+        "description": "Mixed-type enum with null"
+      },
+      "MultiType": {
+        "type": ["string", "integer"],
+        "description": "Can be string or integer (3.1 type array without null)"
+      },
+      "NotString": {
+        "description": "Anything except a string",
+        "not": { "type": "string" }
+      },
+      "TupleSchema": {
+        "type": "array",
+        "description": "A [lat, lng, alt?] coordinate tuple",
+        "prefixItems": [
+          { "type": "number", "description": "Latitude" },
+          { "type": "number", "description": "Longitude" },
+          { "type": "number", "description": "Altitude (optional)" }
+        ],
+        "items": false
+      },
+      "TupleWithRest": {
+        "type": "array",
+        "description": "Tuple with typed rest elements",
+        "prefixItems": [
+          { "type": "string", "description": "Name" },
+          { "type": "integer", "description": "Age" }
+        ],
+        "items": { "type": "string" }
+      },
+      "NullableItem": {
+        "type": "object",
+        "description": "Item with 3.1 nullable via type array",
+        "required": ["name", "status"],
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "name": { "type": "string", "description": "Item name" },
+          "description": { "type": ["string", "null"], "description": "Nullable via type array" },
+          "status": { "$ref": "#/components/schemas/StatusConst", "description": "Overridden description via $ref sibling" },
+          "priority": { "type": ["integer", "null"], "description": "Nullable integer" },
+          "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "metadata": {
+            "type": "object",
+            "patternProperties": {
+              "^x-": { "type": "string" }
+            },
+            "description": "Extensible metadata with x- prefix pattern"
+          },
+          "coordinates": { "$ref": "#/components/schemas/TupleSchema" },
+          "multipleOfTest": { "type": "number", "multipleOf": 0.01, "description": "Must be multiple of 0.01" }
+        },
+        "minProperties": 1,
+        "maxProperties": 20
+      },
+      "NotEmpty": {
+        "type": "object",
+        "description": "Object that must have at least one property",
+        "not": { "maxProperties": 0 },
+        "properties": {
+          "name": { "type": "string" },
+          "value": { "type": "number" }
+        }
+      },
+      "EventWithDefs": {
+        "type": "object",
+        "description": "Schema using local $defs",
+        "$defs": {
+          "Severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"],
+            "description": "Event severity level"
+          },
+          "Timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp"
+          }
+        },
+        "required": ["type", "severity", "occurredAt"],
+        "properties": {
+          "type": { "type": "string", "description": "Event type identifier" },
+          "severity": { "$ref": "#/$defs/Severity" },
+          "occurredAt": { "$ref": "#/$defs/Timestamp" },
+          "message": { "type": ["string", "null"] }
+        }
+      },
+      "RefWithSiblings": {
+        "type": "object",
+        "description": "Tests $ref sibling merging",
+        "properties": {
+          "original": { "$ref": "#/components/schemas/IntEnum" },
+          "overridden": { "$ref": "#/components/schemas/IntEnum", "description": "Custom description overriding the $ref target" }
+        }
+      },
+      "PatternPropsExample": {
+        "type": "object",
+        "description": "Object with pattern properties",
+        "properties": {
+          "id": { "type": "integer" }
+        },
+        "patternProperties": {
+          "^data_": { "type": "string" },
+          "^count_": { "type": "integer" }
+        }
+      }
+    }
+  }
+}
