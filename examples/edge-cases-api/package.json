@@ -1,0 +1,6 @@
+{
+  "name": "example-edge-cases-api",
+  "scripts": {
+    "start": "bun run server.ts"
+  }
+}
