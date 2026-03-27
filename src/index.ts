@@ -7,6 +7,6 @@ export { BearerTokenStrategy } from "./auth/bearer";
 export { ApiKeyStrategy } from "./auth/api-key";
 export type { RoutineDefinition, RoutineStep } from "./routine/types";
 export { formatOutput } from "./output";
-export { updateEnvironmentField, verifyCredentials } from "./config";
+export { updateEnvironmentField, verifyCredentials, getActiveEnvConfig } from "./config";
 export { renderProjectDocs, listRoutinesStructured } from "./agent-docs/render";
 export type { ProjectContext } from "./agent-docs/render";
