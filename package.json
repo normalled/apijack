@@ -15,7 +15,8 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "prepack": "bun run scripts/prepack-agent-docs.ts"
   },
   "dependencies": {
     "commander": "^14.0.3",
@@ -28,5 +29,8 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
   }
 }
