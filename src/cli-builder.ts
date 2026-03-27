@@ -491,9 +491,13 @@ export function createCli(options: CliOptions): Cli {
                 } catch {
                     // Auth/session failed — only setup/login will work
                 }
-            } else {
-                // No auth resolved — still register consumer commands with null context
-                // so help text is available, but actions will fail at runtime
+            }
+
+            // 8b. Register consumer commands (even without auth, so help text is available)
+            if (!ctx) {
+                for (const { registrar } of consumerCommands) {
+                    registrar(program, null as unknown as CliContext);
+                }
             }
 
             // 9. Build dispatcher
