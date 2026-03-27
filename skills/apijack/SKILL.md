@@ -147,6 +147,20 @@ apijack supports pluggable authentication:
 
 Run `<cli> mcp` to start a Model Context Protocol server, exposing all CLI commands as MCP tools for use with AI agents and editors.
 
+## Plugin Management
+
+Register apijack as a Claude Code plugin for global availability:
+
+```bash
+<cli> plugin install                     # Register as Claude Code plugin
+<cli> plugin install --cli-invocation bun run src/cli.ts  # Custom CLI path
+<cli> plugin uninstall                   # Remove plugin registration
+```
+
+After installing, restart Claude Code. The MCP server and skills will be available globally.
+
+User data (environments, routines) is stored at `~/.apijack/` and survives plugin updates/reinstalls.
+
 ## Claude Code Integration
 
 This project follows the CLAUDE.md convention for Claude Code. Key patterns:

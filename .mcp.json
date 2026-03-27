@@ -1,0 +1,7 @@
+{
+  "apijack": {
+    "type": "stdio",
+    "command": "bun",
+    "args": ["run", "dist/mcp-server.bundle.js"]
+  }
+}

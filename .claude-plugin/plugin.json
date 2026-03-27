@@ -1,0 +1,11 @@
+{
+  "name": "apijack",
+  "description": "Jack into any OpenAPI spec — full CLI with AI-agentic workflow automation",
+  "version": "0.1.0",
+  "author": {
+    "name": "Garret"
+  },
+  "repository": "https://github.com/garrettmichaelgeorge/apijack",
+  "license": "MIT",
+  "keywords": ["openapi", "cli", "mcp", "api", "routines"]
+}
