@@ -1,6 +1,6 @@
 # apijack
 
-[![CI](https://github.com/Premo-Cloud/apijack/actions/workflows/ci.yml/badge.svg)](https://github.com/Premo-Cloud/apijack/actions/workflows/ci.yml)
+[![Tests](https://github.com/Premo-Cloud/apijack/actions/workflows/ci.yml/badge.svg)](https://github.com/Premo-Cloud/apijack/actions/workflows/ci.yml)
 
 Jack into any OpenAPI spec and rip a full-featured CLI with AI-agentic workflow automation.
 
