@@ -8,7 +8,7 @@ interface UpdateCheckData {
 }
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const REGISTRY_URL = 'https://registry.npmjs.org/apijack/latest';
+const REGISTRY_URL = 'https://registry.npmjs.org/@apijack/core/latest';
 
 export function shouldCheckForUpdate(dataDir: string): boolean {
     const data = loadUpdateCheck(dataDir);
@@ -61,12 +61,20 @@ export async function checkForUpdate(
 
         if (answer.toLowerCase() === 'y') {
             console.log('Updating...');
-            const proc = Bun.spawn(['bun', 'install', '-g', `apijack@${latest}`], {
+            const proc = Bun.spawn(['bun', 'install', '-g', `@apijack/core@${latest}`], {
                 stdout: 'inherit',
                 stderr: 'inherit',
             });
             const exitCode = await proc.exited;
             if (exitCode === 0) {
+                // Update Claude Code plugin registration to new version
+                const pluginProc = Bun.spawn([...process.argv.slice(0, 2), 'plugin', 'install'], {
+                    stdout: 'inherit',
+                    stderr: 'inherit',
+                    env: { ...process.env, APIJACK_SKIP_UPDATE: '1' },
+                });
+                await pluginProc.exited;
+
                 console.log(`Updated to v${latest}. Re-running command...\n`);
                 const reProc = Bun.spawn(process.argv, {
                     stdout: 'inherit',
