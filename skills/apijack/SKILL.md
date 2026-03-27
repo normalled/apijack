@@ -14,7 +14,7 @@ apijack is a framework for generating full-featured CLIs from OpenAPI specs. It 
 ## Quick Start
 
 ```ts
-import { createCli } from "apijack";
+import { createCli } from "@apijack/core";
 
 const cli = createCli({
   name: "mycli",

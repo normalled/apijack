@@ -11,13 +11,13 @@ Jack into any OpenAPI spec and rip a full-featured CLI with AI-agentic workflow 
 ### Install
 
 ```bash
-bun install -g apijack
+bun install -g @apijack/core
 ```
 
 Or run directly without installing:
 
 ```bash
-bunx apijack setup
+bunx @apijack/core setup
 ```
 
 ### Quick Start
@@ -45,11 +45,11 @@ After installing, restart Claude Code. Ask Claude to interact with your API dire
 For building dedicated CLI products with apijack as a framework:
 
 ```bash
-bun add apijack
+bun add @apijack/core
 ```
 
 ```ts
-import { createCli, BasicAuthStrategy } from "apijack";
+import { createCli, BasicAuthStrategy } from "@apijack/core";
 
 const cli = createCli({
   name: "mycli",
@@ -207,14 +207,14 @@ mycli resources create --name test -o routine-step
 ### Basic Auth
 
 ```ts
-import { BasicAuthStrategy } from "apijack";
+import { BasicAuthStrategy } from "@apijack/core";
 const auth = new BasicAuthStrategy();
 ```
 
 ### Bearer Token
 
 ```ts
-import { BearerTokenStrategy } from "apijack";
+import { BearerTokenStrategy } from "@apijack/core";
 const auth = new BearerTokenStrategy(async (config) => {
   const res = await fetch(`${config.baseUrl}/oauth/token`, {
     method: "POST",
@@ -228,7 +228,7 @@ const auth = new BearerTokenStrategy(async (config) => {
 ### API Key
 
 ```ts
-import { ApiKeyStrategy } from "apijack";
+import { ApiKeyStrategy } from "@apijack/core";
 const auth = new ApiKeyStrategy("X-API-Key", "your-api-key");
 ```
 
@@ -237,7 +237,7 @@ const auth = new ApiKeyStrategy("X-API-Key", "your-api-key");
 Implement the `AuthStrategy` interface:
 
 ```ts
-import type { AuthStrategy, AuthSession, ResolvedAuth } from "apijack";
+import type { AuthStrategy, AuthSession, ResolvedAuth } from "@apijack/core";
 
 class MyStrategy implements AuthStrategy {
   async authenticate(config: ResolvedAuth): Promise<AuthSession> {
