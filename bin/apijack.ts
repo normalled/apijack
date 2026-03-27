@@ -83,6 +83,7 @@ const cli = createCli({
     auth: authStrategy,
     generatedDir,
     allowedCidrs: projectConfig?.allowedCidrs,
+    configPath: join(configDir, 'config.json'),
 });
 
 // 8. Register project-level extensions

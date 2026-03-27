@@ -78,7 +78,11 @@ export function createCli(options: CliOptions): Cli {
     const consumerCommands: { name: string; registrar: CommandRegistrar }[] = [];
     const consumerDispatchers = new Map<string, DispatcherHandler>();
     const cliName = options.name;
-    const routinesDir = join(homedir(), `.${cliName}`, 'routines');
+    const configOpts = options.configPath ? { configPath: options.configPath } : undefined;
+    const configDir = options.configPath
+        ? resolve(options.configPath, '..')
+        : join(homedir(), `.${cliName}`);
+    const routinesDir = join(configDir, 'routines');
     const generatedDir = options.generatedDir ?? join(process.cwd(), 'src', 'generated');
 
     const cli: Cli = {
@@ -118,6 +122,7 @@ export function createCli(options: CliOptions): Cli {
                 await interactiveSetup(cliName, {
                     allowInsecureStorage: cmdOpts.allowInsecureStorage,
                     allowedCidrs: options.allowedCidrs,
+                    configPath: options.configPath,
                 });
             };
             program
@@ -140,7 +145,7 @@ export function createCli(options: CliOptions): Cli {
                 .command('list')
                 .description('List all configured environments')
                 .action(async () => {
-                    const envs = await listEnvironments(cliName);
+                    const envs = await listEnvironments(cliName, configOpts);
                     if (envs.length === 0) {
                         console.log(
                             `No environments configured. Run '${cliName} setup' to add one.`,
@@ -157,9 +162,9 @@ export function createCli(options: CliOptions): Cli {
                 .command('switch <name>')
                 .description('Switch active environment')
                 .action(async (name: string) => {
-                    const ok = await switchEnvironment(cliName, name);
+                    const ok = await switchEnvironment(cliName, name, configOpts);
                     if (!ok) {
-                        const envs = await listEnvironments(cliName);
+                        const envs = await listEnvironments(cliName, configOpts);
                         console.error(
                             `Environment '${name}' not found. Available: ${envs.map(e => e.name).join(', ') || 'none'}`,
                         );
@@ -245,6 +250,7 @@ export function createCli(options: CliOptions): Cli {
                                     user,
                                     password,
                                 }, true, {
+                                    ...configOpts,
                                     allowInsecureStorage: opts.allowInsecureStorage,
                                     allowedCidrs: options.allowedCidrs,
                                 });
@@ -265,7 +271,7 @@ export function createCli(options: CliOptions): Cli {
                             name: string | undefined,
                             opts: { password?: string },
                         ) => {
-                            const cfg = await loadConfig(cliName);
+                            const cfg = await loadConfig(cliName, configOpts);
                             if (
                                 !cfg
                                 || Object.keys(cfg.environments).length === 0
@@ -299,6 +305,7 @@ export function createCli(options: CliOptions): Cli {
                                 envName,
                                 { ...env, password },
                                 false,
+                                configOpts,
                             );
                             console.log('Password updated.');
                         },
@@ -314,7 +321,7 @@ export function createCli(options: CliOptions): Cli {
                 .option('--skip-agent-docs', 'Skip agent doc generation')
                 .option('--agent-docs <mode>', 'Agent docs mode: append (default) or overwrite', 'append')
                 .action(async (opts: { skipAgentDocs?: boolean; agentDocs?: string }) => {
-                    const env = getActiveEnvConfig(cliName);
+                    const env = getActiveEnvConfig(cliName, configOpts);
                     if (!env) {
                         console.error(
                             `No active environment. Run '${cliName} setup' first.`,
@@ -400,7 +407,7 @@ export function createCli(options: CliOptions): Cli {
             registerPluginCommand(program, cliName, options.version);
 
             // 4. Resolve auth
-            let resolved = resolveAuth(cliName);
+            let resolved = resolveAuth(cliName, configOpts);
 
             const cmd = process.argv[2];
             const skipAuthCommands = new Set([
@@ -419,7 +426,7 @@ export function createCli(options: CliOptions): Cli {
                 && !skipAuthCommands.has(cmd)
             ) {
                 await interactiveSetup(cliName);
-                resolved = resolveAuth(cliName);
+                resolved = resolveAuth(cliName, configOpts);
             }
 
             // 5 + 6. Create session and build CliContext
@@ -648,7 +655,7 @@ export function createCli(options: CliOptions): Cli {
 
 async function interactiveSetup(
     cliName: string,
-    opts?: { allowInsecureStorage?: boolean; allowedCidrs?: string[] },
+    opts?: { allowInsecureStorage?: boolean; allowedCidrs?: string[]; configPath?: string },
 ): Promise<void> {
     console.log(`${cliName} Setup\n`);
 
@@ -675,6 +682,7 @@ async function interactiveSetup(
 
     try {
         await saveEnvironment(cliName, envName, { url, user, password }, true, {
+            configPath: opts?.configPath,
             allowInsecureStorage: opts?.allowInsecureStorage,
             allowedCidrs: opts?.allowedCidrs,
         });
