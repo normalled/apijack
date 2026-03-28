@@ -1,6 +1,70 @@
 import type { RoutineContext } from './types';
 
 const REF_PATTERN = /\$([a-zA-Z_][a-zA-Z0-9_\-]*(?:\.[a-zA-Z0-9_][a-zA-Z0-9_\-]*)*)/g;
+// No-arg built-in functions (match without parentheses)
+const NOARG_FUNC_PATTERN = /\$(_random_hex_color|_uuid)/g;
+// Parameterized built-in functions (require parentheses)
+const PARAM_FUNC_PATTERN = /\$(_random_int|_random_from|_random_distinct_from)\(([^)]*)\)/g;
+
+// ── Built-in functions ─────────────────────────────────────────────
+
+/** Fisher-Yates shuffle — unbiased random permutation. */
+export function shuffle<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j]!, a[i]!];
+    }
+    return a;
+}
+
+// Tracks distinct pool state per expression across iterations
+const distinctPools = new Map<string, unknown[]>();
+
+export function resetDistinctPools(): void {
+    distinctPools.clear();
+}
+
+function evalBuiltinFunc(name: string, argsStr?: string): unknown {
+    switch (name) {
+        case '_random_hex_color': {
+            const hex = Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, '0');
+            return `#${hex}`;
+        }
+        case '_uuid':
+            return crypto.randomUUID();
+        case '_random_int': {
+            if (!argsStr) return 0;
+            const [minStr, maxStr] = argsStr.split(',').map(s => s.trim());
+            const min = parseInt(minStr, 10);
+            const max = parseInt(maxStr, 10);
+            if (isNaN(min) || isNaN(max)) {
+                process.stderr.write(`Warning: $_random_int requires numeric args, got (${argsStr})\n`);
+                return 0;
+            }
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+        case '_random_from': {
+            if (!argsStr) return '';
+            const options = argsStr.split(',').map(s => s.trim());
+            return options[Math.floor(Math.random() * options.length)];
+        }
+        case '_random_distinct_from': {
+            if (!argsStr) return '';
+            const poolKey = argsStr;
+            let pool = distinctPools.get(poolKey);
+            if (!pool || pool.length === 0) {
+            // Reshuffle and refill
+                const items = argsStr.split(',').map(s => s.trim());
+                pool = shuffle(items);
+                distinctPools.set(poolKey, pool);
+            }
+            return pool.pop()!;
+        }
+        default:
+            return undefined;
+    }
+}
 
 function getByDotPath(obj: unknown, path: string[]): unknown {
     let current = obj;
@@ -42,18 +106,41 @@ export function resolveValue(value: unknown, ctx: RoutineContext): unknown {
     if (typeof value !== 'string') return value;
     if (!value.includes('$')) return value;
 
+    // Exact match: built-in function (no args)
+    const funcExact = value.match(/^\$(_random_hex_color|_uuid)$/);
+    if (funcExact) {
+        return evalBuiltinFunc(funcExact[1]!);
+    }
+
+    // Exact match: built-in function with args
+    const funcCall = value.match(/^\$(_random_int|_random_from|_random_distinct_from)\(([^)]*)\)$/);
+    if (funcCall) {
+        return evalBuiltinFunc(funcCall[1]!, funcCall[2]);
+    }
+
     // Exact match: entire value is a single $ref — resolve to native type
     const match = value.match(/^\$([a-zA-Z_][a-zA-Z0-9_\-]*(?:\.[a-zA-Z0-9_][a-zA-Z0-9_\-]*)*)$/);
     if (match) {
         return resolveRef(match[1]!, ctx);
     }
 
-    // Inline interpolation: resolve $refs embedded in the string
+    // Inline interpolation: resolve $refs and functions embedded in the string
     return resolveString(value, ctx);
 }
 
 export function resolveString(str: string, ctx: RoutineContext): string {
-    return str.replace(REF_PATTERN, (_match, ref: string) => {
+    // First resolve parameterized built-in functions (require parens)
+    let result = str.replace(PARAM_FUNC_PATTERN, (_match, name: string, argsStr: string) => {
+        const resolved = evalBuiltinFunc(name, argsStr);
+        return resolved !== undefined ? String(resolved) : _match;
+    });
+    // Then no-arg built-in functions
+    result = result.replace(NOARG_FUNC_PATTERN, (_match, name: string) => {
+        const resolved = evalBuiltinFunc(name);
+        return resolved !== undefined ? String(resolved) : _match;
+    });
+    // Then resolve variable references
+    result = result.replace(REF_PATTERN, (_match, ref: string) => {
         const resolved = resolveRef(ref, ctx);
         if (resolved === undefined) {
             process.stderr.write(`Warning: unresolved reference $${ref}\n`);
@@ -61,6 +148,7 @@ export function resolveString(str: string, ctx: RoutineContext): string {
         }
         return String(resolved);
     });
+    return result;
 }
 
 export function resolveArgs(
