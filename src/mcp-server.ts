@@ -334,7 +334,9 @@ export function createHandlers(opts: McpServerOptions) {
         }): Promise<ToolResult> => {
             const results: string[] = [];
             let failures = 0;
+            let ran = 0;
             for (let i = 0; i < input.commands.length; i++) {
+                ran++;
                 const cmd = input.commands[i];
                 const cmdParts = cmd.command.split(/\s+/);
                 const flagArgs = Object.entries(cmd.args || {}).flatMap(([k, v]) => [
@@ -349,14 +351,14 @@ export function createHandlers(opts: McpServerOptions) {
                     failures++;
                     results.push(`[${i + 1}/${input.commands.length}] FAIL: ${cmd.command}\n${stderr || stdout}`);
                     if (input.stop_on_error) {
-                        results.push(`Stopped after ${i + 1}/${input.commands.length} commands.`);
+                        results.push(`Stopped after ${ran}/${input.commands.length} commands.`);
                         break;
                     }
                 } else {
                     results.push(`[${i + 1}/${input.commands.length}] OK: ${cmd.command}${stdout ? '\n' + stdout.trim() : ''}`);
                 }
             }
-            const summary = `Completed ${input.commands.length} commands (${failures} failed)`;
+            const summary = `Ran ${ran}/${input.commands.length} commands (${failures} failed)`;
             return textResult(
                 summary + '\n\n' + results.join('\n\n'),
                 failures > 0,
@@ -570,7 +572,7 @@ export function createHandlers(opts: McpServerOptions) {
                     `Types defined in ${typesPath}:\n`
                     + blocks.join(', ')
                     + '\n\nUse get_spec with verbose=true to see full definitions, '
-                    + 'or get_spec with command="<command>" to see a specific command\'s signature.',
+                    + 'or describe_command to see a specific command\'s argument schema.',
                 );
             } catch {
                 return textResult(

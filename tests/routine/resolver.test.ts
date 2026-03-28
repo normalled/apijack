@@ -209,6 +209,11 @@ describe("$_random_int", () => {
     const result = resolveValue("count-$_random_int(1,100)", ctx) as string;
     expect(result).toMatch(/^count-\d+$/);
   });
+
+  test("returns 0 for non-numeric args", () => {
+    const result = resolveValue("$_random_int(foo,bar)", ctx);
+    expect(result).toBe(0);
+  });
 });
 
 describe("$_random_from", () => {

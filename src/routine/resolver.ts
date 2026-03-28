@@ -1,9 +1,22 @@
 import type { RoutineContext } from './types';
 
 const REF_PATTERN = /\$([a-zA-Z_][a-zA-Z0-9_\-]*(?:\.[a-zA-Z0-9_][a-zA-Z0-9_\-]*)*)/g;
-const FUNC_PATTERN = /\$(_random_hex_color|_uuid|_random_int|_random_from|_random_distinct_from)(?:\(([^)]*)\))?/g;
+// No-arg built-in functions (match without parentheses)
+const NOARG_FUNC_PATTERN = /\$(_random_hex_color|_uuid)/g;
+// Parameterized built-in functions (require parentheses)
+const PARAM_FUNC_PATTERN = /\$(_random_int|_random_from|_random_distinct_from)\(([^)]*)\)/g;
 
 // ── Built-in functions ─────────────────────────────────────────────
+
+/** Fisher-Yates shuffle — unbiased random permutation. */
+export function shuffle<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j]!, a[i]!];
+    }
+    return a;
+}
 
 // Tracks distinct pool state per expression across iterations
 const distinctPools = new Map<string, unknown[]>();
@@ -25,6 +38,10 @@ function evalBuiltinFunc(name: string, argsStr?: string): unknown {
             const [minStr, maxStr] = argsStr.split(',').map(s => s.trim());
             const min = parseInt(minStr, 10);
             const max = parseInt(maxStr, 10);
+            if (isNaN(min) || isNaN(max)) {
+                process.stderr.write(`Warning: $_random_int requires numeric args, got (${argsStr})\n`);
+                return 0;
+            }
             return Math.floor(Math.random() * (max - min + 1)) + min;
         }
         case '_random_from': {
@@ -39,7 +56,7 @@ function evalBuiltinFunc(name: string, argsStr?: string): unknown {
             if (!pool || pool.length === 0) {
             // Reshuffle and refill
                 const items = argsStr.split(',').map(s => s.trim());
-                pool = [...items].sort(() => Math.random() - 0.5);
+                pool = shuffle(items);
                 distinctPools.set(poolKey, pool);
             }
             return pool.pop()!;
@@ -112,9 +129,14 @@ export function resolveValue(value: unknown, ctx: RoutineContext): unknown {
 }
 
 export function resolveString(str: string, ctx: RoutineContext): string {
-    // First resolve built-in functions
-    let result = str.replace(FUNC_PATTERN, (_match, name: string, argsStr?: string) => {
+    // First resolve parameterized built-in functions (require parens)
+    let result = str.replace(PARAM_FUNC_PATTERN, (_match, name: string, argsStr: string) => {
         const resolved = evalBuiltinFunc(name, argsStr);
+        return resolved !== undefined ? String(resolved) : _match;
+    });
+    // Then no-arg built-in functions
+    result = result.replace(NOARG_FUNC_PATTERN, (_match, name: string) => {
+        const resolved = evalBuiltinFunc(name);
         return resolved !== undefined ? String(resolved) : _match;
     });
     // Then resolve variable references

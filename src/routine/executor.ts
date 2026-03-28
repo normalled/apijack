@@ -1,5 +1,5 @@
 import type { RoutineDefinition, RoutineStep, RoutineContext, StepResult } from './types';
-import { resolveValue, resolveArgs, resolvePositionalArgs, resetDistinctPools } from './resolver';
+import { resolveValue, resolveArgs, resolvePositionalArgs, resetDistinctPools, shuffle } from './resolver';
 import { evaluateCondition } from './condition';
 import type { CommandDispatcher } from '../types';
 
@@ -61,7 +61,7 @@ export async function executeRoutine(
             if (step.range && step.steps) {
                 const [start, end] = step.range;
                 let items = Array.from({ length: end - start + 1 }, (_, i) => i + start);
-                if (step.shuffle) items = items.sort(() => Math.random() - 0.5);
+                if (step.shuffle) items = shuffle(items);
                 if (step.reverse) items = items.reverse();
                 resetDistinctPools();
                 const asName = step.as || 'item';
@@ -93,7 +93,7 @@ export async function executeRoutine(
                 }
 
                 let items = [...rawItems];
-                if (step.shuffle) items = items.sort(() => Math.random() - 0.5);
+                if (step.shuffle) items = shuffle(items);
                 if (step.reverse) items = items.reverse();
 
                 // Reset distinct pools for each forEach block
