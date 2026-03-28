@@ -20,7 +20,6 @@ describe("plugin install → uninstall roundtrip", () => {
   });
 
   test("full lifecycle: install, verify, uninstall, verify preservation", async () => {
-    // Install
     const installResult = await installPlugin({
       version: "0.1.0",
       claudeDir: testClaudeDir,
@@ -31,21 +30,16 @@ describe("plugin install → uninstall roundtrip", () => {
     });
     expect(installResult.success).toBe(true);
 
-    // Verify marketplace registration
+    // Verify marketplace
     const marketplacePath = join(
-      testClaudeDir,
-      "plugins",
-      "marketplaces",
-      "local",
-      ".claude-plugin",
-      "marketplace.json"
+      testClaudeDir, "plugins", "marketplaces", "local", ".claude-plugin", "marketplace.json"
     );
-    expect(existsSync(marketplacePath)).toBe(true);
-
     const marketplace = readJson(marketplacePath);
-    const plugin = marketplace.plugins.find((p: any) => p.name === "apijack");
-    expect(plugin).toBeDefined();
-    expect(plugin.source.version).toBe("0.1.0");
+    expect(marketplace.plugins.find((p: any) => p.name === "apijack")).toBeDefined();
+
+    // Verify installed
+    const installed = readJson(join(testClaudeDir, "plugins", "installed_plugins.json"));
+    expect(installed.plugins["apijack@local"]).toBeDefined();
 
     // Verify user data
     expect(existsSync(join(testDataDir, "routines"))).toBe(true);
@@ -58,7 +52,6 @@ describe("plugin install → uninstall roundtrip", () => {
     // Verify user data preserved
     expect(existsSync(testDataDir)).toBe(true);
     expect(existsSync(join(testDataDir, "routines"))).toBe(true);
-    expect(existsSync(join(testDataDir, "plugin.json"))).toBe(true);
   });
 
   test("reinstall after uninstall works cleanly", async () => {
@@ -83,18 +76,8 @@ describe("plugin install → uninstall roundtrip", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.pluginCacheDir).toContain("0.2.0");
 
-    const marketplacePath = join(
-      testClaudeDir,
-      "plugins",
-      "marketplaces",
-      "local",
-      ".claude-plugin",
-      "marketplace.json"
-    );
-    const marketplace = readJson(marketplacePath);
-    const plugin = marketplace.plugins.find((p: any) => p.name === "apijack");
-    expect(plugin.source.version).toBe("0.2.0");
+    const installed = readJson(join(testClaudeDir, "plugins", "installed_plugins.json"));
+    expect(installed.plugins["apijack@local"][0].version).toBe("0.2.0");
   });
 });

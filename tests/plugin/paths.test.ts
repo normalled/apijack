@@ -10,12 +10,6 @@ describe("getPluginPaths()", () => {
     expect(paths.claudeDir).toBe(join(homedir(), ".claude"));
   });
 
-  test("pluginCacheDir includes version", () => {
-    expect(paths.pluginCacheDir).toBe(
-      join(homedir(), ".claude", "plugins", "cache", "local", "apijack", "0.1.0"),
-    );
-  });
-
   test("installedPluginsFile points to installed_plugins.json", () => {
     expect(paths.installedPluginsFile).toBe(
       join(homedir(), ".claude", "plugins", "installed_plugins.json"),

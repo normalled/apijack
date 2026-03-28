@@ -51,7 +51,7 @@ export function registerPluginCommand(
 
             if (result.success) {
                 console.log(result.message);
-                console.log(`\n  Plugin cache:  ${result.pluginCacheDir}`);
+                console.log(`\n  Plugin dir:    ${result.marketplaceDir}`);
                 console.log(`  User data:     ${paths.userDataDir}`);
                 console.log(`  CLI invocation: ${cliInvocation.join(' ')}`);
                 console.log('\n── Next steps ──────────────────────────────────────');
