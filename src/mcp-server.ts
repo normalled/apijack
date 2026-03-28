@@ -545,20 +545,28 @@ export function createHandlers(opts: McpServerOptions) {
             command?: string;
             verbose?: boolean;
         }): Promise<ToolResult> => {
-            // If a command is specified, run it with -o routine-step to show its signature
+            // If a command is specified, show its schema from the command map
             if (input.command) {
-                const cmdParts = input.command.split(/\s+/);
-                const { stdout, stderr, exitCode } = await runCli(opts.cliInvocation, [
-                    ...cmdParts,
-                    '-o', 'routine-step',
-                ], opts.projectRoot ?? undefined);
-                if (exitCode !== 0) {
+                try {
+                    const mapPath = resolve(getGeneratedDir(), 'command-map');
+                    const mapModule = await import(mapPath);
+                    const commandMap = mapModule.commandMap as Record<string, Record<string, unknown>>;
+                    const info = commandMap[input.command];
+                    if (!info) {
+                        const available = Object.keys(commandMap).join(', ');
+                        return textResult(
+                            `Command "${input.command}" not found. Available: ${available}`,
+                            true,
+                        );
+                    }
+                    return textResult(JSON.stringify(info, null, 2));
+                } catch {
                     return textResult(
-                        `Failed to describe "${input.command}":\n${stderr || stdout}`,
+                        'Command map not available. Run generate first.\n'
+                        + `Looked in: ${getGeneratedDir()}/command-map.ts`,
                         true,
                     );
                 }
-                return textResult(stdout);
             }
 
             try {
