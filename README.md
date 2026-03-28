@@ -44,7 +44,6 @@ Then in Claude Code, run `/reload-plugins`. The plugin exposes 10 MCP tools and 
 |-------|-------------|
 | `/setup-api` | Connect to an API, configure credentials, generate the CLI |
 | `/write-routine` | Author YAML workflow automations that chain CLI commands |
-| `/apijack` | Overview and routing to the above skills |
 
 ### Example Prompt
 
