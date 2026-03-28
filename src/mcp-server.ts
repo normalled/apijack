@@ -634,6 +634,11 @@ export function createHandlers(opts: McpServerOptions) {
                             specUrl,
                             generatedDir: '.apijack/generated',
                         }, null, 2) + '\n');
+
+                        // Update config path to project-local now that .apijack.json exists
+                        const projectConfigDir = join(opts.projectRoot, '.apijack');
+                        opts.configPath = join(projectConfigDir, 'config.json');
+                        opts.routinesDir = join(projectConfigDir, 'routines');
                     }
                 }
             }
