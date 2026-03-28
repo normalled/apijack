@@ -2,6 +2,7 @@ node_modules/
 dist/
 bun.lockb
 .env
+*.local.*
 
 # Superpowers docs (plans & specs)
 docs/superpowers/
