@@ -7,7 +7,7 @@ interface UpdateCheckData {
     latestVersion: string;
 }
 
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (beta)
 const REGISTRY_URL = 'https://registry.npmjs.org/@apijack/core/latest';
 
 export function shouldCheckForUpdate(dataDir: string): boolean {
