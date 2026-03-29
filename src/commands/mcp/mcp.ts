@@ -1,6 +1,4 @@
 import { Command } from 'commander';
-import { resolve } from 'path';
-import { homedir } from 'os';
 
 export interface McpInput {
     cliName: string;

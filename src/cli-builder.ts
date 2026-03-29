@@ -6,20 +6,21 @@ import type {
     DispatcherHandler,
     CommandDispatcher,
 } from './types';
-import type { AuthSession } from './auth/types';
-import { resolveAuth, saveEnvironment, switchEnvironment, listEnvironments, getActiveEnvConfig, loadConfig, verifyCredentials } from './config';
+import { resolveAuth, verifyCredentials, saveEnvironment } from './config';
 import { SessionManager } from './session';
 import { formatOutput, type OutputMode } from './output';
 import { formatDryRun, formatCurl, type CapturedRequest } from './output-request';
-import { prompt, hiddenPrompt } from './prompt';
-import { fetchAndGenerate } from './codegen/index';
-import { loadRoutineFile, loadSpecFile, listRoutines, validateRoutine, formatRoutineTree, formatRoutineList } from './routine/loader';
-import { executeRoutine } from './routine/executor';
 import { buildDispatcher } from './routine/dispatcher';
-import { existsSync, mkdirSync, cpSync, readdirSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { resolve, join } from 'path';
 import { registerPluginCommand } from './plugin/register';
+import { registerSetupCommand, setupAction } from './commands/setup/setup';
+import { registerConfigCommand } from './commands/config/register';
+import { registerGenerateCommand } from './commands/generate/generate';
+import { registerUpgradeCommand } from './commands/upgrade/upgrade';
+import { registerMcpCommand } from './commands/mcp/mcp';
+import { registerRoutineCommand, loadBuiltinRoutines } from './commands/routine/register';
+import { prompt, hiddenPrompt } from './prompt';
 
 export interface Cli {
     command(name: string, registrar: CommandRegistrar): void;
@@ -119,308 +120,23 @@ export function createCli(options: CliOptions): Cli {
             program.option('--dry-run', 'Preview the API request without executing');
 
             // 3. Register built-in commands
-
-            // setup / login
-            const setupAction = async (cmdOpts: { allowInsecureStorage?: boolean }) => {
-                await interactiveSetup(cliName, {
-                    allowInsecureStorage: cmdOpts.allowInsecureStorage,
-                    allowedCidrs: options.allowedCidrs,
-                    configPath: options.configPath,
-                });
-            };
-            program
-                .command('setup')
-                .description('Interactive setup — configure URL and credentials')
-                .option('--allow-insecure-storage', 'Allow plaintext storage for production URLs')
-                .action(setupAction);
-            program
-                .command('login')
-                .description('Alias for setup')
-                .option('--allow-insecure-storage', 'Allow plaintext storage for production URLs')
-                .action(setupAction);
-
-            // config
-            const config = program
-                .command('config')
-                .description('Manage environment configurations');
-
-            config
-                .command('list')
-                .description('List all configured environments')
-                .action(async () => {
-                    const envs = await listEnvironments(cliName, configOpts);
-                    if (envs.length === 0) {
-                        console.log(
-                            `No environments configured. Run '${cliName} setup' to add one.`,
-                        );
-                        return;
-                    }
-                    for (const env of envs) {
-                        const marker = env.active ? '* ' : '  ';
-                        console.log(`${marker}${env.name}\t${env.url}\t${env.user}`);
-                    }
-                });
-
-            config
-                .command('switch <name>')
-                .description('Switch active environment')
-                .action(async (name: string) => {
-                    const ok = await switchEnvironment(cliName, name, configOpts);
-                    if (!ok) {
-                        const envs = await listEnvironments(cliName, configOpts);
-                        console.error(
-                            `Environment '${name}' not found. Available: ${envs.map(e => e.name).join(', ') || 'none'}`,
-                        );
-                        process.exit(1);
-                    }
-                    // Clear session cache — old session is for a different server
-                    const sessionMgr = new SessionManager(cliName);
-                    sessionMgr.invalidate();
-                    console.log(`Switched to '${name}'`);
-                });
-
-            // config import — only if knownSites provided
-            if (options.knownSites) {
-                const knownSites = options.knownSites;
-                config
-                    .command('import [alias]')
-                    .description('Import a known site — only provide credentials')
-                    .option('--user <email>', 'Email for authentication')
-                    .option('--password <password>', 'Password for authentication')
-                    .option('--allow-insecure-storage', 'Allow plaintext storage for production URLs')
-                    .action(
-                        async (
-                            aliasArg: string | undefined,
-                            opts: { user?: string; password?: string; allowInsecureStorage?: boolean },
-                        ) => {
-                            let alias = aliasArg;
-
-                            // Interactive picker if no alias provided
-                            if (!alias) {
-                                const siteEntries = Object.entries(knownSites);
-                                if (siteEntries.length === 0) {
-                                    console.error('No known sites configured.');
-                                    process.exit(1);
-                                }
-
-                                console.log('\nAvailable sites:');
-                                siteEntries.forEach(([name, site], i) => {
-                                    console.log(
-                                        `  ${(i + 1).toString().padStart(2)}. ${name.padEnd(22)} ${site.description}`,
-                                    );
-                                });
-
-                                const selection = await prompt(
-                                    `\nSelect site (1-${siteEntries.length}): `,
-                                );
-                                const index = parseInt(selection);
-                                if (index < 1 || index > siteEntries.length) {
-                                    console.error('Invalid selection.');
-                                    process.exit(1);
-                                }
-                                alias = siteEntries[index - 1]![0];
-                            }
-
-                            // Validate alias is known
-                            if (!knownSites[alias]) {
-                                console.error(`Unknown site '${alias}'.`);
-                                process.exit(1);
-                            }
-
-                            const site = knownSites[alias];
-                            const user = opts.user ?? (await prompt('Email: '));
-                            const password
-                                = opts.password ?? (await hiddenPrompt('Password: '));
-                            if (!user || !password) {
-                                console.error('Email and password are required.');
-                                process.exit(1);
-                            }
-
-                            // Verify credentials
-                            const result = await verifyCredentials(site.url, user, password);
-                            if (!result.ok) {
-                                console.error(result.reason);
-                                console.error(
-                                    "Credentials saved anyway — they'll be used when the server is available.",
-                                );
-                            } else {
-                                console.log('Credentials verified.');
-                            }
-
-                            try {
-                                await saveEnvironment(cliName, alias, {
-                                    url: site.url,
-                                    user,
-                                    password,
-                                }, true, {
-                                    ...configOpts,
-                                    allowInsecureStorage: opts.allowInsecureStorage,
-                                    allowedCidrs: options.allowedCidrs,
-                                });
-                                console.log(`Saved and switched to '${alias}'.`);
-                            } catch (err) {
-                                console.error(err instanceof Error ? err.message : String(err));
-                                process.exit(1);
-                            }
-                        },
-                    );
-
-                config
-                    .command('update-password [name]')
-                    .description('Update password for an environment (defaults to active)')
-                    .option('--password <password>', 'New password')
-                    .action(
-                        async (
-                            name: string | undefined,
-                            opts: { password?: string },
-                        ) => {
-                            const cfg = await loadConfig(cliName, configOpts);
-                            if (
-                                !cfg
-                                || Object.keys(cfg.environments).length === 0
-                            ) {
-                                console.error(
-                                    `No environments configured. Run '${cliName} config import' first.`,
-                                );
-                                process.exit(1);
-                            }
-
-                            const envName = name ?? cfg.active;
-                            const env = cfg.environments[envName];
-                            if (!env) {
-                                console.error(`Environment '${envName}' not found.`);
-                                process.exit(1);
-                            }
-
-                            console.log(
-                                `Updating password for '${envName}' (${env.url})`,
-                            );
-
-                            const password
-                                = opts.password ?? (await hiddenPrompt('New password: '));
-                            if (!password) {
-                                console.error('Password is required.');
-                                process.exit(1);
-                            }
-
-                            await saveEnvironment(
-                                cliName,
-                                envName,
-                                { ...env, password },
-                                false,
-                                configOpts,
-                            );
-                            console.log('Password updated.');
-                        },
-                    );
-            }
-
-            // generate
-            program
-                .command('generate')
-                .description(
-                    "Regenerate CLI from the active environment's OpenAPI spec",
-                )
-                .action(async () => {
-                    const env = getActiveEnvConfig(cliName, configOpts);
-                    if (!env) {
-                        console.error(
-                            `No active environment. Run '${cliName} setup' first.`,
-                        );
-                        process.exit(2);
-                    }
-                    console.log(`Generating from ${env.url} ...`);
-                    try {
-                        await fetchAndGenerate({
-                            baseUrl: env.url,
-                            specPath: options.specPath,
-                            outDir: generatedDir,
-                            auth: { username: env.user, password: env.password },
-                        });
-                        console.log(`Generated files written to ${generatedDir}`);
-                    } catch (err) {
-                        console.error(
-                            'Generation failed:',
-                            err instanceof Error ? err.message : String(err),
-                        );
-                        process.exit(1);
-                    }
-                });
-
-            // upgrade
-            program
-                .command('upgrade')
-                .description('Check for and install the latest version')
-                .action(async () => {
-                    try {
-                        const res = await fetch('https://registry.npmjs.org/@apijack/core/latest');
-                        if (!res.ok) {
-                            console.error('Failed to check for updates.');
-                            process.exit(1);
-                        }
-                        const data = await res.json() as { version: string };
-                        const latest = data.version;
-
-                        if (latest === options.version) {
-                            console.log(`Already on the latest version (v${latest}).`);
-                            return;
-                        }
-
-                        console.log(`v${options.version} → v${latest}`);
-                        console.log('Upgrading...');
-                        const proc = Bun.spawn(['bun', 'install', '-g', `@apijack/core@${latest}`], {
-                            stdout: 'inherit',
-                            stderr: 'inherit',
-                        });
-                        const exitCode = await proc.exited;
-                        if (exitCode !== 0) {
-                            console.error('Upgrade failed.');
-                            process.exit(1);
-                        }
-
-                        // Update plugin registration
-                        const pluginProc = Bun.spawn([...process.argv.slice(0, 2), 'plugin', 'install'], {
-                            stdout: 'inherit',
-                            stderr: 'inherit',
-                            env: { ...process.env, APIJACK_SKIP_UPDATE: '1' },
-                        });
-                        await pluginProc.exited;
-
-                        console.log(`Upgraded to v${latest}.`);
-                    } catch {
-                        console.error('Failed to check for updates.');
-                        process.exit(1);
-                    }
-                });
-
-            // mcp
-            program
-                .command('mcp')
-                .description('Start MCP server for AI agent integration')
-                .action(async () => {
-                    try {
-                        const { startMcpServer } = await import('./mcp/server');
-                        await startMcpServer({
-                            cliName: options.name,
-                            cliInvocation: process.argv.slice(0, 2),
-                            generatedDir: resolve(options.generatedDir || 'src/generated'),
-                            routinesDir: `${homedir()}/.${options.name}/routines`,
-                        });
-                    } catch (e: any) {
-                        if (
-                            e?.code === 'MODULE_NOT_FOUND'
-                            || e?.message?.includes('Cannot find module')
-                            || e?.message?.includes('Failed to resolve')
-                        ) {
-                            console.error('MCP server requires @modelcontextprotocol/sdk');
-                            console.error('Install it: bun add @modelcontextprotocol/sdk');
-                            process.exit(1);
-                        }
-                        throw e;
-                    }
-                });
-
-            // plugin
+            registerSetupCommand(program, cliName, {
+                allowedCidrs: options.allowedCidrs,
+                configPath: options.configPath,
+            });
+            registerConfigCommand(program, cliName, {
+                configPath: options.configPath,
+                knownSites: options.knownSites,
+                allowedCidrs: options.allowedCidrs,
+            });
+            registerGenerateCommand(program, cliName, options.specPath, generatedDir, configOpts);
+            registerUpgradeCommand(program, options.version);
+            registerMcpCommand(
+                program,
+                cliName,
+                resolve(options.generatedDir || 'src/generated'),
+                join(homedir(), '.' + options.name, 'routines'),
+            );
             registerPluginCommand(program, cliName, options.version);
 
             // 4. Resolve auth
@@ -447,7 +163,27 @@ export function createCli(options: CliOptions): Cli {
                 && !skipAuthCommands.has(cmd)
                 && !isHelpOrVersion
             ) {
-                await interactiveSetup(cliName);
+                console.log(`${cliName} Setup\n`);
+                const envName = await prompt('Environment name [default]: ', 'default');
+                const url = await prompt('URL [http://localhost:8080]: ', 'http://localhost:8080');
+                const user = await prompt('Username/Email: ');
+                const password = await hiddenPrompt('Password: ');
+                if (user && password) {
+                    const result = await setupAction({
+                        cliName, envName, url, user, password,
+                        verify: verifyCredentials,
+                        save: saveEnvironment,
+                        saveOpts: configOpts ?? {},
+                    });
+                    if (!result.verified) {
+                        console.error(result.verifyReason);
+                        console.error("Credentials saved anyway — they'll be used when the server is available.");
+                    } else {
+                        console.log('Credentials verified.');
+                    }
+                    console.log(`Saved environment '${envName}' to ~/.${cliName}/config.json`);
+                    console.log(`Switched to '${envName}'\n`);
+                }
                 resolved = resolveAuth(cliName, configOpts);
             }
 
@@ -691,270 +427,4 @@ export function createCli(options: CliOptions): Cli {
     };
 
     return cli;
-}
-
-async function interactiveSetup(
-    cliName: string,
-    opts?: { allowInsecureStorage?: boolean; allowedCidrs?: string[]; configPath?: string },
-): Promise<void> {
-    console.log(`${cliName} Setup\n`);
-
-    const envName = await prompt('Environment name [default]: ', 'default');
-    const url = await prompt('URL [http://localhost:8080]: ', 'http://localhost:8080');
-    const user = await prompt('Username/Email: ');
-    const password = await hiddenPrompt('Password: ');
-
-    if (!user || !password) {
-        console.error('Setup cancelled.');
-        process.exit(2);
-    }
-
-    // Verify credentials
-    const result = await verifyCredentials(url, user, password);
-    if (!result.ok) {
-        console.error(result.reason);
-        console.error(
-            "Credentials saved anyway — they'll be used when the server is available.",
-        );
-    } else {
-        console.log('Credentials verified.');
-    }
-
-    try {
-        await saveEnvironment(cliName, envName, { url, user, password }, true, {
-            configPath: opts?.configPath,
-            allowInsecureStorage: opts?.allowInsecureStorage,
-            allowedCidrs: opts?.allowedCidrs,
-        });
-        console.log(`Saved environment '${envName}' to ~/.${cliName}/config.json`);
-        console.log(`Switched to '${envName}'\n`);
-    } catch (err) {
-        console.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-    }
-}
-
-function loadBuiltinRoutines(
-    builtinDir: string,
-): Record<string, string> | undefined {
-    if (!existsSync(builtinDir)) return undefined;
-    const map: Record<string, string> = {};
-
-    function collect(dir: string, prefix: string) {
-        for (const entry of readdirSync(dir, { withFileTypes: true })) {
-            const fullPath = resolve(dir, entry.name);
-            const key = prefix ? `${prefix}/${entry.name}` : entry.name;
-            if (entry.isDirectory()) {
-                collect(fullPath, key);
-            } else if (
-                entry.isFile()
-                && (entry.name.endsWith('.yaml') || entry.name.endsWith('.yml'))
-            ) {
-                map[key] = readFileSync(fullPath, 'utf-8');
-            }
-        }
-    }
-
-    collect(builtinDir, '');
-    return Object.keys(map).length > 0 ? map : undefined;
-}
-
-function registerRoutineCommand(
-    program: Command,
-    cliName: string,
-    routinesDir: string,
-    dispatch: CommandDispatcher | undefined,
-    builtinRoutinesDir?: string,
-): void {
-    const builtinsMap = builtinRoutinesDir
-        ? loadBuiltinRoutines(builtinRoutinesDir)
-        : undefined;
-
-    const routine = program
-        .command('routine')
-        .description('Manage and run routines');
-
-    routine
-        .command('list [path]')
-        .description('List available routines (optionally drill into a group)')
-        .option('--tree', 'Show full tree structure')
-        .action((path: string | undefined, opts: { tree?: boolean }) => {
-            const routines = listRoutines(routinesDir, builtinsMap);
-            if (routines.length === 0) {
-                console.log(`No routines found in ~/.${cliName}/routines/`);
-                console.log(`Run '${cliName} routine init' to install built-in routines.`);
-                return;
-            }
-
-            let filtered = routines;
-            if (path) {
-                const prefix = path.replace(/\/+$/, '');
-                filtered = routines
-                    .filter((r) => {
-                        const clean = r.replace(/\x1b\[[0-9;]*m/g, '').trim();
-                        return clean.startsWith(prefix + '/');
-                    })
-                    .map((r) => {
-                        const clean = r.replace(/\x1b\[[0-9;]*m/g, '').trim();
-                        return clean.slice(prefix.length + 1);
-                    });
-                if (filtered.length === 0) {
-                    console.log(`No routines found under '${prefix}/'`);
-                    return;
-                }
-            }
-
-            console.log(
-                opts.tree
-                    ? formatRoutineTree(filtered)
-                    : formatRoutineList(filtered, path?.replace(/\/+$/, '')),
-            );
-        });
-
-    routine
-        .command('run <name>')
-        .description('Execute a routine')
-        .option('--set <pairs...>', 'Override variables (key=value)')
-        .option('--dry-run', 'Print resolved commands without executing')
-        .action(async (name: string, opts: { set?: string[]; dryRun?: boolean }) => {
-            if (!dispatch) {
-                console.error(
-                    `No active session. Run '${cliName} setup' first.`,
-                );
-                process.exit(2);
-            }
-
-            const def = loadRoutineFile(name, routinesDir, builtinsMap);
-            const errors = validateRoutine(def);
-            if (errors.length > 0) {
-                console.error('Validation errors:');
-                for (const e of errors) console.error(`  - ${e}`);
-                process.exit(1);
-            }
-
-            // Clear stale session so routine starts fresh
-            const sessionMgr = new SessionManager(cliName);
-            sessionMgr.invalidate();
-
-            const overrides: Record<string, unknown> = {};
-            for (const s of opts.set || []) {
-                const eq = s.indexOf('=');
-                if (eq > 0) overrides[s.slice(0, eq)] = s.slice(eq + 1);
-            }
-
-            console.log(
-                `Running routine: ${def.name}${def.description ? ` — ${def.description}` : ''}\n`,
-            );
-
-            const startTime = Date.now();
-            const result = await executeRoutine(def, overrides, dispatch, {
-                dryRun: opts.dryRun,
-                onStep: (step, i, total) => {
-                    console.log(`\x1b[36m[${i + 1}/${total}]\x1b[0m ${step.name}`);
-                },
-                onIteration: (step, current, total, stepIndex, stepTotal) => {
-                    process.stderr.write(`\r\x1b[36m[${stepIndex + 1}/${stepTotal}]\x1b[0m ${step.name} \x1b[36m[${current}/${total}]\x1b[0m\x1b[K`);
-                },
-            });
-
-            const elapsed = Date.now() - startTime;
-            const mins = Math.floor(elapsed / 60000);
-            const secs = ((elapsed % 60000) / 1000).toFixed(1);
-            const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-            console.log(
-                `\nRoutine ${result.success ? '\x1b[32mcompleted\x1b[0m' : '\x1b[31mfailed\x1b[0m'}: ${result.stepsRun} run, ${result.stepsSkipped} skipped, ${result.stepsFailed} failed (${timeStr})`,
-            );
-            if (!result.success) process.exit(1);
-        });
-
-    routine
-        .command('validate <name>')
-        .description('Validate a routine YAML file')
-        .action((name: string) => {
-            const def = loadRoutineFile(name, routinesDir, builtinsMap);
-            const errors = validateRoutine(def);
-            if (errors.length > 0) {
-                console.error('Validation errors:');
-                for (const e of errors) console.error(`  - ${e}`);
-                process.exit(1);
-            }
-            console.log(`Routine "${def.name}" is valid.`);
-        });
-
-    routine
-        .command('test <name>')
-        .description("Run a routine's spec (test) file")
-        .option('--set <pairs...>', 'Override variables (key=value)')
-        .action(async (name: string, opts: { set?: string[] }) => {
-            if (!dispatch) {
-                console.error(
-                    `No active session. Run '${cliName} setup' first.`,
-                );
-                process.exit(2);
-            }
-
-            const spec = loadSpecFile(name, routinesDir, builtinsMap);
-            if (!spec) {
-                console.error(`No spec.yaml found for routine "${name}".`);
-                console.error(
-                    `Specs are optional but live at ~/.${cliName}/routines/<name>/spec.yaml`,
-                );
-                process.exit(1);
-            }
-
-            const errors = validateRoutine(spec);
-            if (errors.length > 0) {
-                console.error('Spec validation errors:');
-                for (const e of errors) console.error(`  - ${e}`);
-                process.exit(1);
-            }
-
-            const overrides: Record<string, unknown> = {};
-            for (const s of opts.set || []) {
-                const eq = s.indexOf('=');
-                if (eq > 0) overrides[s.slice(0, eq)] = s.slice(eq + 1);
-            }
-
-            console.log(
-                `\x1b[36mTesting routine: ${name}\x1b[0m${spec.description ? ` — ${spec.description}` : ''}\n`,
-            );
-
-            const result = await executeRoutine(spec, overrides, dispatch, {
-                onStep: (step, i, total) => {
-                    console.log(
-                        `\x1b[36m[${i + 1}/${total}]\x1b[0m ${step.name}${step.assert ? ' \x1b[33m(assert)\x1b[0m' : ''}`,
-                    );
-                },
-                onIteration: (step, current, total, stepIndex, stepTotal) => {
-                    process.stderr.write(`\r\x1b[36m[${stepIndex + 1}/${stepTotal}]\x1b[0m ${step.name} \x1b[36m[${current}/${total}]\x1b[0m\x1b[K`);
-                },
-            });
-
-            console.log('');
-            if (result.success) {
-                console.log(
-                    `\x1b[32mPASSED\x1b[0m: ${result.stepsRun} steps run, ${result.stepsSkipped} skipped`,
-                );
-            } else {
-                console.log(
-                    `\x1b[31mFAILED\x1b[0m: ${result.stepsRun} steps run, ${result.stepsFailed} failed`,
-                );
-                process.exit(1);
-            }
-        });
-
-    routine
-        .command('init')
-        .description(`Copy built-in routines to ~/.${cliName}/routines/`)
-        .action(() => {
-            mkdirSync(routinesDir, { recursive: true });
-            const builtinDir = builtinRoutinesDir;
-            if (!builtinDir || !existsSync(builtinDir)) {
-                console.error('No built-in routines directory found.');
-                return;
-            }
-            cpSync(builtinDir, routinesDir, { recursive: true });
-            const routines = readdirSync(builtinDir);
-            console.log(`Installed ${routines.length} routines to ${routinesDir}`);
-        });
 }
