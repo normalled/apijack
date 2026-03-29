@@ -45,7 +45,7 @@ export function registerConfigCommand(
             const sessionMgr = new SessionManager(cliName);
             const result = await configSwitchAction({
                 name,
-                switchEnv: (n) => switchEnvironment(cliName, n, configOpts),
+                switchEnv: n => switchEnvironment(cliName, n, configOpts),
                 invalidateSession: () => sessionMgr.invalidate(),
                 listEnvs: () => listEnvironments(cliName, configOpts),
             });
@@ -139,7 +139,7 @@ export function registerConfigCommand(
                     const result = await configUpdatePasswordAction({
                         envName: name,
                         password,
-                        loadConfig: (n) => loadConfig(n, configOpts) as any,
+                        loadConfig: n => loadConfig(n, configOpts) as any,
                         save: saveEnvironment,
                         cliName,
                         saveOpts: configOpts ?? {},
