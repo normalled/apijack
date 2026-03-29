@@ -167,7 +167,7 @@ ok "CI checks passed"
 # ── Step 6: Merge PR ───────────────────────────────────────────────
 
 info "Merging PR #$PR_NUM..."
-gh pr merge "$PR_NUM" --merge --delete-branch=false
+gh pr merge "$PR_NUM" --merge --delete-branch=false --admin
 ok "PR merged to main"
 
 # ── Step 7: Wait for publish workflow ──────────────────────────────
