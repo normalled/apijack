@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'fs';
-import { join, dirname, resolve } from 'path';
+import { join, dirname, resolve, parse } from 'path';
 import { homedir } from 'os';
 
 export interface ProjectConfig {
@@ -12,7 +12,7 @@ export interface ProjectConfig {
 
 export function findProjectConfig(startDir: string): string | null {
     let dir = resolve(startDir);
-    const root = resolve('/');
+    const root = parse(resolve(startDir)).root;
 
     while (dir !== root) {
         const candidate = join(dir, '.apijack.json');

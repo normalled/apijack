@@ -50,7 +50,7 @@ describe("installPlugin()", () => {
 
   test("returns plugin dir inside local marketplace", async () => {
     const result = await installPlugin(makeOpts());
-    expect(result.marketplaceDir).toContain("marketplaces/local/apijack");
+    expect(result.marketplaceDir).toContain(join("marketplaces", "local", "apijack"));
   });
 
   test("copies skills to plugin dir", async () => {
