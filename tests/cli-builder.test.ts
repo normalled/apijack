@@ -303,6 +303,49 @@ describe("built-in commands", () => {
     expect(output).toContain("Usage: mycli");
     expect(output).toContain("My custom CLI tool");
   });
+
+  test("--dry-run flag is registered", async () => {
+    const cli = createCli(makeOptions());
+
+    process.argv = ["node", "testcli", "--help"];
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await cli.run();
+    } catch (e: any) {
+      // Expected
+    }
+
+    console.log = origLog;
+    const output = logs.join("\n");
+
+    expect(output).toContain("--dry-run");
+  });
+
+  test("-o help text includes curl and curl-with-creds formats", async () => {
+    const cli = createCli(makeOptions());
+
+    process.argv = ["node", "testcli", "--help"];
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await cli.run();
+    } catch (e: any) {
+      // Expected
+    }
+
+    console.log = origLog;
+    const output = logs.join("\n");
+
+    expect(output).toContain("curl");
+    expect(output).toContain("curl-with-creds");
+  });
 });
 
 describe("index exports", () => {

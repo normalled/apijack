@@ -10,6 +10,7 @@ import type { AuthSession } from './auth/types';
 import { resolveAuth, saveEnvironment, switchEnvironment, listEnvironments, getActiveEnvConfig, loadConfig, verifyCredentials } from './config';
 import { SessionManager } from './session';
 import { formatOutput, type OutputMode } from './output';
+import { formatDryRun, formatCurl, type CapturedRequest } from './output-request';
 import { prompt, hiddenPrompt } from './prompt';
 import { fetchAndGenerate } from './codegen/index';
 import { loadRoutineFile, loadSpecFile, listRoutines, validateRoutine, formatRoutineTree, formatRoutineList } from './routine/loader';
@@ -112,8 +113,9 @@ export function createCli(options: CliOptions): Cli {
             }
             program.option(
                 '-o <format>',
-                `Output format (${(options.outputModes || ['json', 'table', 'quiet']).join(', ')}, routine-step)`,
+                `Output format (${(options.outputModes || ['json', 'table', 'quiet']).join(', ')}, routine-step, curl, curl-with-creds)`,
             );
+            program.option('--dry-run', 'Preview the API request without executing');
 
             // 3. Register built-in commands
 
@@ -442,8 +444,34 @@ export function createCli(options: CliOptions): Cli {
                             );
                             ctx.client = client;
 
+                            // Detect request-preview output modes
+                            const oIdx = process.argv.indexOf('-o');
+                            const oVal = oIdx >= 0 ? process.argv[oIdx + 1] : undefined;
+                            const isDryRun = process.argv.includes('--dry-run') && process.argv[2] !== 'routine';
+                            const isCurl = oVal === 'curl';
+                            const isCurlWithCreds = oVal === 'curl-with-creds';
+                            const isRequestPreview = isDryRun || isCurl || isCurlWithCreds;
+
+                            if (isRequestPreview) {
+                                client.dryRun = true;
+                            }
+
                             const onResult = (result: unknown) => {
                                 if (result === undefined) return;
+
+                                // Handle request preview modes
+                                if (isRequestPreview && result && typeof result === 'object' && 'method' in result && 'url' in result) {
+                                    const captured = result as CapturedRequest;
+                                    if (isCurl) {
+                                        console.log(formatCurl(captured, { includeCreds: false }));
+                                    } else if (isCurlWithCreds) {
+                                        console.log(formatCurl(captured, { includeCreds: true }));
+                                    } else {
+                                        console.log(formatDryRun(captured));
+                                    }
+                                    return;
+                                }
+
                                 const mode: OutputMode = program.opts().table
                                     ? 'table'
                                     : program.opts().quiet

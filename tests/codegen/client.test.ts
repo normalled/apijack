@@ -139,6 +139,17 @@ describe("generateClient — unit tests", () => {
     const output = generateClient(paths);
     expect(output).toContain('return this.request("GET", "/items")');
   });
+
+  it("generates dryRun property on ApiClient", () => {
+    const output = generateClient({});
+    expect(output).toContain("dryRun = false");
+  });
+
+  it("generates CapturedRequest return path when dryRun is true", () => {
+    const output = generateClient({});
+    expect(output).toContain("if (this.dryRun)");
+    expect(output).toContain("return { method, url:");
+  });
 });
 
 describe("generateClient — petstore fixture", () => {
