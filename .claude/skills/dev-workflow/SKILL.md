@@ -69,12 +69,13 @@ git commit -m "<conventional commit message>"
 
 The script automates the entire pipeline:
 
-1. **Push** dev to origin
-2. **Create PR** (or find existing one) to main
-3. **Wait for CI** (Tests + E2E workflows) — exits with instructions if checks fail
-4. **Merge** the PR
-5. **Wait for publish** workflow — exits with instructions if publish fails
-6. **Cleanup** — pulls version bump, rebases dev onto main
+1. **Version bump** — determines bump level from commit messages (feat=minor, fix=patch, BREAKING CHANGE=major), bumps package.json, commits
+2. **Push** dev to origin
+3. **Create PR** (or find existing one) to main
+4. **Wait for CI** (Tests + E2E workflows) — exits with instructions if checks fail
+5. **Merge** the PR
+6. **Wait for publish** workflow — exits with instructions if publish fails
+7. **Cleanup** — syncs main and rebases dev
 
 ### If the script exits with a failure
 
@@ -93,15 +94,14 @@ Two workflows run on PRs to `main`:
 
 ### What publish does
 
-After merge to `main`, the **Publish** workflow:
+After merge to `main`, the **Publish** workflow triggers only when the merge commit message starts with `chore(release):` (i.e., contains a version bump from ship.sh):
 - Runs tests + lint + build
-- Determines version bump from commit messages (feat = minor, fix = patch, BREAKING CHANGE = major)
-- Bumps version, creates git tag, publishes to npm
-- Pushes version bump commit back to main
+- Creates a git tag from the version in package.json
+- Publishes to npm
 
 ## Commit Message Convention
 
-Use conventional commits — the publish workflow uses these to determine version bumps:
+Use conventional commits — ship.sh uses these to determine version bumps:
 
 - `feat: ...` — new feature (minor bump)
 - `fix: ...` — bug fix (patch bump)
