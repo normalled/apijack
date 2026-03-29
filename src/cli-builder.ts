@@ -447,7 +447,7 @@ export function createCli(options: CliOptions): Cli {
                             // Detect request-preview output modes
                             const oIdx = process.argv.indexOf('-o');
                             const oVal = oIdx >= 0 ? process.argv[oIdx + 1] : undefined;
-                            const isDryRun = process.argv.includes('--dry-run');
+                            const isDryRun = process.argv.includes('--dry-run') && process.argv[2] !== 'routine';
                             const isCurl = oVal === 'curl';
                             const isCurlWithCreds = oVal === 'curl-with-creds';
                             const isRequestPreview = isDryRun || isCurl || isCurlWithCreds;

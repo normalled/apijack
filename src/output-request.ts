@@ -5,6 +5,10 @@ export interface CapturedRequest {
     body?: unknown;
 }
 
+function shellQuote(s: string): string {
+    return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
 function maskHeaders(headers: Record<string, string>): Record<string, string> {
     const masked: Record<string, string> = {};
     for (const [key, value] of Object.entries(headers)) {
@@ -41,18 +45,18 @@ export function formatCurl(
     const parts: string[] = [];
 
     if (req.method === 'GET') {
-        parts.push(`curl '${req.url}'`);
+        parts.push(`curl ${shellQuote(req.url)}`);
     } else {
-        parts.push(`curl -X ${req.method} '${req.url}'`);
+        parts.push(`curl -X ${req.method} ${shellQuote(req.url)}`);
     }
 
     for (const [key, value] of Object.entries(req.headers)) {
         if (key.toLowerCase() === 'authorization' && !opts.includeCreds) continue;
-        parts.push(`  -H '${key}: ${value}'`);
+        parts.push(`  -H ${shellQuote(`${key}: ${value}`)}`);
     }
 
     if (req.body !== undefined) {
-        parts.push(`  -d '${JSON.stringify(req.body)}'`);
+        parts.push(`  -d ${shellQuote(JSON.stringify(req.body))}`);
     }
 
     return parts.join(' \\\n');
