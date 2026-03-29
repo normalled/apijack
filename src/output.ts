@@ -1,6 +1,6 @@
 import Table from 'cli-table3';
 
-export type OutputMode = 'json' | 'table' | 'quiet';
+export type OutputMode = 'json' | 'table' | 'quiet' | 'dry-run' | 'curl' | 'curl-with-creds';
 
 export function formatOutput(data: unknown, mode: OutputMode): string {
     if (mode === 'quiet') return '';
