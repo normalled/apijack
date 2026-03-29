@@ -183,6 +183,9 @@ export function createCli(options: CliOptions): Cli {
                     }
                     console.log(`Saved environment '${envName}' to ~/.${cliName}/config.json`);
                     console.log(`Switched to '${envName}'\n`);
+                } else {
+                    console.error('Setup cancelled.');
+                    process.exit(2);
                 }
                 resolved = resolveAuth(cliName, configOpts);
             }

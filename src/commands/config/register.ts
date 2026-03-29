@@ -129,6 +129,20 @@ export function registerConfigCommand(
             .description('Update password for an environment (defaults to active)')
             .option('--password <password>', 'New password')
             .action(async (name: string | undefined, cmdOpts: { password?: string }) => {
+                // Validate environment exists before prompting for password
+                const cfg = await loadConfig(cliName, configOpts) as any;
+                if (!cfg || Object.keys(cfg.environments).length === 0) {
+                    console.error(`No environments configured. Run '${cliName} config import' first.`);
+                    process.exit(1);
+                }
+                const envName = name ?? cfg.active;
+                if (!cfg.environments[envName]) {
+                    console.error(`Environment '${envName}' not found.`);
+                    process.exit(1);
+                }
+
+                console.log(`Updating password for '${envName}' (${cfg.environments[envName].url})`);
+
                 const password = cmdOpts.password ?? (await hiddenPrompt('New password: '));
                 if (!password) {
                     console.error('Password is required.');
@@ -136,15 +150,14 @@ export function registerConfigCommand(
                 }
 
                 try {
-                    const result = await configUpdatePasswordAction({
-                        envName: name,
+                    await configUpdatePasswordAction({
+                        envName,
                         password,
-                        loadConfig: n => loadConfig(n, configOpts) as any,
+                        loadConfig: async () => cfg,
                         save: saveEnvironment,
                         cliName,
                         saveOpts: configOpts ?? {},
                     });
-                    console.log(`Updating password for '${result.envName}'`);
                     console.log('Password updated.');
                 } catch (err) {
                     console.error(err instanceof Error ? err.message : String(err));

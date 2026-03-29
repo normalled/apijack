@@ -94,10 +94,13 @@ export function registerRoutineCommand(
             const sessionMgr = new SessionManager(cliName);
 
             try {
-                console.log('');
+                const def = loadRoutineFile(name, routinesDir, builtinsMap);
+                console.log(
+                    `Running routine: ${def.name}${def.description ? ` — ${def.description}` : ''}\n`,
+                );
                 const startTime = Date.now();
                 const result = await routineRunAction({
-                    loadRoutine: () => loadRoutineFile(name, routinesDir, builtinsMap),
+                    loadRoutine: () => def,
                     validateRoutine,
                     executeRoutine,
                     dispatch,
@@ -111,8 +114,6 @@ export function registerRoutineCommand(
                         process.stderr.write(`\r\x1b[36m[${stepIndex + 1}/${stepTotal}]\x1b[0m ${step.name} \x1b[36m[${current}/${total}]\x1b[0m\x1b[K`);
                     },
                 });
-
-                console.log(`Running routine: ${result.name}${result.description ? ` — ${result.description}` : ''}\n`);
 
                 const elapsed = Date.now() - startTime;
                 const mins = Math.floor(elapsed / 60000);
