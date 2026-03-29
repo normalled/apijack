@@ -1,7 +1,7 @@
 import { describe, test, expect, afterEach } from 'bun:test';
 import { findProjectConfig, loadProjectConfig, resolveConfigDir, type ProjectConfig } from '../src/project';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 
 const testRoot = join(tmpdir(), 'apijack-project-test-' + Date.now());
@@ -85,8 +85,9 @@ describe('loadProjectConfig()', () => {
 
 describe('resolveConfigDir()', () => {
     test('returns project .apijack/ dir when project config path provided', () => {
-        const result = resolveConfigDir('/home/user/myproject/.apijack.json');
-        expect(result).toBe('/home/user/myproject/.apijack');
+        const configPath = join('/home', 'user', 'myproject', '.apijack.json');
+        const result = resolveConfigDir(configPath);
+        expect(result).toBe(join(dirname(configPath), '.apijack'));
     });
 
     test('returns global dir when no project config', () => {

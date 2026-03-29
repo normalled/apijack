@@ -8,8 +8,11 @@ on:
 
 jobs:
   codegen-petstore:
-    name: "Petstore (OAS 3.0)"
-    runs-on: ubuntu-latest
+    name: "Petstore (OAS 3.0) — ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -17,26 +20,36 @@ jobs:
           bun-version: latest
       - run: bun install
       - name: Generate from petstore fixture
-        run: |
-          mkdir -p /tmp/generated
+        run: >
           bun -e "
             import { generate } from './src/codegen/index.ts';
             import spec from './tests/fixtures/petstore.json';
-            await generate({ spec, outDir: '/tmp/generated' });
+            import { mkdirSync } from 'fs';
+            import { join } from 'path';
+            const outDir = join(process.cwd(), 'codegen-out');
+            mkdirSync(outDir, { recursive: true });
+            await generate({ spec, outDir });
           "
       - name: Verify generated files exist and parse
-        run: |
-          test -f /tmp/generated/types.ts
-          test -f /tmp/generated/client.ts
-          test -f /tmp/generated/commands.ts
-          test -f /tmp/generated/command-map.ts
-          bun -e "await import('/tmp/generated/types.ts')"
-          bun -e "await import('/tmp/generated/command-map.ts')"
-          echo "All 4 files generated and valid"
+        run: >
+          bun -e "
+            import { existsSync } from 'fs';
+            import { join } from 'path';
+            const d = join(process.cwd(), 'codegen-out');
+            for (const f of ['types.ts', 'client.ts', 'commands.ts', 'command-map.ts']) {
+              if (!existsSync(join(d, f))) throw new Error(f + ' not generated');
+            }
+            await import(join(d, 'types.ts'));
+            await import(join(d, 'command-map.ts'));
+            console.log('All 4 files generated and valid');
+          "
 
   codegen-edge-cases:
-    name: "Edge Cases Stress Test"
-    runs-on: ubuntu-latest
+    name: "Edge Cases Stress Test — ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -44,26 +57,36 @@ jobs:
           bun-version: latest
       - run: bun install
       - name: Generate from edge-cases fixture
-        run: |
-          mkdir -p /tmp/generated
+        run: >
           bun -e "
             import { generate } from './src/codegen/index.ts';
             import spec from './tests/fixtures/edge-cases.json';
-            await generate({ spec, outDir: '/tmp/generated' });
+            import { mkdirSync } from 'fs';
+            import { join } from 'path';
+            const outDir = join(process.cwd(), 'codegen-out');
+            mkdirSync(outDir, { recursive: true });
+            await generate({ spec, outDir });
           "
       - name: Verify generated files exist and parse
-        run: |
-          test -f /tmp/generated/types.ts
-          test -f /tmp/generated/client.ts
-          test -f /tmp/generated/commands.ts
-          test -f /tmp/generated/command-map.ts
-          bun -e "await import('/tmp/generated/types.ts')"
-          bun -e "await import('/tmp/generated/command-map.ts')"
-          echo "All 4 files generated and valid"
+        run: >
+          bun -e "
+            import { existsSync } from 'fs';
+            import { join } from 'path';
+            const d = join(process.cwd(), 'codegen-out');
+            for (const f of ['types.ts', 'client.ts', 'commands.ts', 'command-map.ts']) {
+              if (!existsSync(join(d, f))) throw new Error(f + ' not generated');
+            }
+            await import(join(d, 'types.ts'));
+            await import(join(d, 'command-map.ts'));
+            console.log('All 4 files generated and valid');
+          "
 
   codegen-oas31:
-    name: "OAS 3.1 Features"
-    runs-on: ubuntu-latest
+    name: "OAS 3.1 Features — ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -71,19 +94,26 @@ jobs:
           bun-version: latest
       - run: bun install
       - name: Generate from OAS 3.1 fixture
-        run: |
-          mkdir -p /tmp/generated
+        run: >
           bun -e "
             import { generate } from './src/codegen/index.ts';
             import spec from './tests/fixtures/oas31.json';
-            await generate({ spec, outDir: '/tmp/generated' });
+            import { mkdirSync } from 'fs';
+            import { join } from 'path';
+            const outDir = join(process.cwd(), 'codegen-out');
+            mkdirSync(outDir, { recursive: true });
+            await generate({ spec, outDir });
           "
       - name: Verify generated files exist and parse
-        run: |
-          test -f /tmp/generated/types.ts
-          test -f /tmp/generated/client.ts
-          test -f /tmp/generated/commands.ts
-          test -f /tmp/generated/command-map.ts
-          bun -e "await import('/tmp/generated/types.ts')"
-          bun -e "await import('/tmp/generated/command-map.ts')"
-          echo "All 4 files generated and valid"
+        run: >
+          bun -e "
+            import { existsSync } from 'fs';
+            import { join } from 'path';
+            const d = join(process.cwd(), 'codegen-out');
+            for (const f of ['types.ts', 'client.ts', 'commands.ts', 'command-map.ts']) {
+              if (!existsSync(join(d, f))) throw new Error(f + ' not generated');
+            }
+            await import(join(d, 'types.ts'));
+            await import(join(d, 'command-map.ts'));
+            console.log('All 4 files generated and valid');
+          "

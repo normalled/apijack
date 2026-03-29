@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { homedir } from 'os';
 import type { AuthStrategy, AuthSession, ResolvedAuth } from './auth/types';
 
@@ -8,7 +8,7 @@ export class SessionManager {
 
     constructor(cliName: string, sessionPathOverride?: string) {
         this.sessionPath
-            = sessionPathOverride ?? `${homedir()}/.${cliName}/session.json`;
+            = sessionPathOverride ?? join(homedir(), `.${cliName}`, 'session.json');
     }
 
     async resolve(
