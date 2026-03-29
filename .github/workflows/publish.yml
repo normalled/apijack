@@ -8,8 +8,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     environment: release
-    # Skip if this push was the version bump commit
-    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    # Only publish when a version bump commit is in the push
+    if: "contains(github.event.head_commit.message, 'chore(release):') || contains(toJSON(github.event.commits.*.message), 'chore(release):')"
     permissions:
       contents: write
       id-token: write
@@ -38,39 +38,15 @@ jobs:
       # Verify pack works
       - run: npm pack --dry-run
 
-      # Determine version bump from commits since last tag
-      - name: Determine version bump
-        id: bump
+      # Create git tag from package.json version
+      - name: Tag release
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -z "$LAST_TAG" ]; then
-            RANGE=$(git rev-list --max-parents=0 HEAD)..HEAD
-          else
-            RANGE="${LAST_TAG}..HEAD"
-          fi
-
-          COMMITS=$(git log "$RANGE" --pretty=format:"%s%n%b")
-
-          if echo "$COMMITS" | grep -q "BREAKING CHANGE"; then
-            echo "level=major" >> "$GITHUB_OUTPUT"
-          elif echo "$COMMITS" | grep -q "^feat"; then
-            echo "level=minor" >> "$GITHUB_OUTPUT"
-          else
-            echo "level=patch" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Bump version in package.json + create git tag
-      - name: Bump version
-        run: |
-          git checkout -- .
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          npm version ${{ steps.bump.outputs.level }} -m "chore(release): v%s"
+          VERSION=$(node -p "require('./package.json').version")
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push --tags
 
       # Publish to npm via trusted publishing (OIDC — no token needed)
       - name: Publish to npm
         run: npm publish
-
-      # Push version bump commit + tag back to main
-      - name: Push version bump
-        run: git push --follow-tags

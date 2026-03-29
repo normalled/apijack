@@ -41,6 +41,38 @@ fi
 
 info "Shipping $COMMITS commit(s) from dev → main"
 
+# ── Step 2b: Version bump ─────────────────────────────────────────
+
+LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+if [ -z "$LAST_TAG" ]; then
+    RANGE=$(git rev-list --max-parents=0 HEAD)..HEAD
+else
+    RANGE="origin/main..HEAD"
+fi
+
+COMMIT_TEXT=$(git log "$RANGE" --pretty=format:"%s%n%b")
+
+if echo "$COMMIT_TEXT" | grep -q "BREAKING CHANGE"; then
+    BUMP_LEVEL="major"
+elif echo "$COMMIT_TEXT" | grep -q "^feat"; then
+    BUMP_LEVEL="minor"
+else
+    BUMP_LEVEL="patch"
+fi
+
+CURRENT_VERSION=$(node -p "require('./package.json').version")
+npm version "$BUMP_LEVEL" --no-git-tag-version --quiet >/dev/null
+NEW_VERSION=$(node -p "require('./package.json').version")
+
+if [ "$CURRENT_VERSION" != "$NEW_VERSION" ]; then
+    git add package.json
+    git commit -m "chore(release): v$NEW_VERSION" --quiet
+    ok "Version bump: $CURRENT_VERSION → $NEW_VERSION ($BUMP_LEVEL)"
+    COMMITS=$((COMMITS + 1))
+else
+    warn "Version already at $CURRENT_VERSION, skipping bump"
+fi
+
 # ── Step 3: Push dev ────────────────────────────────────────────────
 
 info "Pushing dev to origin..."
@@ -178,10 +210,8 @@ ok "Published to npm"
 
 # ── Step 8: Cleanup ────────────────────────────────────────────────
 
-info "Pulling version bump..."
-sleep 5  # Wait for the version bump commit to land
+info "Syncing branches..."
 git checkout main --quiet && git pull --quiet
-git checkout dev --quiet && git pull origin main --quiet && git push
+git checkout dev --quiet && git rebase main --quiet
 
-VERSION=$(node -p "require('./package.json').version")
-ok "Shipped v$VERSION"
+ok "Shipped v$NEW_VERSION"
