@@ -33,6 +33,7 @@ const CORE_COMMANDS = new Set([
     'config',
     'generate',
     'routine',
+    'upgrade',
     'mcp',
     'plugin',
 ]);
@@ -346,6 +347,52 @@ export function createCli(options: CliOptions): Cli {
                     }
                 });
 
+            // upgrade
+            program
+                .command('upgrade')
+                .description('Check for and install the latest version')
+                .action(async () => {
+                    try {
+                        const res = await fetch('https://registry.npmjs.org/@apijack/core/latest');
+                        if (!res.ok) {
+                            console.error('Failed to check for updates.');
+                            process.exit(1);
+                        }
+                        const data = await res.json() as { version: string };
+                        const latest = data.version;
+
+                        if (latest === options.version) {
+                            console.log(`Already on the latest version (v${latest}).`);
+                            return;
+                        }
+
+                        console.log(`v${options.version} → v${latest}`);
+                        console.log('Upgrading...');
+                        const proc = Bun.spawn(['bun', 'install', '-g', `@apijack/core@${latest}`], {
+                            stdout: 'inherit',
+                            stderr: 'inherit',
+                        });
+                        const exitCode = await proc.exited;
+                        if (exitCode !== 0) {
+                            console.error('Upgrade failed.');
+                            process.exit(1);
+                        }
+
+                        // Update plugin registration
+                        const pluginProc = Bun.spawn([...process.argv.slice(0, 2), 'plugin', 'install'], {
+                            stdout: 'inherit',
+                            stderr: 'inherit',
+                            env: { ...process.env, APIJACK_SKIP_UPDATE: '1' },
+                        });
+                        await pluginProc.exited;
+
+                        console.log(`Upgraded to v${latest}.`);
+                    } catch {
+                        console.error('Failed to check for updates.');
+                        process.exit(1);
+                    }
+                });
+
             // mcp
             program
                 .command('mcp')
@@ -386,6 +433,7 @@ export function createCli(options: CliOptions): Cli {
                 'config',
                 'routine',
                 'generate',
+                'upgrade',
                 'mcp',
                 'plugin',
             ]);
