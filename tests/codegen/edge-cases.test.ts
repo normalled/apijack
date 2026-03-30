@@ -231,9 +231,16 @@ describe("edge cases: operations", () => {
     expect(clientOutput).toMatch(/noResponseOp.*Promise<void>/);
   });
 
-  it("primitive body produces body: string parameter", () => {
+  it("primitive body produces -B flag", () => {
     expect(clientOutput).toContain("primitiveBodyOp");
-    expect(commandsOutput).toContain("--value");
+    expect(commandsOutput).toContain('.option("-B <value>", "Body value (string)")');
+    expect(commandsOutput).toContain("opts.B");
+  });
+
+  it("primitive array body produces -B flag for comma-separated values", () => {
+    expect(clientOutput).toContain("primitiveArrayBodyOp");
+    expect(commandsOutput).toContain('.option("-B <values>", "Comma-separated string values")');
+    expect(commandsOutput).toContain("(opts.B as string).split");
   });
 
   it("array body produces array parameter", () => {
