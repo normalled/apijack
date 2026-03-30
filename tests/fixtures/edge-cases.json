@@ -68,6 +68,17 @@
         "responses": { "200": { "description": "OK" } }
       }
     },
+    "/edge/primitive-array-body": {
+      "post": {
+        "tags": ["edge-cases"],
+        "operationId": "primitiveArrayBodyOp",
+        "summary": "Request body is an array of strings",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
     "/edge/array-body": {
       "post": {
         "tags": ["edge-cases"],

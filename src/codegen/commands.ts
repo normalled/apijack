@@ -241,11 +241,11 @@ export function generateCommands(
                         if (cmd.bodyPrimitiveType.endsWith('[]')) {
                             const itemType = cmd.bodyPrimitiveType.slice(0, -2);
                             lines.push(
-                                `    .option("-vals <values>", "Comma-separated ${itemType} values")`,
+                                `    .option("-B <values>", "Comma-separated ${itemType} values")`,
                             );
                         } else {
                             lines.push(
-                                `    .option("-val <value>", "Body value (${cmd.bodyPrimitiveType})")`,
+                                `    .option("-B <value>", "Body value (${cmd.bodyPrimitiveType})")`,
                             );
                         }
                     } else {
@@ -305,24 +305,24 @@ export function generateCommands(
                         // Primitive body — convert from CLI flag
                         if (cmd.bodyPrimitiveType === 'string[]') {
                             lines.push(
-                                '      if (opts.vals) { body = (opts.vals as string).split(","); }',
+                                '      if (opts.B) { body = (opts.B as string).split(","); }',
                             );
                         } else if (cmd.bodyPrimitiveType === 'number[]') {
                             lines.push(
-                                '      if (opts.vals) { body = (opts.vals as string).split(",").map(Number); }',
+                                '      if (opts.B) { body = (opts.B as string).split(",").map(Number); }',
                             );
                         } else if (cmd.bodyPrimitiveType === 'number') {
                             lines.push(
-                                '      if (opts.val !== undefined) { body = Number(opts.val); }',
+                                '      if (opts.B !== undefined) { body = Number(opts.B); }',
                             );
                         } else if (cmd.bodyPrimitiveType === 'boolean') {
                             lines.push(
-                                '      if (opts.val !== undefined) { body = opts.val === "true"; }',
+                                '      if (opts.B !== undefined) { body = opts.B === "true"; }',
                             );
                         } else {
                             // string
                             lines.push(
-                                '      if (opts.val !== undefined) { body = opts.val; }',
+                                '      if (opts.B !== undefined) { body = opts.B; }',
                             );
                         }
                     } else if (cmd.bodyProps.length > 0) {
