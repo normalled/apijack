@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'fs';
 import { mkdir } from 'fs/promises';
 import { dirname, join } from 'path';
 import { homedir } from 'os';
-import type { ResolvedAuth } from './auth/types';
+import type { ResolvedAuth, SessionAuthConfig } from './auth/types';
 import { classifyUrl } from './url-classifier';
 
 /**
@@ -27,6 +27,7 @@ export interface EnvironmentConfig {
     url: string;
     user: string;
     password: string;
+    sessionAuth?: Partial<SessionAuthConfig>;
     [key: string]: unknown;
 }
 

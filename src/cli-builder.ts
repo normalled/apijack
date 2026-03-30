@@ -21,7 +21,6 @@ import { registerUpgradeCommand } from './commands/upgrade/upgrade';
 import { registerMcpCommand } from './commands/mcp/mcp';
 import { registerRoutineCommand, loadBuiltinRoutines } from './commands/routine/register';
 import { prompt, hiddenPrompt } from './prompt';
-import type { SessionAuthConfig } from './auth/types';
 import { SessionAuthStrategy } from './auth/session-auth';
 import { resolveRequestHeaders } from './auth/resolve-headers';
 import { deepMergeSessionAuth } from './auth/config-merge';
@@ -201,7 +200,7 @@ export function createCli(options: CliOptions): Cli {
                 // Merge sessionAuth config: CLI author defaults + user env overrides
                 const envConfig = getActiveEnvConfig(cliName, configOpts);
                 const mergedSessionAuth = options.sessionAuth
-                    ? deepMergeSessionAuth(options.sessionAuth, envConfig?.sessionAuth as Partial<SessionAuthConfig> | undefined)
+                    ? deepMergeSessionAuth(options.sessionAuth, envConfig?.sessionAuth)
                     : undefined;
 
                 // Wrap strategy if sessionAuth is configured
