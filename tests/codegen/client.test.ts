@@ -16,7 +16,7 @@ describe("generateClient — unit tests", () => {
     const paths: Record<string, Record<string, OpenApiOperation>> = {};
     const output = generateClient(paths);
     expect(output).toContain(
-      "export type HeadersProvider = () => Record<string, string>;",
+      "export type HeadersProvider = (method: string) => Record<string, string>;",
     );
   });
 
