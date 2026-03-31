@@ -43,19 +43,53 @@ db.run(`INSERT INTO pets (name, species, age, status) VALUES ('Luna', 'cat', 1, 
 const VALID_USER = "admin";
 const VALID_PASS = "password";
 
-function checkAuth(req: Request): Response | null {
+// Session store: token → { user, xsrfToken, expiresAt }
+const sessions = new Map<string, { user: string; xsrfToken: string; expiresAt: number }>();
+
+function generateToken(): string {
+  return crypto.randomUUID().replace(/-/g, "");
+}
+
+function checkBasicAuth(req: Request): string | null {
   const auth = req.headers.get("Authorization");
-  if (!auth || !auth.startsWith("Basic ")) {
-    return Response.json({ error: "Unauthorized" }, {
-      status: 401,
-      headers: { "WWW-Authenticate": 'Basic realm="Petstore API"' },
-    });
-  }
+  if (!auth || !auth.startsWith("Basic ")) return null;
   const decoded = atob(auth.slice(6));
   const [user, pass] = decoded.split(":");
-  if (user !== VALID_USER || pass !== VALID_PASS) {
-    return Response.json({ error: "Invalid credentials" }, { status: 401 });
+  if (user !== VALID_USER || pass !== VALID_PASS) return null;
+  return user;
+}
+
+function checkSessionAuth(req: Request): Response | null {
+  const method = req.method;
+
+  // Parse cookies
+  const cookieHeader = req.headers.get("Cookie") ?? "";
+  const cookies: Record<string, string> = {};
+  for (const part of cookieHeader.split(";")) {
+    const eqIdx = part.indexOf("=");
+    if (eqIdx < 0) continue;
+    cookies[part.slice(0, eqIdx).trim()] = part.slice(eqIdx + 1).trim();
   }
+
+  const sessionToken = cookies["SESSION"];
+  if (!sessionToken) {
+    return Response.json({ error: "Unauthorized — missing SESSION cookie" }, { status: 401 });
+  }
+
+  const session = sessions.get(sessionToken);
+  if (!session || Date.now() > session.expiresAt) {
+    if (session) sessions.delete(sessionToken);
+    return Response.json({ error: "Unauthorized — session expired" }, { status: 401 });
+  }
+
+  // Mutating requests require XSRF token
+  if (["POST", "PUT", "DELETE"].includes(method)) {
+    const xsrf = req.headers.get("X-XSRF-TOKEN");
+    if (xsrf !== session.xsrfToken) {
+      return Response.json({ error: "Forbidden — invalid or missing XSRF token" }, { status: 403 });
+    }
+  }
+
   return null; // auth OK
 }
 
@@ -101,8 +135,34 @@ async function handleRequest(req: Request): Promise<Response> {
     return json(openapiSpec);
   }
 
-  // All other routes require auth
-  const authError = checkAuth(req);
+  // Session endpoint — Basic Auth required, returns session + XSRF cookies
+  if (method === "GET" && path === "/session") {
+    const user = checkBasicAuth(req);
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, {
+        status: 401,
+        headers: { "WWW-Authenticate": 'Basic realm="Petstore API"' },
+      });
+    }
+
+    const sessionToken = generateToken();
+    const xsrfToken = generateToken();
+    const expiresAt = Date.now() + 30 * 60 * 1000; // 30 minutes
+
+    sessions.set(sessionToken, { user, xsrfToken, expiresAt });
+
+    return new Response(JSON.stringify({ message: "Session created" }), {
+      status: 200,
+      headers: [
+        ["Content-Type", "application/json"],
+        ["Set-Cookie", `SESSION=${sessionToken}; Path=/; HttpOnly`],
+        ["Set-Cookie", `XSRF-TOKEN=${xsrfToken}; Path=/`],
+      ] as [string, string][],
+    });
+  }
+
+  // All other routes require session auth
+  const authError = checkSessionAuth(req);
   if (authError) return authError;
 
   // ── Pets ────────────────────────────────────────────────────────────────
@@ -134,12 +194,13 @@ async function handleRequest(req: Request): Promise<Response> {
     if (!body.species || typeof body.species !== "string") {
       return json({ error: "species is required" }, 400);
     }
-    if (body.age === undefined || typeof body.age !== "number") {
+    const age = Number(body.age);
+    if (body.age === undefined || isNaN(age)) {
       return json({ error: "age is required" }, 400);
     }
     const result = db.query(
       "INSERT INTO pets (name, species, age) VALUES (?, ?, ?) RETURNING *"
-    ).get(body.name, body.species, body.age) as Record<string, unknown>;
+    ).get(body.name as string, body.species as string, age) as Record<string, unknown>;
     return json(formatPet(result), 201);
   }
 
