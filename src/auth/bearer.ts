@@ -8,7 +8,7 @@ export class BearerTokenStrategy implements AuthStrategy {
         return { headers: { Authorization: `Bearer ${token}` } };
     }
 
-    async restore(cached: AuthSession, config: ResolvedAuth): Promise<AuthSession | null> {
+    async restore(cached: AuthSession, _config: ResolvedAuth): Promise<AuthSession | null> {
         if (cached.expiresAt && Date.now() > cached.expiresAt) return null;
         return cached;
     }

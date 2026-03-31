@@ -2,7 +2,7 @@ name: Publish
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
 
 jobs:
   publish:
@@ -23,7 +23,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -47,6 +47,136 @@ jobs:
           git tag -a "v$VERSION" -m "v$VERSION"
           git push --tags
 
+      # Create GitHub release with commit summary
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..v$VERSION" | grep -v "chore(release)")
+          else
+            COMMITS=$(git log --pretty=format:"- %s" "v$VERSION" | grep -v "chore(release)")
+          fi
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --notes "$(printf '## What'\''s Changed\n\n%s\n\n**Full changelog**: https://github.com/${{ github.repository }}/compare/%s...v%s' "$COMMITS" "$PREV_TAG" "$VERSION")"
+
       # Publish to npm via trusted publishing (OIDC — no token needed)
       - name: Publish to npm
         run: npm publish
+
+  publish-next:
+    runs-on: ubuntu-latest
+    environment: release
+    if: github.ref == 'refs/heads/next'
+    concurrency:
+      group: publish-next
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: bun install
+
+      # Test + lint + build
+      - run: bun test
+      - run: bun run lint
+      - run: bun run build:plugin
+
+      # Compute pre-release version
+      - name: Compute next version
+        id: version
+        run: |
+          # Fetch main for comparison
+          git fetch origin main
+
+          # Read main's current version
+          MAIN_VERSION=$(git show origin/main:package.json | jq -r .version)
+          echo "Main version: $MAIN_VERSION"
+
+          # Determine bump level from commits ahead of main
+          COMMIT_TEXT=$(git log origin/main..HEAD --pretty=format:"%s%n%b")
+
+          if echo "$COMMIT_TEXT" | grep -q "BREAKING CHANGE"; then
+              BUMP_LEVEL="major"
+          elif echo "$COMMIT_TEXT" | grep -q "^feat"; then
+              BUMP_LEVEL="minor"
+          else
+              BUMP_LEVEL="patch"
+          fi
+          echo "Bump level: $BUMP_LEVEL"
+
+          # Apply bump to main's version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$MAIN_VERSION"
+          case "$BUMP_LEVEL" in
+              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          BASE_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "Base version: $BASE_VERSION"
+
+          # Query npm for current @next version
+          NPM_NEXT=$(npm view @apijack/core@next version 2>/dev/null || echo "")
+          echo "Current npm @next: $NPM_NEXT"
+
+          # Determine counter
+          if [ -n "$NPM_NEXT" ]; then
+              # Extract base from npm version (e.g., "1.5.0-next.2" -> "1.5.0")
+              NPM_BASE=$(echo "$NPM_NEXT" | sed 's/-next\..*//')
+              if [ "$NPM_BASE" = "$BASE_VERSION" ]; then
+                  # Same base — increment counter
+                  NPM_COUNTER=$(echo "$NPM_NEXT" | grep -oE 'next\.[0-9]+' | grep -oE '[0-9]+')
+                  COUNTER=$((NPM_COUNTER + 1))
+              else
+                  # Different base — reset
+                  COUNTER=0
+              fi
+          else
+              COUNTER=0
+          fi
+
+          NEXT_VERSION="$BASE_VERSION-next.$COUNTER"
+          echo "Publishing version: $NEXT_VERSION"
+          echo "version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+
+      # Set version (ephemeral — not committed)
+      - name: Set version
+        run: npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+
+      # Publish to npm with @next tag
+      - name: Publish to npm
+        run: npm publish --tag next
+
+      # Create GitHub pre-release
+      - name: Create GitHub pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          PREV_TAG=$(git tag --sort=-v:refname | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..HEAD" | grep -v "chore(release)")
+          else
+            COMMITS=$(git log --pretty=format:"- %s" | grep -v "chore(release)")
+          fi
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --prerelease \
+            --notes "$(printf '## What'\''s Changed\n\n%s\n\n**Full changelog**: https://github.com/${{ github.repository }}/compare/%s...v%s' "$COMMITS" "${PREV_TAG:-main}" "$VERSION")"

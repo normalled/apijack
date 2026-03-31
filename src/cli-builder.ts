@@ -6,7 +6,7 @@ import type {
     DispatcherHandler,
     CommandDispatcher,
 } from './types';
-import { resolveAuth, verifyCredentials, saveEnvironment } from './config';
+import { resolveAuth, verifyCredentials, saveEnvironment, getActiveEnvConfig } from './config';
 import { SessionManager } from './session';
 import { formatOutput, type OutputMode } from './output';
 import { formatDryRun, formatCurl, type CapturedRequest } from './output-request';
@@ -21,6 +21,9 @@ import { registerUpgradeCommand } from './commands/upgrade/upgrade';
 import { registerMcpCommand } from './commands/mcp/mcp';
 import { registerRoutineCommand, loadBuiltinRoutines } from './commands/routine/register';
 import { prompt, hiddenPrompt } from './prompt';
+import { SessionAuthStrategy } from './auth/session-auth';
+import { resolveRequestHeaders } from './auth/resolve-headers';
+import { deepMergeSessionAuth } from './auth/config-merge';
 
 export interface Cli {
     command(name: string, registrar: CommandRegistrar): void;
@@ -194,10 +197,21 @@ export function createCli(options: CliOptions): Cli {
             let ctx: CliContext | null = null;
 
             if (resolved) {
+                // Merge sessionAuth config: CLI author defaults + user env overrides
+                const envConfig = getActiveEnvConfig(cliName, configOpts);
+                const mergedSessionAuth = options.sessionAuth
+                    ? deepMergeSessionAuth(options.sessionAuth, envConfig?.sessionAuth)
+                    : undefined;
+
+                // Wrap strategy if sessionAuth is configured
+                const strategy = mergedSessionAuth
+                    ? new SessionAuthStrategy(options.auth, mergedSessionAuth)
+                    : options.auth;
+
                 try {
                     const sessionMgr = new SessionManager(cliName);
                     const session = await sessionMgr.resolve(
-                        options.auth,
+                        strategy,
                         resolved,
                     );
 
@@ -205,11 +219,11 @@ export function createCli(options: CliOptions): Cli {
                         client: null,
                         session,
                         auth: resolved,
-                        strategy: options.auth,
+                        strategy,
                         refreshSession: async () => {
                             sessionMgr.invalidate();
                             const newSession = await sessionMgr.resolve(
-                                options.auth,
+                                strategy,
                                 resolved!,
                             );
                             ctx!.session = newSession;
@@ -227,7 +241,9 @@ export function createCli(options: CliOptions): Cli {
                             );
                             const client = new ApiClient(
                                 resolved.baseUrl,
-                                () => ctx!.session.headers,
+                                (method: string) => resolveRequestHeaders(ctx!.session, mergedSessionAuth, method),
+                                mergedSessionAuth ? async () => { await ctx!.refreshSession(); } : undefined,
+                                mergedSessionAuth?.refreshOn,
                             );
                             ctx.client = client;
 
@@ -341,7 +357,7 @@ export function createCli(options: CliOptions): Cli {
             if (isRoutineStep) {
                 program.hook('preAction', (_thisCommand, actionCommand) => {
                     const cmdParts: string[] = [];
-                    let cmd: any = actionCommand;
+                    let cmd: Command = actionCommand;
                     while (cmd.parent && cmd.parent !== program) {
                         cmdParts.unshift(cmd.name());
                         cmd = cmd.parent;
@@ -365,7 +381,7 @@ export function createCli(options: CliOptions): Cli {
                     lines.push(`  command: ${commandPath}`);
 
                     // Get all options from the command definition
-                    const allOptions = (actionCommand as any).options || [];
+                    const allOptions = (actionCommand as Command & { options: unknown[] }).options || [];
                     const skipFlags = new Set([
                         '-o',
                         '-V',

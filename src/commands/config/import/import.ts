@@ -5,7 +5,7 @@ export interface ConfigImportDeps {
     password: string;
     cliName: string;
     verify: (url: string, user: string, password: string) => Promise<{ ok: boolean; reason?: string }>;
-    save: (...args: any[]) => Promise<void>;
+    save: (...args: unknown[]) => Promise<void>;
     saveOpts: Record<string, unknown>;
 }
 

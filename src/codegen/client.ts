@@ -30,7 +30,7 @@ export function generateClient(
     const methodLines: string[] = [];
 
     for (const [path, methods] of Object.entries(paths)) {
-        const pathLevelParams: NonNullable<OpenApiOperation['parameters']> = (methods as any).parameters || [];
+        const pathLevelParams: NonNullable<OpenApiOperation['parameters']> = (methods as Record<string, unknown>).parameters as NonNullable<OpenApiOperation['parameters']> || [];
 
         for (const method of HTTP_METHODS) {
             const op = methods[method] as OpenApiOperation | undefined;
@@ -169,11 +169,17 @@ export function generateClient(
         '  body?: unknown;',
         '}',
         '',
-        'export type HeadersProvider = () => Record<string, string>;',
+        'export type HeadersProvider = (method: string) => Record<string, string>;',
+        'export type RefreshCallback = () => Promise<void>;',
         '',
         'export class ApiClient {',
         '  dryRun = false;',
-        '  constructor(private baseUrl: string, private getHeaders: HeadersProvider) {}',
+        '  constructor(',
+        '    private baseUrl: string,',
+        '    private getHeaders: HeadersProvider,',
+        '    private onRefreshNeeded?: RefreshCallback,',
+        '    private refreshOn?: number[],',
+        '  ) {}',
         '',
         '  private async request(method: string, path: string, opts?: { params?: Record<string, unknown>; body?: unknown }): Promise<unknown> {',
         '    const url = new URL(path, this.baseUrl);',
@@ -183,7 +189,7 @@ export function generateClient(
         '      }',
         '    }',
         '    const headers: Record<string, string> = {',
-        '      ...this.getHeaders(),',
+        '      ...this.getHeaders(method),',
         '      "Content-Type": "application/json",',
         '    };',
         '    if (this.dryRun) {',
@@ -194,6 +200,25 @@ export function generateClient(
         '      headers,',
         '      body: opts?.body ? JSON.stringify(opts.body) : undefined,',
         '    });',
+        '    if (!res.ok && this.onRefreshNeeded && this.refreshOn?.includes(res.status)) {',
+        '      await this.onRefreshNeeded();',
+        '      const retryHeaders: Record<string, string> = {',
+        '        ...this.getHeaders(method),',
+        '        "Content-Type": "application/json",',
+        '      };',
+        '      const retryRes = await fetch(url.toString(), {',
+        '        method,',
+        '        headers: retryHeaders,',
+        '        body: opts?.body ? JSON.stringify(opts.body) : undefined,',
+        '      });',
+        '      if (!retryRes.ok) {',
+        '        const text = await retryRes.text();',
+        '        throw { status: retryRes.status, body: text };',
+        '      }',
+        '      const text = await retryRes.text();',
+        '      if (!text) return undefined;',
+        '      return JSON.parse(text);',
+        '    }',
         '    if (!res.ok) {',
         '      const text = await res.text();',
         '      throw { status: res.status, body: text };',

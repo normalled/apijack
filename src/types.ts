@@ -1,8 +1,8 @@
 import type { Command } from 'commander';
-import type { AuthStrategy, AuthSession, ResolvedAuth } from './auth/types';
+import type { AuthStrategy, AuthSession, ResolvedAuth, SessionAuthConfig } from './auth/types';
 
 export interface CliContext {
-    client: any;
+    client: unknown;
     session: AuthSession;
     auth: ResolvedAuth;
     strategy: AuthStrategy;
@@ -15,6 +15,7 @@ export interface CliOptions {
     version: string;
     specPath: string;
     auth: AuthStrategy;
+    sessionAuth?: SessionAuthConfig;
     outputModes?: string[];
     generatedDir?: string;
     knownSites?: Record<string, { url: string; description: string; group?: string }>;

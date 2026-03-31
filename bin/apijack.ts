@@ -4,7 +4,7 @@ import { resolve, join, dirname } from 'path';
 import { mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { createCli } from '../src/cli-builder';
-import type { AuthStrategy } from '../src/auth/types';
+import type { AuthStrategy, SessionAuthConfig } from '../src/auth/types';
 import { BasicAuthStrategy } from '../src/auth/basic';
 import { BearerTokenStrategy } from '../src/auth/bearer';
 import { ApiKeyStrategy } from '../src/auth/api-key';
@@ -80,19 +80,29 @@ if (!authResolved) {
     }
 }
 
-// 7. Create CLI
+// 7. Resolve sessionAuth from env config
+let sessionAuth: SessionAuthConfig | undefined;
+{
+    const env = getActiveEnvConfig(CLI_NAME, { configPath: join(configDir, 'config.json') });
+    if (env) {
+        sessionAuth = (env as Record<string, unknown>).sessionAuth as SessionAuthConfig | undefined;
+    }
+}
+
+// 8. Create CLI
 const cli = createCli({
     name: CLI_NAME,
     description: 'Jack into any OpenAPI spec and rip a full-featured CLI',
     version: VERSION,
     specPath,
     auth: authStrategy,
+    sessionAuth,
     generatedDir,
     allowedCidrs: projectConfig?.allowedCidrs,
     configPath: join(configDir, 'config.json'),
 });
 
-// 8. Register project-level extensions
+// 9. Register project-level extensions
 if (projectRoot) {
     const commands = await loadProjectCommands(join(projectRoot, '.apijack'));
     for (const cmd of commands) {
@@ -105,5 +115,5 @@ if (projectRoot) {
     }
 }
 
-// 9. Run
+// 10. Run
 await cli.run();

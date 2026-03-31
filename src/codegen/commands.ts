@@ -23,7 +23,7 @@ export function generateCommands(
     const groups = new Map<string, Map<string, CommandDef[]>>();
 
     for (const [path, methods] of Object.entries(paths)) {
-        const pathLevelParams: NonNullable<OpenApiOperation['parameters']> = (methods as any).parameters || [];
+        const pathLevelParams: NonNullable<OpenApiOperation['parameters']> = (methods as Record<string, unknown>).parameters as NonNullable<OpenApiOperation['parameters']> || [];
 
         for (const method of HTTP_METHODS) {
             const op = methods[method] as OpenApiOperation | undefined;
