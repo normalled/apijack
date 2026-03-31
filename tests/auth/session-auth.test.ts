@@ -123,6 +123,28 @@ describe("SessionAuthStrategy", () => {
     expect(fetchInit.method).toBe("GET");
   });
 
+  test("authenticate() handles cookie values containing '=' characters", async () => {
+    globalThis.fetch = mock(async () => new Response("{}", {
+      status: 200,
+      headers: [
+        ["Set-Cookie", "SESSION=dGVzdD10ZXN0==; Path=/; HttpOnly"],
+        ["Set-Cookie", "XSRF-TOKEN=abc=def=ghi; Path=/"],
+      ],
+    })) as typeof fetch;
+
+    const base = makeBaseStrategy();
+    const session = await new SessionAuthStrategy(base, sessionConfig).authenticate(resolvedAuth);
+    expect(session.cookies!.SESSION).toBe("dGVzdD10ZXN0==");
+    expect(session.cookies!["XSRF-TOKEN"]).toBe("abc=def=ghi");
+  });
+
+  test("authenticate() uses redirect: manual to preserve Set-Cookie headers", async () => {
+    const base = makeBaseStrategy();
+    await new SessionAuthStrategy(base, sessionConfig).authenticate(resolvedAuth);
+    const fetchInit = (fetchMock.mockFn as any).mock.calls[0][1] as RequestInit;
+    expect(fetchInit.redirect).toBe("manual");
+  });
+
   test("authenticate() throws when session endpoint returns error", async () => {
     globalThis.fetch = mock(async () => new Response("Unauthorized", { status: 401 })) as typeof fetch;
     const base = makeBaseStrategy();

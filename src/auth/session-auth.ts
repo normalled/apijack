@@ -4,7 +4,11 @@ export class SessionAuthStrategy implements AuthStrategy {
     constructor(
         private base: AuthStrategy,
         private config: SessionAuthConfig,
-    ) {}
+    ) {
+        if (config.cookies.extract.length === 0) {
+            console.warn('SessionAuthStrategy: cookies.extract is empty — no cookies will be captured');
+        }
+    }
 
     async authenticate(config: ResolvedAuth): Promise<AuthSession> {
         const baseSession = await this.base.authenticate(config);
@@ -15,6 +19,7 @@ export class SessionAuthStrategy implements AuthStrategy {
         const res = await fetch(url, {
             method,
             headers: baseSession.headers,
+            redirect: 'manual',
         });
 
         if (!res.ok) {
