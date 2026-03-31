@@ -209,7 +209,7 @@ export function createCli(options: CliOptions): Cli {
                     : options.auth;
 
                 try {
-                    const sessionMgr = new SessionManager(cliName);
+                    const sessionMgr = new SessionManager(cliName, join(configDir, 'session.json'));
                     const session = await sessionMgr.resolve(
                         strategy,
                         resolved,

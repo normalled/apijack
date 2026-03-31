@@ -210,6 +210,21 @@ describe("SessionManager", () => {
     expect(saved.data.role).toBe("admin");
   });
 
+  test("default session path uses ~/.cliName/session.json", () => {
+    const { homedir } = require("os");
+    const defaultMgr = new SessionManager("myapp");
+    // Access the private sessionPath via any cast
+    const path = (defaultMgr as any).sessionPath;
+    expect(path).toBe(join(homedir(), ".myapp", "session.json"));
+  });
+
+  test("sessionPathOverride takes precedence over default", () => {
+    const customPath = join(tmpDir, "custom", "session.json");
+    const customMgr = new SessionManager("myapp", customPath);
+    const path = (customMgr as any).sessionPath;
+    expect(path).toBe(customPath);
+  });
+
   test("resolve() handles cached session with no expiresAt as valid", async () => {
     let restoreCalled = false;
 
