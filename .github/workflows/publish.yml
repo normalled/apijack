@@ -53,7 +53,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v -- '-' | sed -n '2p')
           if [ -n "$PREV_TAG" ]; then
             COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..v$VERSION" | grep -v "chore(release)" | grep -v "^- Merge" || true)
           else
@@ -170,7 +170,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          PREV_TAG=$(git tag --sort=-v:refname | head -1)
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v -- '-' | head -1)
           if [ -n "$PREV_TAG" ]; then
             COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..HEAD" | grep -v "chore(release)" | grep -v "^- Merge" || true)
           else
