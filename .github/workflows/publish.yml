@@ -47,6 +47,22 @@ jobs:
           git tag -a "v$VERSION" -m "v$VERSION"
           git push --tags
 
+      # Create GitHub release with commit summary
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..v$VERSION" | grep -v "chore(release)")
+          else
+            COMMITS=$(git log --pretty=format:"- %s" "v$VERSION" | grep -v "chore(release)")
+          fi
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --notes "$(printf '## What'\''s Changed\n\n%s\n\n**Full changelog**: https://github.com/${{ github.repository }}/compare/%s...v%s' "$COMMITS" "$PREV_TAG" "$VERSION")"
+
       # Publish to npm via trusted publishing (OIDC — no token needed)
       - name: Publish to npm
         run: npm publish
