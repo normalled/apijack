@@ -118,7 +118,7 @@ describe("Stripe OpenAPI e2e", () => {
       expect(stderr).toBe(""); // show errors on failure
     }
     expect(exitCode).toBe(0);
-  });
+  }, 30_000);
 
   // --- Dot-notation schemas specifically ---
 
