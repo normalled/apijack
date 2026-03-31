@@ -95,6 +95,7 @@ describe("Stripe OpenAPI e2e", () => {
 
   it("types.ts compiles without errors", async () => {
     if (skipIfOffline()) return;
+    if (process.platform === "win32") { console.log("    ⏭ skipped (too slow on Windows CI)"); return; }
     const tsconfig = JSON.stringify({
       compilerOptions: {
         strict: true,
