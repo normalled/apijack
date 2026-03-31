@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import type { AuthStrategy, AuthSession, ResolvedAuth, SessionAuthConfig } from './auth/types';
 
 export interface CliContext {
-    client: any;
+    client: unknown;
     session: AuthSession;
     auth: ResolvedAuth;
     strategy: AuthStrategy;

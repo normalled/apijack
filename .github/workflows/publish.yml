@@ -23,7 +23,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -87,7 +87,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -163,3 +163,20 @@ jobs:
       # Publish to npm with @next tag
       - name: Publish to npm
         run: npm publish --tag next
+
+      # Create GitHub pre-release
+      - name: Create GitHub pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          PREV_TAG=$(git tag --sort=-v:refname | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..HEAD" | grep -v "chore(release)")
+          else
+            COMMITS=$(git log --pretty=format:"- %s" | grep -v "chore(release)")
+          fi
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --prerelease \
+            --notes "$(printf '## What'\''s Changed\n\n%s\n\n**Full changelog**: https://github.com/${{ github.repository }}/compare/%s...v%s' "$COMMITS" "${PREV_TAG:-main}" "$VERSION")"

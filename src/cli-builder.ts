@@ -357,7 +357,7 @@ export function createCli(options: CliOptions): Cli {
             if (isRoutineStep) {
                 program.hook('preAction', (_thisCommand, actionCommand) => {
                     const cmdParts: string[] = [];
-                    let cmd: any = actionCommand;
+                    let cmd: Command = actionCommand;
                     while (cmd.parent && cmd.parent !== program) {
                         cmdParts.unshift(cmd.name());
                         cmd = cmd.parent;
@@ -381,7 +381,7 @@ export function createCli(options: CliOptions): Cli {
                     lines.push(`  command: ${commandPath}`);
 
                     // Get all options from the command definition
-                    const allOptions = (actionCommand as any).options || [];
+                    const allOptions = (actionCommand as Command & { options: unknown[] }).options || [];
                     const skipFlags = new Set([
                         '-o',
                         '-V',

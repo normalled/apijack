@@ -3,11 +3,12 @@ import { generateTypes } from './types';
 import { generateClient } from './client';
 import { generateCommands } from './commands';
 import { generateCommandMap } from './command-map';
+import type { OpenApiOperation, OpenApiSchema } from './openapi-types';
 
 export interface GenerateOptions {
     spec: {
-        paths: Record<string, any>;
-        components?: { schemas?: Record<string, any> };
+        paths: Record<string, Record<string, OpenApiOperation>>;
+        components?: { schemas?: Record<string, OpenApiSchema> };
     };
     outDir: string;
 }
