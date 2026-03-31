@@ -1,6 +1,0 @@
-{
-  "name": "example-petstore-api",
-  "scripts": {
-    "start": "bun run server.ts"
-  }
-}
