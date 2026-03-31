@@ -95,30 +95,18 @@ describe("Stripe OpenAPI e2e", () => {
 
   it("types.ts compiles without errors", async () => {
     if (skipIfOffline()) return;
-    const tsconfig = JSON.stringify({
-      compilerOptions: {
-        strict: true,
-        noEmit: true,
-        target: "ES2022",
-        module: "ES2022",
-        moduleResolution: "bundler",
-        skipLibCheck: true,
-      },
-      include: ["types.ts"],
-    });
-    await Bun.write(join(outDir, "tsconfig.json"), tsconfig);
-    const proc = Bun.spawn(["bun", "x", "tsc", "--noEmit"], {
-      cwd: outDir,
+    const typesPath = join(outDir, "types.ts");
+    const proc = Bun.spawn(["bun", "build", "--no-bundle", typesPath], {
       stdout: "pipe",
       stderr: "pipe",
     });
     const exitCode = await proc.exited;
     if (exitCode !== 0) {
       const stderr = await new Response(proc.stderr).text();
-      expect(stderr).toBe(""); // show errors on failure
+      expect(stderr).toBe("");
     }
     expect(exitCode).toBe(0);
-  }, 30_000);
+  });
 
   // --- Dot-notation schemas specifically ---
 

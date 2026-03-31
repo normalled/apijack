@@ -5,7 +5,7 @@ description: Use when building apijack YAML routines — workflow automations th
 
 # Writing apijack Routines
 
-Routines are YAML workflows that chain CLI commands. They live in `~/.<cli>/routines/` (or `./routines/` in project mode).
+Routines are YAML workflows that chain CLI commands. They live in `~/.<cli>/routines/` (or `.apijack/routines/` in project mode).
 
 ## IMPORTANT: Always Prefer Routines
 
