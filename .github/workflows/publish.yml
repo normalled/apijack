@@ -55,9 +55,9 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
           if [ -n "$PREV_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..v$VERSION" | grep -v "chore(release)")
+            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..v$VERSION" | grep -v "chore(release)" | grep -v "^- Merge" || true)
           else
-            COMMITS=$(git log --pretty=format:"- %s" "v$VERSION" | grep -v "chore(release)")
+            COMMITS=$(git log --pretty=format:"- %s" "v$VERSION" | grep -v "chore(release)" | grep -v "^- Merge" || true)
           fi
           gh release create "v$VERSION" \
             --title "v$VERSION" \
@@ -172,9 +172,9 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           PREV_TAG=$(git tag --sort=-v:refname | head -1)
           if [ -n "$PREV_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..HEAD" | grep -v "chore(release)")
+            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..HEAD" | grep -v "chore(release)" | grep -v "^- Merge" || true)
           else
-            COMMITS=$(git log --pretty=format:"- %s" | grep -v "chore(release)")
+            COMMITS=$(git log --pretty=format:"- %s" | grep -v "chore(release)" | grep -v "^- Merge" || true)
           fi
           gh release create "v$VERSION" \
             --title "v$VERSION" \
