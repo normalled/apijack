@@ -16,11 +16,13 @@ export async function mcpAction(input: McpInput): Promise<void> {
             generatedDir: input.generatedDir,
             routinesDir: input.routinesDir,
         });
-    } catch (e: any) {
+    } catch (e: unknown) {
         if (
-            e?.code === 'MODULE_NOT_FOUND'
-            || e?.message?.includes('Cannot find module')
-            || e?.message?.includes('Failed to resolve')
+            e instanceof Error && (
+                (e as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND'
+                || e.message.includes('Cannot find module')
+                || e.message.includes('Failed to resolve')
+            )
         ) {
             throw new Error('MCP server requires @modelcontextprotocol/sdk');
         }

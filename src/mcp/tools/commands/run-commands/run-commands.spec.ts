@@ -18,7 +18,7 @@ describe('runCommandsTool', () => {
         const origSpawn = Bun.spawn;
 
         // @ts-expect-error - mocking Bun.spawn
-        Bun.spawn = (cmd: string[], _opts: any) => {
+        Bun.spawn = (cmd: string[], _opts: unknown) => {
             spawnCalls.push(cmd);
             return {
                 stdout: new ReadableStream({
@@ -64,7 +64,7 @@ describe('runCommandsTool', () => {
         const origSpawn = Bun.spawn;
 
         // @ts-expect-error - mocking Bun.spawn
-        Bun.spawn = (cmd: string[], _opts: any) => {
+        Bun.spawn = (cmd: string[], _opts: unknown) => {
             spawnCalls.push(cmd);
             return {
                 stdout: new ReadableStream({

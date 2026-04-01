@@ -152,7 +152,15 @@ export async function executeRoutine(
                     }
                 }
             } catch (err) {
-                const errMsg = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'status' in err) ? `HTTP ${(err as any).status}: ${(err as any).body}` : String(err);
+                let errMsg: string;
+                if (err instanceof Error) {
+                    errMsg = err.message;
+                } else if (typeof err === 'object' && err !== null && 'status' in err) {
+                    const { status, body } = err as Record<string, unknown>;
+                    errMsg = `HTTP ${status}: ${body}`;
+                } else {
+                    errMsg = String(err);
+                }
                 const stepResult: StepResult = { name: step.name, success: false, output: null, error: errMsg };
                 parentCtx.stepOutputs.set(step.name, stepResult);
                 if (step.output) parentCtx.stepOutputs.set(step.output, stepResult);
