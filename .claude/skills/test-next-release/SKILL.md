@@ -30,7 +30,7 @@ Report the installed version before continuing.
 
 ```bash
 rm -rf /tmp/apijack-petstore-test
-git clone https://github.com/Premo-Cloud/apijack-petstore-example.git /tmp/apijack-petstore-test
+git clone https://github.com/normalled/apijack-petstore-example.git /tmp/apijack-petstore-test
 cd /tmp/apijack-petstore-test && bun run start &
 ```
 

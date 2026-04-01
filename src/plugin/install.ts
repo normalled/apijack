@@ -66,7 +66,7 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
             description: 'Jack into any OpenAPI spec — full CLI with AI-agentic workflow automation',
             version,
             author: { name: 'apijack' },
-            repository: 'https://github.com/Premo-Cloud/apijack',
+            repository: 'https://github.com/normalled/apijack',
             license: 'MIT',
             keywords: ['openapi', 'cli', 'mcp', 'api', 'routines'],
         }, null, 2) + '\n',
