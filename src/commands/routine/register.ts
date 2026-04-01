@@ -221,7 +221,7 @@ export function registerRoutineCommand(
                     exists: existsSync,
                     mkdir: mkdirSync,
                     copy: cpSync,
-                    listDir: readdirSync as any,
+                    listDir: (path: string) => readdirSync(path) as string[],
                 });
                 console.log(`Installed ${result.installed} routines to ${result.routinesDir}`);
             } catch (err) {

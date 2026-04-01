@@ -1,8 +1,10 @@
+import type { CliConfig, EnvironmentConfig } from '../../../config';
+
 export interface ConfigUpdatePasswordDeps {
     envName?: string;
     password: string;
-    loadConfig: (cliName: string) => Promise<{ active: string; environments: Record<string, { url: string; user: string; password: string }> } | null>;
-    save: (...args: any[]) => Promise<void>;
+    loadConfig: (cliName: string) => Promise<CliConfig | null>;
+    save: (cliName: string, name: string, env: EnvironmentConfig, setActive?: boolean, opts?: Record<string, unknown>) => Promise<void>;
     cliName: string;
     saveOpts: Record<string, unknown>;
 }

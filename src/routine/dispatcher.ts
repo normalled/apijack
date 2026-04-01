@@ -4,7 +4,7 @@ import { executeRoutine } from './executor';
 
 export interface DispatcherConfig {
     commandMap?: Record<string, { operationId: string; pathParams: string[]; queryParams: string[]; hasBody: boolean }>;
-    client?: any;
+    client?: Record<string, unknown>;
     consumerHandlers?: Map<string, DispatcherHandler>;
     preDispatch?: (command: string, args: Record<string, unknown>, ctx: CliContext) => Promise<void>;
     ctx: CliContext;
@@ -37,7 +37,7 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
         if (config.commandMap && config.commandMap[command]) {
             const mapping = config.commandMap[command]!;
             const methodName = mapping.operationId;
-            const method = config.client?.[methodName];
+            const method = config.client?.[methodName] as ((...args: unknown[]) => Promise<unknown>) | undefined;
 
             if (!method) throw new Error(`Client method "${methodName}" not found`);
 
@@ -86,7 +86,7 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
                 if (Object.keys(queryObj).length > 0) callArgs.push(queryObj);
             }
 
-            return await method.call(config.client, ...callArgs);
+            return await method.call(config.client as Record<string, unknown>, ...callArgs);
         }
 
         // 3. Consumer-registered dispatchers

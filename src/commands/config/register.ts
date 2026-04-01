@@ -140,7 +140,7 @@ export function registerConfigCommand(
             .option('--password <password>', 'New password')
             .action(async (name: string | undefined, cmdOpts: { password?: string }) => {
                 // Validate environment exists before prompting for password
-                const cfg = await loadConfig(cliName, configOpts) as any;
+                const cfg = await loadConfig(cliName, configOpts);
 
                 if (!cfg || Object.keys(cfg.environments).length === 0) {
                     console.error(`No environments configured. Run '${cliName} config import' first.`);
