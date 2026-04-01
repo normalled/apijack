@@ -18,8 +18,9 @@ describe('generate tool', () => {
         const origSpawn = Bun.spawn;
 
         // @ts-expect-error - mocking Bun.spawn
-        Bun.spawn = (cmd: string[], _opts: any) => {
+        Bun.spawn = (cmd: string[], _opts: unknown) => {
             spawnCalls.push(cmd);
+
             return {
                 stdout: new ReadableStream({
                     start(c) {
@@ -50,7 +51,7 @@ describe('generate tool', () => {
         const origSpawn = Bun.spawn;
 
         // @ts-expect-error - mocking Bun.spawn
-        Bun.spawn = (_cmd: string[], _opts: any) => {
+        Bun.spawn = (_cmd: string[], _opts: unknown) => {
             return {
                 stdout: new ReadableStream({
                     start(c) {

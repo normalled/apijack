@@ -19,6 +19,7 @@ export const runCommandsTool = defineTool({
         const results: string[] = [];
         let failures = 0;
         let ran = 0;
+
         for (let i = 0; i < params.commands.length; i++) {
             ran++;
             const cmd = params.commands[i];
@@ -31,9 +32,11 @@ export const runCommandsTool = defineTool({
                 ...cmdParts,
                 ...flagArgs,
             ], ctx.projectRoot ?? undefined);
+
             if (exitCode !== 0) {
                 failures++;
                 results.push(`[${i + 1}/${params.commands.length}] FAIL: ${cmd.command}\n${stderr || stdout}`);
+
                 if (params.stop_on_error) {
                     results.push(`Stopped after ${ran}/${params.commands.length} commands.`);
                     break;
@@ -42,7 +45,9 @@ export const runCommandsTool = defineTool({
                 results.push(`[${i + 1}/${params.commands.length}] OK: ${cmd.command}${stdout ? '\n' + stdout.trim() : ''}`);
             }
         }
+
         const summary = `Ran ${ran}/${params.commands.length} commands (${failures} failed)`;
+
         return textResult(
             summary + '\n\n' + results.join('\n\n'),
             failures > 0,

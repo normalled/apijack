@@ -16,11 +16,15 @@ export function findProjectConfig(startDir: string): string | null {
 
     while (dir !== root) {
         const candidate = join(dir, '.apijack.json');
+
         if (existsSync(candidate)) {
             return candidate;
         }
+
         const parent = dirname(dir);
+
         if (parent === dir) break;
+
         dir = parent;
     }
 
@@ -30,6 +34,7 @@ export function findProjectConfig(startDir: string): string | null {
 export function loadProjectConfig(configPath: string): ProjectConfig | null {
     try {
         const raw = readFileSync(configPath, 'utf-8');
+
         return JSON.parse(raw) as ProjectConfig;
     } catch {
         return null;
@@ -40,5 +45,6 @@ export function resolveConfigDir(projectConfigPath: string | null): string {
     if (projectConfigPath) {
         return join(dirname(projectConfigPath), '.apijack');
     }
+
     return join(homedir(), '.apijack');
 }

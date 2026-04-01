@@ -13,9 +13,11 @@ export interface UpgradeResult {
 
 export async function upgradeAction(input: UpgradeInput): Promise<UpgradeResult | null> {
     const latest = await input.checkLatest();
+
     if (latest === input.currentVersion) return null;
 
     const exitCode = await input.install(latest);
+
     if (exitCode !== 0) throw new Error('Upgrade failed.');
 
     return { previousVersion: input.currentVersion, newVersion: latest };
@@ -23,8 +25,11 @@ export async function upgradeAction(input: UpgradeInput): Promise<UpgradeResult 
 
 async function checkNpmLatest(): Promise<string> {
     const res = await fetch('https://registry.npmjs.org/@apijack/core/latest');
+
     if (!res.ok) throw new Error('Failed to check for updates.');
+
     const data = await res.json() as { version: string };
+
     return data.version;
 }
 
@@ -33,6 +38,7 @@ async function bunInstallGlobal(version: string): Promise<number> {
         stdout: 'inherit',
         stderr: 'inherit',
     });
+
     return proc.exited;
 }
 
@@ -50,6 +56,7 @@ export function registerUpgradeCommand(program: Command, version: string): void 
 
                 if (!result) {
                     console.log(`Already on the latest version (v${version}).`);
+
                     return;
                 }
 

@@ -21,7 +21,7 @@ describe('setup tool', () => {
 
         const origSpawn = Bun.spawn;
         // @ts-expect-error - mocking Bun.spawn
-        Bun.spawn = (_cmd: string[], _opts: any) => {
+        Bun.spawn = (_cmd: string[], _opts: unknown) => {
             return {
                 stdout: new ReadableStream({
                     start(c) {
@@ -83,7 +83,7 @@ describe('setup tool', () => {
 
         const origSpawn = Bun.spawn;
         // @ts-expect-error - mocking Bun.spawn
-        Bun.spawn = (_cmd: string[], _opts: any) => {
+        Bun.spawn = (_cmd: string[], _opts: unknown) => {
             return {
                 stdout: new ReadableStream({
                     start(c) {

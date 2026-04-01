@@ -16,6 +16,7 @@ export const getRoutineTemplatesTool = defineTool({
     },
     handler: async (params, ctx) => {
         const templates: string[] = [];
+
         for (const cmd of params.commands) {
             const cmdParts = cmd.command.split(/\s+/);
             const flagArgs = Object.entries(cmd.args || {}).flatMap(([k, v]) => [
@@ -27,12 +28,14 @@ export const getRoutineTemplatesTool = defineTool({
                 ...flagArgs,
                 '-o', 'routine-step',
             ], ctx.projectRoot ?? undefined);
+
             if (exitCode !== 0) {
                 templates.push(`# Error getting template for: ${cmd.command}\n# ${(stderr || stdout).trim()}`);
             } else {
                 templates.push(stdout.trim());
             }
         }
+
         return textResult(templates.join('\n\n'));
     },
 });

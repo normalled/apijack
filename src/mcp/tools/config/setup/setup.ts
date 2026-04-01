@@ -21,6 +21,7 @@ export const setupTool = defineTool({
     },
     handler: async (params, ctx) => {
         const classification = classifyUrl(params.url, ctx.allowedCidrs);
+
         if (!classification.safe) {
             let hostname: string;
             try {
@@ -28,6 +29,7 @@ export const setupTool = defineTool({
             } catch {
                 hostname = params.url;
             }
+
             return textResult(
                 `Production API detected (${hostname}).\n`
                 + 'The MCP setup tool cannot store credentials for production APIs.\n\n'
@@ -43,13 +45,16 @@ export const setupTool = defineTool({
         // Bootstrap project config if in a project directory without .apijack.json
         if (ctx.projectRoot) {
             const apijackJsonPath = join(ctx.projectRoot, '.apijack.json');
+
             if (!existsSync(apijackJsonPath)) {
                 const hasPackageJson = existsSync(join(ctx.projectRoot, 'package.json'));
                 const hasGit = existsSync(join(ctx.projectRoot, '.git'));
+
                 if (hasPackageJson || hasGit) {
                     let specUrl = '/v3/api-docs';
                     try {
                         specUrl = new URL(params.url).pathname || '/v3/api-docs';
+
                         if (specUrl === '/') specUrl = '/v3/api-docs';
                     } catch {}
                     writeFileSync(apijackJsonPath, JSON.stringify({
@@ -75,7 +80,9 @@ export const setupTool = defineTool({
             const configOpts: { configPath?: string; allowedCidrs?: string[] } = {
                 allowedCidrs: ctx.allowedCidrs,
             };
+
             if (ctx.configPath) configOpts.configPath = ctx.configPath;
+
             await saveEnvironment(ctx.cliName, params.name, {
                 url: params.url,
                 user: params.user,
@@ -93,6 +100,7 @@ export const setupTool = defineTool({
             const { stdout: genOut, stderr: genErr, exitCode: genCode } = await runCli(
                 ctx.cliInvocation, ['generate'], ctx.projectRoot ?? undefined,
             );
+
             if (genCode !== 0) {
                 return textResult(
                     `Environment "${params.name}" configured (${params.url})\n`
@@ -100,6 +108,7 @@ export const setupTool = defineTool({
                     true,
                 );
             }
+
             return textResult(
                 `Environment "${params.name}" configured (${params.url})\n${genOut.trim()}`,
             );

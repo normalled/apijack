@@ -15,7 +15,9 @@ export function loadPluginConfig(dataDir?: string): PluginConfig | null {
     const configPath = join(dir, 'plugin.json');
     try {
         if (!existsSync(configPath)) return null;
+
         const raw = readFileSync(configPath, 'utf-8');
+
         return JSON.parse(raw) as PluginConfig;
     } catch {
         return null;
@@ -25,6 +27,7 @@ export function loadPluginConfig(dataDir?: string): PluginConfig | null {
 // Entry point — only runs when executed directly
 if (import.meta.main) {
     const config = loadPluginConfig();
+
     if (!config) {
         console.error("apijack plugin not configured. Run your CLI's 'plugin install' command first.");
         console.error('Expected config at: ~/.apijack/plugin.json');
@@ -41,6 +44,7 @@ if (import.meta.main) {
 
     // Resolve generatedDir using same logic as CLI entry point
     let generatedDir: string;
+
     if (projectConfig?.generatedDir && projectConfigPath) {
         generatedDir = resolve(projectRoot, projectConfig.generatedDir);
     } else if (projectConfigPath) {

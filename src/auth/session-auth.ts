@@ -43,6 +43,7 @@ export class SessionAuthStrategy implements AuthStrategy {
         }
 
         const baseRestored = await this.base.restore(cached, config);
+
         if (!baseRestored) return null;
 
         return {
@@ -65,9 +66,12 @@ export class SessionAuthStrategy implements AuthStrategy {
         for (const raw of setCookies) {
             const [nameValue] = raw.split(';');
             const eqIdx = nameValue.indexOf('=');
+
             if (eqIdx < 0) continue;
+
             const name = nameValue.slice(0, eqIdx).trim();
             const value = nameValue.slice(eqIdx + 1).trim();
+
             if (extractNames.has(name)) {
                 cookies[name] = value;
             }

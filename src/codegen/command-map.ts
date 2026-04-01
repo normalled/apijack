@@ -33,6 +33,7 @@ export function generateCommandMap(
 
         for (const method of HTTP_METHODS) {
             const op = methods[method] as OpenApiOperation | undefined;
+
             if (!op || !op.operationId) continue;
 
             const tag = op.tags?.[0] || 'default';
@@ -44,8 +45,10 @@ export function generateCommandMap(
             // Merge path-level params with operation params (op overrides by name+in)
             const opParams = op.parameters || [];
             const mergedParams: typeof opParams = [...pathLevelParams];
+
             for (const opParam of opParams) {
                 const idx = mergedParams.findIndex(p => p.name === opParam.name && p.in === opParam.in);
+
                 if (idx >= 0) mergedParams[idx] = opParam;
                 else mergedParams.push(opParam);
             }
@@ -84,9 +87,13 @@ export function generateCommandMap(
             }
 
             const rKey = resourceKey || '__root__';
+
             if (!groups.has(groupKey)) groups.set(groupKey, new Map());
+
             const group = groups.get(groupKey)!;
+
             if (!group.has(rKey)) group.set(rKey, []);
+
             group.get(rKey)!.push({
                 verb,
                 operationId: op.operationId,
@@ -110,6 +117,7 @@ export function generateCommandMap(
         for (const [resourceName, cmds] of resources) {
             // Same dedup logic as generateCommands
             const verbCounts = new Map<string, number>();
+
             for (const cmd of cmds) {
                 verbCounts.set(cmd.verb, (verbCounts.get(cmd.verb) || 0) + 1);
             }
@@ -117,6 +125,7 @@ export function generateCommandMap(
             for (const cmd of cmds) {
                 const count = verbCounts.get(cmd.verb) || 1;
                 let cmdName = cmd.verb;
+
                 if (count > 1) {
                     cmdName = cmd.operationId
                         .replace(/([A-Z])/g, '-$1')

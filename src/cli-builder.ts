@@ -48,9 +48,11 @@ function showCustomHelp(program: Command, cliName: string, showAll: boolean): vo
 
     // Options
     console.log('Options:');
+
     for (const opt of program.options) {
         console.log(`  ${opt.flags.padEnd(30)} ${opt.description}`);
     }
+
     console.log(`  ${'-h, --help'.padEnd(30)} display help for command`);
 
     // Core commands
@@ -61,6 +63,7 @@ function showCustomHelp(program: Command, cliName: string, showAll: boolean): vo
 
     if (core.length > 0) {
         console.log('\nCommands:');
+
         for (const cmd of core) {
             console.log(`  ${cmd.name().padEnd(30)} ${cmd.description()}`);
         }
@@ -68,6 +71,7 @@ function showCustomHelp(program: Command, cliName: string, showAll: boolean): vo
 
     if (showAll && api.length > 0) {
         console.log(`\nAPI Commands (${api.length}):`);
+
         for (const cmd of api) {
             console.log(`  ${cmd.name()}`);
         }
@@ -113,9 +117,11 @@ export function createCli(options: CliOptions): Cli {
             if (options.outputModes?.includes('table')) {
                 program.option('--table', 'Output as table');
             }
+
             if (options.outputModes?.includes('quiet')) {
                 program.option('--quiet', 'Suppress output');
             }
+
             program.option(
                 '-o <format>',
                 `Output format (${(options.outputModes || ['json', 'table', 'quiet']).join(', ')}, routine-step, curl, curl-with-creds)`,
@@ -159,6 +165,7 @@ export function createCli(options: CliOptions): Cli {
             const isHelpOrVersion = cmd === '--help' || cmd === '-h'
                 || cmd === '--version' || cmd === '-V'
                 || process.argv.includes('--help') || process.argv.includes('-h');
+
             if (
                 !resolved
                 && process.stdin.isTTY
@@ -171,6 +178,7 @@ export function createCli(options: CliOptions): Cli {
                 const url = await prompt('URL [http://localhost:8080]: ', 'http://localhost:8080');
                 const user = await prompt('Username/Email: ');
                 const password = await hiddenPrompt('Password: ');
+
                 if (user && password) {
                     const result = await setupAction({
                         cliName, envName, url, user, password,
@@ -178,18 +186,21 @@ export function createCli(options: CliOptions): Cli {
                         save: saveEnvironment,
                         saveOpts: configOpts ?? {},
                     });
+
                     if (!result.verified) {
                         console.error(result.verifyReason);
                         console.error("Credentials saved anyway — they'll be used when the server is available.");
                     } else {
                         console.log('Credentials verified.');
                     }
+
                     console.log(`Saved environment '${envName}' to ~/.${cliName}/config.json`);
                     console.log(`Switched to '${envName}'\n`);
                 } else {
                     console.error('Setup cancelled.');
                     process.exit(2);
                 }
+
                 resolved = resolveAuth(cliName, configOpts);
             }
 
@@ -235,6 +246,7 @@ export function createCli(options: CliOptions): Cli {
                         const commandsModule = await import(
                             resolve(generatedDir, 'commands'),
                         );
+
                         if (commandsModule.registerGeneratedCommands) {
                             const { ApiClient } = await import(
                                 resolve(generatedDir, 'client'),
@@ -265,6 +277,7 @@ export function createCli(options: CliOptions): Cli {
                                 // Handle request preview modes
                                 if (isRequestPreview && result && typeof result === 'object' && 'method' in result && 'url' in result) {
                                     const captured = result as CapturedRequest;
+
                                     if (isCurl) {
                                         console.log(formatCurl(captured, { includeCreds: false }));
                                     } else if (isCurlWithCreds) {
@@ -272,6 +285,7 @@ export function createCli(options: CliOptions): Cli {
                                     } else {
                                         console.log(formatDryRun(captured));
                                     }
+
                                     return;
                                 }
 
@@ -281,6 +295,7 @@ export function createCli(options: CliOptions): Cli {
                                         ? 'quiet'
                                         : 'json';
                                 const output = formatOutput(result, mode);
+
                                 if (output) console.log(output);
                             };
 
@@ -333,6 +348,7 @@ export function createCli(options: CliOptions): Cli {
 
             // Only build dispatcher if we have a context
             let dispatch: CommandDispatcher | undefined;
+
             if (ctx) {
                 dispatch = buildDispatcher({
                     commandMap,
@@ -354,20 +370,24 @@ export function createCli(options: CliOptions): Cli {
             const isRoutineStep
                 = process.argv.includes('-o')
                     && process.argv[process.argv.indexOf('-o') + 1] === 'routine-step';
+
             if (isRoutineStep) {
                 program.hook('preAction', (_thisCommand, actionCommand) => {
                     const cmdParts: string[] = [];
                     let cmd: Command = actionCommand;
+
                     while (cmd.parent && cmd.parent !== program) {
                         cmdParts.unshift(cmd.name());
                         cmd = cmd.parent;
                     }
+
                     cmdParts.unshift(cmd.name());
                     const commandPath = cmdParts.join(' ');
 
                     // Get provided values
                     const opts = actionCommand.opts();
                     const providedArgs: Record<string, unknown> = {};
+
                     for (const [key, val] of Object.entries(opts)) {
                         if (val !== undefined && key !== 'output') {
                             providedArgs[`--${key}`] = val;
@@ -398,6 +418,7 @@ export function createCli(options: CliOptions): Cli {
                         // Provided args first (uncommented)
                         for (const [flag, val] of Object.entries(providedArgs)) {
                             if (skipFlags.has(flag)) continue;
+
                             lines.push(`    ${flag}: ${JSON.stringify(val)}`);
                             emitted.add(flag);
                         }
@@ -405,10 +426,13 @@ export function createCli(options: CliOptions): Cli {
                         // Remaining options as commented-out
                         for (const opt of allOptions) {
                             const flag = opt.long || opt.short;
+
                             if (!flag || skipFlags.has(flag) || emitted.has(flag))
                                 continue;
+
                             // Skip hidden (variant-specific) options unless -V
                             if (opt.hidden && !isVerbose) continue;
+
                             const desc = opt.description || '';
                             lines.push(
                                 `    # ${flag}: "" # optional — ${desc}`,
@@ -418,6 +442,7 @@ export function createCli(options: CliOptions): Cli {
 
                     if (positional.length > 0) {
                         lines.push('  args-positional:');
+
                         for (const p of positional)
                             lines.push(`    - ${JSON.stringify(p)}`);
                     }
@@ -429,6 +454,7 @@ export function createCli(options: CliOptions): Cli {
 
             // 12. Custom help — intercept no-args and --help
             const userArgs = process.argv.slice(2);
+
             if (
                 userArgs.length === 0
                 || (userArgs.length === 1

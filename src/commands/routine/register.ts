@@ -13,12 +13,14 @@ import { routineInitAction } from './init/init';
 
 export function loadBuiltinRoutines(builtinDir: string): Record<string, string> | undefined {
     if (!existsSync(builtinDir)) return undefined;
+
     const map: Record<string, string> = {};
 
     function collect(dir: string, prefix: string) {
         for (const entry of readdirSync(dir, { withFileTypes: true })) {
             const fullPath = resolve(dir, entry.name);
             const key = prefix ? `${prefix}/${entry.name}` : entry.name;
+
             if (entry.isDirectory()) {
                 collect(fullPath, key);
             } else if (
@@ -31,6 +33,7 @@ export function loadBuiltinRoutines(builtinDir: string): Record<string, string> 
     }
 
     collect(builtinDir, '');
+
     return Object.keys(map).length > 0 ? map : undefined;
 }
 
@@ -58,6 +61,7 @@ export function registerRoutineCommand(
                 listRoutines: () => listRoutines(routinesDir, builtinsMap),
                 path,
             });
+
             if (result.length === 0) {
                 if (path) {
                     console.log(`No routines found under '${path.replace(/\/+$/, '')}/'`);
@@ -65,8 +69,10 @@ export function registerRoutineCommand(
                     console.log(`No routines found in ~/.${cliName}/routines/`);
                     console.log(`Run '${cliName} routine init' to install built-in routines.`);
                 }
+
                 return;
             }
+
             console.log(
                 opts.tree
                     ? formatRoutineTree(result)
@@ -86,8 +92,10 @@ export function registerRoutineCommand(
             }
 
             const overrides: Record<string, unknown> = {};
+
             for (const s of opts.set || []) {
                 const eq = s.indexOf('=');
+
                 if (eq > 0) overrides[s.slice(0, eq)] = s.slice(eq + 1);
             }
 
@@ -122,6 +130,7 @@ export function registerRoutineCommand(
                 console.log(
                     `\nRoutine ${result.success ? '\x1b[32mcompleted\x1b[0m' : '\x1b[31mfailed\x1b[0m'}: ${result.stepsRun} run, ${result.stepsSkipped} skipped, ${result.stepsFailed} failed (${timeStr})`,
                 );
+
                 if (!result.success) process.exit(1);
             } catch (err) {
                 console.error(err instanceof Error ? err.message : String(err));
@@ -137,11 +146,15 @@ export function registerRoutineCommand(
                 loadRoutine: () => loadRoutineFile(name, routinesDir, builtinsMap),
                 validateRoutine,
             });
+
             if (!result.valid) {
                 console.error('Validation errors:');
+
                 for (const e of result.errors) console.error(`  - ${e}`);
+
                 process.exit(1);
             }
+
             console.log(`Routine "${result.name}" is valid.`);
         });
 
@@ -156,8 +169,10 @@ export function registerRoutineCommand(
             }
 
             const overrides: Record<string, unknown> = {};
+
             for (const s of opts.set || []) {
                 const eq = s.indexOf('=');
+
                 if (eq > 0) overrides[s.slice(0, eq)] = s.slice(eq + 1);
             }
 
@@ -182,6 +197,7 @@ export function registerRoutineCommand(
                 });
 
                 console.log('');
+
                 if (result.success) {
                     console.log(`\x1b[32mPASSED\x1b[0m: ${result.stepsRun} steps run, ${result.stepsSkipped} skipped`);
                 } else {
@@ -205,7 +221,7 @@ export function registerRoutineCommand(
                     exists: existsSync,
                     mkdir: mkdirSync,
                     copy: cpSync,
-                    listDir: readdirSync as any,
+                    listDir: (path: string) => readdirSync(path) as string[],
                 });
                 console.log(`Installed ${result.installed} routines to ${result.routinesDir}`);
             } catch (err) {

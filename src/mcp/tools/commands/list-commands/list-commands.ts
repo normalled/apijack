@@ -26,6 +26,7 @@ export const listCommandsTool = defineTool({
             > = mapModule.commandMap;
 
             let entries = Object.entries(commandMap);
+
             if (params.filter) {
                 const prefix = params.filter.toLowerCase();
                 entries = entries.filter(([path]) =>
@@ -43,12 +44,17 @@ export const listCommandsTool = defineTool({
 
             const lines = entries.map(([path, info]) => {
                 const parts = [path];
+
                 if (info.description) parts.push(`- ${info.description}`);
+
                 if (info.pathParams.length > 0)
                     parts.push(`[path: ${info.pathParams.join(', ')}]`);
+
                 if (info.queryParams.length > 0)
                     parts.push(`[query: ${info.queryParams.join(', ')}]`);
+
                 if (info.hasBody) parts.push('[has body]');
+
                 return parts.join('  ');
             });
 

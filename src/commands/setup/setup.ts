@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { saveEnvironment, verifyCredentials } from '../../config';
+import type { EnvironmentConfig } from '../../config';
 import { prompt, hiddenPrompt } from '../../prompt';
 
 export interface SetupInput {
@@ -9,7 +10,7 @@ export interface SetupInput {
     user: string;
     password: string;
     verify: (url: string, user: string, password: string) => Promise<{ ok: boolean; reason?: string }>;
-    save: (cliName: string, envName: string, creds: { url: string; user: string; password: string }, switchTo: boolean, opts: Record<string, unknown>) => Promise<void>;
+    save: (cliName: string, envName: string, creds: EnvironmentConfig, switchTo: boolean, opts: Record<string, unknown>) => Promise<void>;
     saveOpts?: Record<string, unknown>;
 }
 

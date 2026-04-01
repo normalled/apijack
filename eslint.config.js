@@ -20,10 +20,21 @@ export default tseslint.config(
   {
     rules: {
       // Single quotes, but allow backticks for interpolation/multiline and double quotes to avoid escaping
-      '@stylistic/quotes': ['error', 'single', { avoidEscape: true, allowTemplateLiterals: false }],
+      '@stylistic/quotes': ['error', 'single', { avoidEscape: true, allowTemplateLiterals: 'never' }],
 
       // Allow aligned trailing comments in type definitions
       '@stylistic/no-multi-spaces': ['error', { ignoreEOLComments: true }],
+
+      // Blank lines before/after control flow blocks
+      '@stylistic/padding-line-between-statements': ['error',
+        { blankLine: 'always', prev: '*', next: 'if' },
+        { blankLine: 'always', prev: 'if', next: '*' },
+        { blankLine: 'always', prev: '*', next: 'for' },
+        { blankLine: 'always', prev: 'for', next: '*' },
+        { blankLine: 'always', prev: '*', next: 'while' },
+        { blankLine: 'always', prev: 'while', next: '*' },
+        { blankLine: 'always', prev: '*', next: 'return' },
+      ],
 
       // TypeScript-specific stylistic rules
       '@stylistic/member-delimiter-style': ['error', {

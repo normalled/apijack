@@ -1,4 +1,4 @@
-import type { McpContext } from './types';
+import type { McpContext, ToolResult } from './types';
 
 import { listCommandsTool } from './tools/commands/list-commands/list-commands';
 import { describeCommandTool } from './tools/commands/describe-command/describe-command';
@@ -46,7 +46,7 @@ export async function startMcpServer(opts: McpContext): Promise<void> {
         server.registerTool(tool.name, {
             description: tool.description,
             inputSchema: tool.schema,
-        }, (params: Record<string, unknown>) => tool.handler(params as any, opts));
+        }, (params: Record<string, unknown>) => (tool.handler as (p: Record<string, unknown>, ctx: McpContext) => Promise<ToolResult>)(params, opts));
     }
 
     const transport = new StdioServerTransport();

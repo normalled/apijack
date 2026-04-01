@@ -15,12 +15,14 @@ export const configSwitchTool = defineTool({
             ['config', 'switch', params.name],
             ctx.projectRoot ?? undefined,
         );
+
         if (exitCode !== 0) {
             return textResult(
                 `Config switch failed (exit ${exitCode}):\n${stderr || stdout}`,
                 true,
             );
         }
+
         return textResult(stdout);
     },
 });

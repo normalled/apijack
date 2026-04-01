@@ -11,9 +11,11 @@ function shellQuote(s: string): string {
 
 function maskHeaders(headers: Record<string, string>): Record<string, string> {
     const masked: Record<string, string> = {};
+
     for (const [key, value] of Object.entries(headers)) {
         masked[key] = key.toLowerCase() === 'authorization' ? '****' : value;
     }
+
     return masked;
 }
 
@@ -23,6 +25,7 @@ export function formatDryRun(req: CapturedRequest): string {
 
     const masked = maskHeaders(req.headers);
     lines.push('Headers:');
+
     for (const [key, value] of Object.entries(masked)) {
         lines.push(`  ${key}: ${value}`);
     }
@@ -30,6 +33,7 @@ export function formatDryRun(req: CapturedRequest): string {
     if (req.body !== undefined) {
         lines.push('Body:');
         const json = JSON.stringify(req.body, null, 2);
+
         for (const line of json.split('\n')) {
             lines.push(`  ${line}`);
         }
@@ -52,6 +56,7 @@ export function formatCurl(
 
     for (const [key, value] of Object.entries(req.headers)) {
         if (key.toLowerCase() === 'authorization' && !opts.includeCreds) continue;
+
         parts.push(`  -H ${shellQuote(`${key}: ${value}`)}`);
     }
 

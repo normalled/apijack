@@ -10,6 +10,7 @@ export function deepMergeSessionAuth(
     override: Partial<SessionAuthConfig> | undefined,
 ): SessionAuthConfig {
     if (!override) return structuredClone(base);
+
     return deepMerge(structuredClone(base), override) as SessionAuthConfig;
 }
 
@@ -30,5 +31,6 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
             target[key] = srcVal;
         }
     }
+
     return target;
 }

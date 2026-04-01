@@ -20,6 +20,7 @@ describe('get_routine_templates tool', () => {
         // @ts-expect-error - mocking Bun.spawn
         Bun.spawn = (cmd: string[], _opts: unknown) => {
             spawnCalls.push(cmd);
+
             return {
                 stdout: new ReadableStream({
                     start(c: ReadableStreamDefaultController) {
@@ -109,6 +110,7 @@ describe('get_routine_templates tool', () => {
         Bun.spawn = (_cmd: string[], _opts: unknown) => {
             callCount++;
             const output = callCount === 1 ? '- name: first' : '- name: second';
+
             return {
                 stdout: new ReadableStream({
                     start(c: ReadableStreamDefaultController) {

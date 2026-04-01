@@ -17,6 +17,7 @@ export interface ConfigImportResult {
 
 export async function configImportAction(deps: ConfigImportDeps): Promise<ConfigImportResult> {
     const site = deps.knownSites[deps.alias];
+
     if (!site) throw new Error(`Unknown site '${deps.alias}'.`);
 
     const verifyResult = await deps.verify(site.url, deps.user, deps.password);

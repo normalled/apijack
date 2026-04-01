@@ -1,23 +1,27 @@
 import type { CommandDispatcher } from '../../../types';
+import type { RoutineDefinition, RoutineStep } from '../../../routine/types';
+import type { RoutineResult } from '../../../routine/executor';
 
 export interface RoutineTestDeps {
-    loadSpec: () => any | null;
-    validateRoutine: (def: any) => string[];
-    executeRoutine: (def: any, overrides: Record<string, unknown>, dispatch: CommandDispatcher, opts: any) => Promise<{ success: boolean; stepsRun: number; stepsSkipped: number; stepsFailed: number }>;
+    loadSpec: () => RoutineDefinition | null;
+    validateRoutine: (def: RoutineDefinition) => string[];
+    executeRoutine: (def: RoutineDefinition, overrides: Record<string, unknown>, dispatch: CommandDispatcher, opts: { onStep?: RoutineTestDeps['onStep']; onIteration?: RoutineTestDeps['onIteration'] }) => Promise<RoutineResult>;
     dispatch: CommandDispatcher;
     overrides: Record<string, unknown>;
     routineName?: string;
-    onStep?: (step: any, i: number, total: number) => void;
-    onIteration?: (step: any, current: number, total: number, stepIndex: number, stepTotal: number) => void;
+    onStep?: (step: RoutineStep, i: number, total: number) => void;
+    onIteration?: (step: RoutineStep, current: number, total: number, stepIndex: number, stepTotal: number) => void;
 }
 
 export async function routineTestAction(deps: RoutineTestDeps): Promise<{ success: boolean; stepsRun: number; stepsSkipped: number; stepsFailed: number }> {
     const spec = deps.loadSpec();
+
     if (!spec) {
         throw new Error(`No spec.yaml found for routine "${deps.routineName}".`);
     }
 
     const errors = deps.validateRoutine(spec);
+
     if (errors.length > 0) {
         throw new Error(`Spec validation errors:\n${errors.map(e => `  - ${e}`).join('\n')}`);
     }

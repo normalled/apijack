@@ -12,8 +12,11 @@ const REGISTRY_URL = 'https://registry.npmjs.org/@apijack/core/latest';
 
 export function shouldCheckForUpdate(dataDir: string): boolean {
     const data = loadUpdateCheck(dataDir);
+
     if (!data) return true;
+
     const elapsed = Date.now() - new Date(data.lastChecked).getTime();
+
     return elapsed > CHECK_INTERVAL_MS;
 }
 
@@ -21,6 +24,7 @@ export function loadUpdateCheck(dataDir: string): UpdateCheckData | null {
     const filePath = join(dataDir, 'update-check.json');
     try {
         if (!existsSync(filePath)) return null;
+
         return JSON.parse(readFileSync(filePath, 'utf-8')) as UpdateCheckData;
     } catch {
         return null;
@@ -40,18 +44,23 @@ export async function checkForUpdate(
     dataDir: string,
 ): Promise<void> {
     if (process.env.APIJACK_SKIP_UPDATE) return;
+
     if (!shouldCheckForUpdate(dataDir)) return;
+
     if (!process.stdin.isTTY) return;
 
     try {
         const res = await fetch(REGISTRY_URL);
+
         if (!res.ok) return;
+
         const data = await res.json() as { version: string };
         const latest = data.version;
 
         saveUpdateCheck(dataDir, latest);
 
         if (latest === currentVersion) return;
+
         if (!isNewer(latest, currentVersion)) return;
 
         const answer = await prompt(
@@ -66,6 +75,7 @@ export async function checkForUpdate(
                 stderr: 'inherit',
             });
             const exitCode = await proc.exited;
+
             if (exitCode === 0) {
                 // Update Claude Code plugin registration to new version
                 const pluginProc = Bun.spawn([...process.argv.slice(0, 2), 'plugin', 'install'], {
@@ -95,9 +105,12 @@ export async function checkForUpdate(
 function isNewer(latest: string, current: string): boolean {
     const l = latest.split('.').map(Number);
     const c = current.split('.').map(Number);
+
     for (let i = 0; i < 3; i++) {
         if ((l[i] ?? 0) > (c[i] ?? 0)) return true;
+
         if ((l[i] ?? 0) < (c[i] ?? 0)) return false;
     }
+
     return false;
 }
