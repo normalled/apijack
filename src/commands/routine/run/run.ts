@@ -1,15 +1,17 @@
 import type { CommandDispatcher } from '../../../types';
+import type { RoutineDefinition, RoutineStep } from '../../../routine/types';
+import type { RoutineResult } from '../../../routine/executor';
 
 export interface RoutineRunDeps {
-    loadRoutine: () => any;
-    validateRoutine: (def: any) => string[];
-    executeRoutine: (def: any, overrides: Record<string, unknown>, dispatch: CommandDispatcher, opts: any) => Promise<{ success: boolean; stepsRun: number; stepsSkipped: number; stepsFailed: number }>;
+    loadRoutine: () => RoutineDefinition;
+    validateRoutine: (def: RoutineDefinition) => string[];
+    executeRoutine: (def: RoutineDefinition, overrides: Record<string, unknown>, dispatch: CommandDispatcher, opts: { dryRun?: boolean; onStep?: RoutineRunDeps['onStep']; onIteration?: RoutineRunDeps['onIteration'] }) => Promise<RoutineResult>;
     dispatch: CommandDispatcher;
     overrides: Record<string, unknown>;
     dryRun?: boolean;
     invalidateSession: () => void;
-    onStep?: (step: any, i: number, total: number) => void;
-    onIteration?: (step: any, current: number, total: number, stepIndex: number, stepTotal: number) => void;
+    onStep?: (step: RoutineStep, i: number, total: number) => void;
+    onIteration?: (step: RoutineStep, current: number, total: number, stepIndex: number, stepTotal: number) => void;
 }
 
 export async function routineRunAction(deps: RoutineRunDeps): Promise<{ success: boolean; stepsRun: number; stepsSkipped: number; stepsFailed: number; name: string; description?: string }> {

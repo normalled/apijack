@@ -1,6 +1,8 @@
+import type { RoutineDefinition } from '../../../routine/types';
+
 export interface RoutineValidateDeps {
-    loadRoutine: () => { name: string; steps: unknown[] };
-    validateRoutine: (def: any) => string[];
+    loadRoutine: () => RoutineDefinition;
+    validateRoutine: (def: RoutineDefinition) => string[];
 }
 
 export interface RoutineValidateResult {
