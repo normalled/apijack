@@ -21,12 +21,14 @@ export const runRoutineTool = defineTool({
             params.name,
             ...setArgs,
         ], ctx.projectRoot ?? undefined);
+
         if (exitCode !== 0) {
             return textResult(
                 `Routine failed (exit ${exitCode}):\n${stderr || stdout}`,
                 true,
             );
         }
+
         return textResult(stdout);
     },
 });

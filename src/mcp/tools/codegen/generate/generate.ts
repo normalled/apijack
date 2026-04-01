@@ -12,12 +12,14 @@ export const generateTool = defineTool({
             ['generate'],
             ctx.projectRoot ?? undefined,
         );
+
         if (exitCode !== 0) {
             return textResult(
                 `Generate failed (exit ${exitCode}):\n${stderr || stdout}`,
                 true,
             );
         }
+
         return textResult(stdout);
     },
 });

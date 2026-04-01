@@ -15,6 +15,7 @@ export function resolveRequestHeaders(
     if (cookieApplies) {
         const cookieParts = Object.entries(session.cookies)
             .map(([name, value]) => `${name}=${value}`);
+
         if (cookieParts.length > 0) {
             headers['Cookie'] = cookieParts.join('; ');
         }
@@ -23,6 +24,7 @@ export function resolveRequestHeaders(
             const mirrorApplies = mirror.applyTo
                 ? methodMatches(upperMethod, mirror.applyTo)
                 : true;
+
             if (mirrorApplies && session.cookies[mirror.fromCookie]) {
                 headers[mirror.toHeader] = session.cookies[mirror.fromCookie];
             }
@@ -34,5 +36,6 @@ export function resolveRequestHeaders(
 
 function methodMatches(method: string, applyTo?: string[]): boolean {
     if (!applyTo) return true;
+
     return applyTo.some(m => m === '*' || m.toUpperCase() === method);
 }

@@ -5,8 +5,11 @@ import type { RoutineDefinition, RoutineStep } from './types';
 
 export function parseRoutine(content: string): RoutineDefinition {
     const doc = yaml.load(content) as Record<string, unknown>;
+
     if (!doc || typeof doc !== 'object') throw new Error('Invalid YAML');
+
     if (!doc.name || typeof doc.name !== 'string') throw new Error("Routine must have a 'name' field");
+
     if (!Array.isArray(doc.steps) || doc.steps.length === 0) throw new Error("Routine must have 'steps' array");
 
     return {
@@ -35,15 +38,18 @@ export function validateRoutine(routine: RoutineDefinition): string[] {
             if (names.has(step.name)) {
                 errors.push(`Duplicate step name: "${step.name}" at ${loc}`);
             }
+
             if (aliases.has(step.name)) {
                 errors.push(`Output alias collision: step name "${step.name}" collides with an output alias at ${loc}`);
             }
+
             names.add(step.name);
 
             if (step.output) {
                 if (names.has(step.output) || aliases.has(step.output)) {
                     errors.push(`Output alias collision: "${step.output}" at ${loc}`);
                 }
+
                 aliases.add(step.output);
             }
 
@@ -58,6 +64,7 @@ export function validateRoutine(routine: RoutineDefinition): string[] {
     }
 
     validateSteps(routine.steps, 'steps');
+
     return errors;
 }
 
@@ -67,10 +74,12 @@ function resolveBuiltin(nameOrPath: string, builtinsMap?: Record<string, string>
 
     // Folder-based: <name>/routine.yaml
     const folderKey = `${nameOrPath}/routine.yaml`;
+
     if (builtinsMap[folderKey]) return builtinsMap[folderKey];
 
     // Flat file: <name>.yaml
     if (builtinsMap[`${nameOrPath}.yaml`]) return builtinsMap[`${nameOrPath}.yaml`];
+
     if (builtinsMap[`${nameOrPath}.yml`]) return builtinsMap[`${nameOrPath}.yml`];
 
     return null;
@@ -83,17 +92,21 @@ function resolveRoutinePath(
 ): string | null {
     if (nameOrPath.endsWith('.yaml') || nameOrPath.endsWith('.yml')) {
         const p = resolve(nameOrPath);
+
         return existsSync(p) ? p : null;
     }
 
     // 1. User routines on disk take precedence
     const folderPath = resolve(routinesDir, nameOrPath, 'routine.yaml');
+
     if (existsSync(folderPath)) return folderPath;
 
     const flatPath = resolve(routinesDir, `${nameOrPath}.yaml`);
+
     if (existsSync(flatPath)) return flatPath;
 
     const flatYml = resolve(routinesDir, `${nameOrPath}.yml`);
+
     if (existsSync(flatYml)) return flatYml;
 
     // 2. Embedded builtins — return a sentinel so loadRoutineFile knows to use builtins
@@ -119,10 +132,12 @@ export function loadRoutineFile(
     if (filePath.startsWith('__builtin__:')) {
         const name = filePath.slice('__builtin__:'.length);
         const content = resolveBuiltin(name, builtinsMap)!;
+
         return parseRoutine(content);
     }
 
     const content = readFileSync(filePath, 'utf-8');
+
     return parseRoutine(content);
 }
 
@@ -133,14 +148,17 @@ export function loadSpecFile(
 ): RoutineDefinition | null {
     // Check user dir first
     const specPath = resolve(routinesDir, nameOrPath, 'spec.yaml');
+
     if (existsSync(specPath)) {
         const content = readFileSync(specPath, 'utf-8');
+
         return parseRoutine(content);
     }
 
     // Then check embedded builtins
     if (builtinsMap) {
         const builtinSpec = builtinsMap[`${nameOrPath}/spec.yaml`];
+
         if (builtinSpec) return parseRoutine(builtinSpec);
     }
 
@@ -149,9 +167,12 @@ export function loadSpecFile(
 
 function collectRoutines(dir: string, prefix: string = ''): string[] {
     if (!existsSync(dir)) return [];
+
     const results: string[] = [];
+
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const fullName = prefix ? `${prefix}/${entry.name}` : entry.name;
+
         if (entry.isDirectory()) {
             // Folder-based routine: has routine.yaml inside
             if (existsSync(resolve(dir, entry.name, 'routine.yaml'))) {
@@ -167,13 +188,16 @@ function collectRoutines(dir: string, prefix: string = ''): string[] {
             results.push(prefix ? `${prefix}/${name}` : name);
         }
     }
+
     return results;
 }
 
 /** Collect routine names from an optional builtins map. */
 function collectBuiltinRoutines(builtinsMap?: Record<string, string>): string[] {
     if (!builtinsMap) return [];
+
     const routines = new Set<string>();
+
     for (const key of Object.keys(builtinsMap)) {
     // Folder-based: "e2e/matter/create/routine.yaml" -> "e2e/matter/create"
         if (key.endsWith('/routine.yaml')) {
@@ -183,11 +207,13 @@ function collectBuiltinRoutines(builtinsMap?: Record<string, string>): string[] 
         } else if (key.endsWith('.yaml') || key.endsWith('.yml')) {
             // Flat file: "smoke-test.yaml" -> "smoke-test" (skip if already covered by folder)
             const name = key.replace(/\.ya?ml$/, '');
+
             if (!routines.has(name) && !builtinsMap[`${name}/routine.yaml`]) {
                 routines.add(name);
             }
         }
     }
+
     return [...routines];
 }
 
@@ -201,13 +227,16 @@ export function listRoutines(
     // Merge: user routines take precedence (by cleaned name)
     const seen = new Set(userRoutines.map(r => r.replace(/\x1b\[[0-9;]*m/g, '').trim()));
     const merged = [...userRoutines];
+
     for (const r of builtins) {
         const clean = r.replace(/\x1b\[[0-9;]*m/g, '').trim();
+
         if (!seen.has(clean)) {
             merged.push(r);
             seen.add(clean);
         }
     }
+
     return merged;
 }
 
@@ -216,10 +245,12 @@ export function listRoutinesStructured(
 ): Array<{ name: string }> {
     try {
         const raw = listRoutines(routinesDir);
+
         return raw.map((r) => {
             let clean = r.replace(/\x1b\[[0-9;]*m/g, '');
             clean = clean.replace(/\s*\(has spec\)\s*$/, '');
             clean = clean.trim();
+
             return { name: clean };
         });
     } catch {
@@ -239,6 +270,7 @@ export function formatRoutineList(routines: string[], _pathPrefix?: string): str
 
     for (const r of cleaned) {
         const slash = r.indexOf('/');
+
         if (slash === -1) {
             topLevel.push({ name: r });
         } else {
@@ -255,6 +287,7 @@ export function formatRoutineList(routines: string[], _pathPrefix?: string): str
     for (const [dir, count] of [...dirs.entries()].sort()) {
         lines.push(`  ${dir}/  ${dim}${count} routine${count === 1 ? '' : 's'}${reset}`);
     }
+
     // Then top-level routines
     for (const { name } of topLevel) {
         lines.push(`  ${name}`);
@@ -278,13 +311,17 @@ function buildTree(routines: string[]): TreeNode {
         const clean = r.replace(/\x1b\[[0-9;]*m/g, '').trim();
         const parts = clean.split('/');
         let node = root;
+
         for (let i = 0; i < parts.length; i++) {
             const part = parts[i]!;
+
             if (!node.children.has(part)) {
                 node.children.set(part, { name: part, children: new Map(), isRoutine: false });
             }
+
             node = node.children.get(part)!;
         }
+
         node.isRoutine = true;
     }
 
@@ -310,7 +347,9 @@ export function formatRoutineTree(routines: string[]): string {
         entries.sort((a, b) => {
             const aDir = a.children.size > 0 && !a.isRoutine ? 0 : 1;
             const bDir = b.children.size > 0 && !b.isRoutine ? 0 : 1;
+
             if (aDir !== bDir) return aDir - bDir;
+
             return a.name.localeCompare(b.name);
         });
 
@@ -323,5 +362,6 @@ export function formatRoutineTree(routines: string[]): string {
     }
 
     render(root, '', true, true);
+
     return lines.join('\n');
 }

@@ -22,13 +22,16 @@ export class SessionManager {
                 if (strategy.refresh) {
                     const refreshed = await strategy.refresh(cached, config);
                     this.save(refreshed);
+
                     return refreshed;
                 }
                 // Expired with no refresh — fall through to re-authenticate
             } else {
                 const restored = await strategy.restore(cached, config);
+
                 if (restored) {
                     this.save(restored);
+
                     return restored;
                 }
                 // restore() returned null — fall through to re-authenticate
@@ -37,6 +40,7 @@ export class SessionManager {
 
         const session = await strategy.authenticate(config);
         this.save(session);
+
         return session;
     }
 
@@ -51,6 +55,7 @@ export class SessionManager {
     private load(): AuthSession | null {
         try {
             if (!existsSync(this.sessionPath)) return null;
+
             return JSON.parse(readFileSync(this.sessionPath, 'utf-8'));
         } catch {
             return null;

@@ -37,6 +37,7 @@ describe('run_routine tool', () => {
         // @ts-expect-error - mocking Bun.spawn
         Bun.spawn = (cmd: string[], opts: unknown) => {
             spawnCalls.push(cmd);
+
             return mockSpawn('done')(cmd, opts);
         };
 
@@ -69,6 +70,7 @@ describe('run_routine tool', () => {
         // @ts-expect-error - mocking Bun.spawn
         Bun.spawn = (cmd: string[], opts: unknown) => {
             spawnCalls.push(cmd);
+
             return mockSpawn('')(cmd, opts);
         };
 

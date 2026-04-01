@@ -71,6 +71,7 @@ export function resolveAuth(
 
     const configPath = resolveConfigPath(cliName, opts);
     const env = loadActiveEnvSync(configPath);
+
     if (env) {
         return {
             baseUrl: env.url,
@@ -89,9 +90,12 @@ export function resolveAuth(
 function loadActiveEnvSync(path: string): EnvironmentConfig | null {
     try {
         if (!existsSync(path)) return null;
+
         const text = readFileSync(path, 'utf-8');
         const config = JSON.parse(text) as CliConfig;
+
         if (!config.active || !config.environments?.[config.active]) return null;
+
         return config.environments[config.active];
     } catch {
         return null;
@@ -107,6 +111,7 @@ export function getActiveEnvConfig(
     opts?: ConfigOpts,
 ): EnvironmentConfig | null {
     const configPath = resolveConfigPath(cliName, opts);
+
     return loadActiveEnvSync(configPath);
 }
 
@@ -120,8 +125,11 @@ export async function loadConfig(
     const configPath = resolveConfigPath(cliName, opts);
     try {
         const file = Bun.file(configPath);
+
         if (!(await file.exists())) return null;
+
         const raw = await file.json();
+
         return raw as CliConfig;
     } catch {
         return null;
@@ -148,6 +156,7 @@ export async function saveEnvironment(
 
     // Check URL safety before storing credentials
     const classification = classifyUrl(env.url, opts?.allowedCidrs);
+
     if (!classification.safe && !opts?.allowInsecureStorage) {
         let hostname: string;
         try {
@@ -171,6 +180,7 @@ export async function saveEnvironment(
     };
 
     config.environments[name] = env as EnvironmentConfig;
+
     if (setActive) config.active = name;
 
     const dir = dirname(configPath);
@@ -189,10 +199,12 @@ export async function switchEnvironment(
 ): Promise<boolean> {
     const configPath = resolveConfigPath(cliName, opts);
     const config = await loadConfig(cliName, opts);
+
     if (!config || !config.environments[name]) return false;
 
     config.active = name;
     await Bun.write(configPath, JSON.stringify(config, null, 2) + '\n');
+
     return true;
 }
 
@@ -204,6 +216,7 @@ export async function listEnvironments(
     opts?: ConfigOpts,
 ): Promise<{ name: string; url: string; user: string; active: boolean }[]> {
     const config = await loadConfig(cliName, opts);
+
     if (!config) return [];
 
     return Object.entries(config.environments).map(([name, env]) => ({
@@ -226,9 +239,11 @@ export async function updateEnvironmentField(
 ): Promise<void> {
     const configPath = resolveConfigPath(cliName, opts);
     const config = await loadConfig(cliName, opts);
+
     if (!config || !config.active) return;
 
     const env = config.environments[config.active];
+
     if (!env) return;
 
     (env as Record<string, unknown>)[fieldName] = value;
@@ -248,9 +263,11 @@ export async function verifyCredentials(
     };
     try {
         const res = await fetch(`${url}/v3/api-docs`, { headers, method: 'HEAD' });
+
         if (!res.ok) {
             return { ok: false, reason: `Authentication failed: ${res.status}` };
         }
+
         return { ok: true };
     } catch {
         return { ok: false, reason: `Could not reach ${url} — server may be down.` };

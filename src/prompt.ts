@@ -44,13 +44,16 @@ export function hiddenPrompt(message: string, defaultValue?: string): Promise<st
                 // Accumulate escape sequences
                 if (escBuf.length > 0 || c === '\x1b') {
                     escBuf += c;
+
                     // Check for bracketed paste start: \x1b[200~
                     if (escBuf === '\x1b[200~' || escBuf === '\x1b[201~') {
                         escBuf = '';
                         continue;
                     }
+
                     // Still accumulating — wait for more chars (max 6 for bracketed paste)
                     if (escBuf.length < 6 && escBuf.startsWith('\x1b')) continue;
+
                     // Not a recognized sequence — discard
                     escBuf = '';
                     continue;
@@ -60,6 +63,7 @@ export function hiddenPrompt(message: string, defaultValue?: string): Promise<st
                     cleanup();
                     process.stdout.write('\n');
                     resolve(input || defaultValue || '');
+
                     return;
                 } else if (c === '\x7f' || c === '\b') {
                     input = input.slice(0, -1);

@@ -16,13 +16,16 @@ export const describeCommandTool = defineTool({
             const mapModule = await import(mapPath);
             const commandMap = mapModule.commandMap as Record<string, Record<string, unknown>>;
             const info = commandMap[params.command];
+
             if (!info) {
                 const available = Object.keys(commandMap).join(', ');
+
                 return textResult(
                     `Command "${params.command}" not found. Available commands: ${available}`,
                     true,
                 );
             }
+
             return textResult(JSON.stringify(info, null, 2));
         } catch {
             return textResult(

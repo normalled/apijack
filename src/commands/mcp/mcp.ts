@@ -26,6 +26,7 @@ export async function mcpAction(input: McpInput): Promise<void> {
         ) {
             throw new Error('MCP server requires @modelcontextprotocol/sdk');
         }
+
         throw e;
     }
 }

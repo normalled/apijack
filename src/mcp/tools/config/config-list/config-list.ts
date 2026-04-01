@@ -12,12 +12,14 @@ export const configListTool = defineTool({
             ['config', 'list'],
             ctx.projectRoot ?? undefined,
         );
+
         if (exitCode !== 0) {
             return textResult(
                 `Config list failed (exit ${exitCode}):\n${stderr || stdout}`,
                 true,
             );
         }
+
         return textResult(stdout);
     },
 });

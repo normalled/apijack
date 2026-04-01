@@ -41,6 +41,7 @@ export async function fetchAndGenerate(
     opts: FetchAndGenerateOptions,
 ): Promise<void> {
     const headers: Record<string, string> = { Accept: 'application/json' };
+
     if (opts.auth) {
         headers.Authorization
             = 'Basic ' + btoa(`${opts.auth.username}:${opts.auth.password}`);
@@ -48,6 +49,7 @@ export async function fetchAndGenerate(
 
     const url = `${opts.baseUrl}${opts.specPath}`;
     const res = await fetch(url, { headers });
+
     if (!res.ok) {
         throw new Error(
             `Failed to fetch spec from ${url}: ${res.status} ${res.statusText}`,

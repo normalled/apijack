@@ -28,10 +28,13 @@ export function registerConfigCommand(
             const envs = await configListAction({
                 listEnvs: () => listEnvironments(cliName, configOpts),
             });
+
             if (envs.length === 0) {
                 console.log(`No environments configured. Run '${cliName} setup' to add one.`);
+
                 return;
             }
+
             for (const env of envs) {
                 const marker = env.active ? '* ' : '  ';
                 console.log(`${marker}${env.name}\t${env.url}\t${env.user}`);
@@ -49,10 +52,12 @@ export function registerConfigCommand(
                 invalidateSession: () => sessionMgr.invalidate(),
                 listEnvs: () => listEnvironments(cliName, configOpts),
             });
+
             if (!result.ok) {
                 console.error(`Environment '${name}' not found. Available: ${result.available?.join(', ') || 'none'}`);
                 process.exit(1);
             }
+
             console.log(`Switched to '${name}'`);
         });
 
@@ -69,6 +74,7 @@ export function registerConfigCommand(
 
                 if (!alias) {
                     const siteEntries = Object.entries(knownSites);
+
                     if (siteEntries.length === 0) {
                         console.error('No known sites configured.');
                         process.exit(1);
@@ -81,15 +87,18 @@ export function registerConfigCommand(
 
                     const selection = await prompt(`\nSelect site (1-${siteEntries.length}): `);
                     const index = parseInt(selection);
+
                     if (index < 1 || index > siteEntries.length) {
                         console.error('Invalid selection.');
                         process.exit(1);
                     }
+
                     alias = siteEntries[index - 1]![0];
                 }
 
                 const user = cmdOpts.user ?? (await prompt('Email: '));
                 const password = cmdOpts.password ?? (await hiddenPrompt('Password: '));
+
                 if (!user || !password) {
                     console.error('Email and password are required.');
                     process.exit(1);
@@ -117,6 +126,7 @@ export function registerConfigCommand(
                     } else {
                         console.log('Credentials verified.');
                     }
+
                     console.log(`Saved and switched to '${alias}'.`);
                 } catch (err) {
                     console.error(err instanceof Error ? err.message : String(err));
@@ -131,11 +141,14 @@ export function registerConfigCommand(
             .action(async (name: string | undefined, cmdOpts: { password?: string }) => {
                 // Validate environment exists before prompting for password
                 const cfg = await loadConfig(cliName, configOpts) as any;
+
                 if (!cfg || Object.keys(cfg.environments).length === 0) {
                     console.error(`No environments configured. Run '${cliName} config import' first.`);
                     process.exit(1);
                 }
+
                 const envName = name ?? cfg.active;
+
                 if (!cfg.environments[envName]) {
                     console.error(`Environment '${envName}' not found.`);
                     process.exit(1);
@@ -144,6 +157,7 @@ export function registerConfigCommand(
                 console.log(`Updating password for '${envName}' (${cfg.environments[envName].url})`);
 
                 const password = cmdOpts.password ?? (await hiddenPrompt('New password: '));
+
                 if (!password) {
                     console.error('Password is required.');
                     process.exit(1);

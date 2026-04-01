@@ -15,6 +15,7 @@ export interface RoutineRunDeps {
 export async function routineRunAction(deps: RoutineRunDeps): Promise<{ success: boolean; stepsRun: number; stepsSkipped: number; stepsFailed: number; name: string; description?: string }> {
     const def = deps.loadRoutine();
     const errors = deps.validateRoutine(def);
+
     if (errors.length > 0) {
         throw new Error(`Validation errors:\n${errors.map(e => `  - ${e}`).join('\n')}`);
     }

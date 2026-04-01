@@ -40,11 +40,13 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
         owner: { name: 'Local Plugins' },
         plugins: [],
     };
+
     if (existsSync(localMarketplacePath)) {
         try {
             localMarketplace = JSON.parse(readFileSync(localMarketplacePath, 'utf-8'));
         } catch {}
     }
+
     const plugins = (localMarketplace.plugins as Array<{ name: string; [k: string]: unknown }>) || [];
     const idx = plugins.findIndex(p => p.name === 'apijack');
     const marketplaceEntry = {
@@ -53,8 +55,10 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
         category: 'development',
         source: './apijack',
     };
+
     if (idx >= 0) plugins[idx] = marketplaceEntry;
     else plugins.push(marketplaceEntry);
+
     localMarketplace.plugins = plugins;
     writeFileSync(localMarketplacePath, JSON.stringify(localMarketplace, null, 2) + '\n');
 
@@ -90,16 +94,20 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
     const distDir = join(pluginDir, 'dist');
     mkdirSync(distDir, { recursive: true });
     const bundleSrc = join(sourceDir, 'dist', 'mcp-server.bundle.js');
+
     if (existsSync(bundleSrc)) {
         cpSync(bundleSrc, join(distDir, 'mcp-server.bundle.js'));
     }
 
     // Copy skills (clear first to remove stale entries from previous versions)
     const skillsDst = join(pluginDir, 'skills');
+
     if (existsSync(skillsDst)) {
         rmSync(skillsDst, { recursive: true, force: true });
     }
+
     const skillsSrc = join(sourceDir, 'skills');
+
     if (existsSync(skillsSrc)) {
         cpSync(skillsSrc, skillsDst, { recursive: true });
     }
@@ -109,11 +117,13 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
     const settingsPath = join(claudeDir, 'settings.json');
 
     const oldCacheDir = join(claudeDir, 'plugins', 'cache', 'local', 'apijack');
+
     if (existsSync(oldCacheDir)) {
         rmSync(oldCacheDir, { recursive: true, force: true });
     }
 
     const oldMarketplaceDir = join(claudeDir, 'plugins', 'marketplaces', 'apijack');
+
     if (existsSync(oldMarketplaceDir)) {
         rmSync(oldMarketplaceDir, { recursive: true, force: true });
     }
@@ -122,7 +132,9 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
     const installedPlugins = existsSync(installedPath)
         ? JSON.parse(readFileSync(installedPath, 'utf-8'))
         : { version: 2, plugins: {} };
+
     if (!installedPlugins.plugins) installedPlugins.plugins = {};
+
     delete installedPlugins.plugins['apijack@apijack'];
     installedPlugins.plugins['apijack@local'] = [{
         scope: 'user',
@@ -137,7 +149,9 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
     const settings = existsSync(settingsPath)
         ? JSON.parse(readFileSync(settingsPath, 'utf-8'))
         : {};
+
     if (!settings.enabledPlugins) settings.enabledPlugins = {};
+
     delete settings.enabledPlugins['apijack@apijack'];
     settings.enabledPlugins['apijack@local'] = true;
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');

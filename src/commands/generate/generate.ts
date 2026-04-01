@@ -13,6 +13,7 @@ export async function generateAction(input: GenerateInput): Promise<void> {
     if (!input.env) {
         throw new Error('No active environment.');
     }
+
     await input.fetchAndGenerate({
         baseUrl: input.env.url,
         specPath: input.specPath,

@@ -17,6 +17,7 @@ export const createRoutineTool = defineTool({
             const filename = params.name.endsWith('.yaml') ? params.name : `${params.name}.yaml`;
             const filePath = join(ctx.routinesDir, filename);
             writeFileSync(filePath, params.content);
+
             return textResult(`Routine saved to ${filePath}`);
         } catch (err) {
             return textResult(

@@ -13,11 +13,13 @@ export interface RoutineTestDeps {
 
 export async function routineTestAction(deps: RoutineTestDeps): Promise<{ success: boolean; stepsRun: number; stepsSkipped: number; stepsFailed: number }> {
     const spec = deps.loadSpec();
+
     if (!spec) {
         throw new Error(`No spec.yaml found for routine "${deps.routineName}".`);
     }
 
     const errors = deps.validateRoutine(spec);
+
     if (errors.length > 0) {
         throw new Error(`Spec validation errors:\n${errors.map(e => `  - ${e}`).join('\n')}`);
     }

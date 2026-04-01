@@ -18,9 +18,11 @@ export function generateClient(
     function collectImportableTypes(typeStr: string) {
     // Strip array suffix and parens from discriminated union wrappers
         const bare = typeStr.replace(/\[\]$/g, '').replace(/^\(|\)$/g, '');
+
         // Split on union/intersection operators
         for (const part of bare.split(/\s*[|&]\s*/)) {
             const trimmed = part.trim().replace(/\[\]$/g, '');
+
             if (trimmed && !PRIMITIVE_TYPES.has(trimmed) && /^[A-Za-z_]\w*$/.test(trimmed)) {
                 referencedTypes.add(trimmed);
             }
@@ -34,13 +36,16 @@ export function generateClient(
 
         for (const method of HTTP_METHODS) {
             const op = methods[method] as OpenApiOperation | undefined;
+
             if (!op || !op.operationId) continue;
 
             // Merge path-level params with operation params (op overrides by name+in)
             const opParams = op.parameters || [];
             const mergedParams: typeof opParams = [...pathLevelParams];
+
             for (const opParam of opParams) {
                 const idx = mergedParams.findIndex(p => p.name === opParam.name && p.in === opParam.in);
+
                 if (idx >= 0) mergedParams[idx] = opParam;
                 else mergedParams.push(opParam);
             }
@@ -49,11 +54,13 @@ export function generateClient(
             const queryParams = mergedParams.filter(p => p.in === 'query');
 
             const args: string[] = [];
+
             for (const p of pathParams) {
                 args.push(`${p.name}: ${schemaToTsType(p.schema)}`);
             }
 
             const bodySchema = op.requestBody?.content?.['application/json']?.schema;
+
             if (bodySchema) {
                 const bodyType = bodySchema.$ref
                     ? refToName(bodySchema.$ref)
@@ -78,8 +85,11 @@ export function generateClient(
                 : `"${path}"`;
 
             const reqOpts: string[] = [];
+
             if (queryParams.length > 0) reqOpts.push('params');
+
             if (bodySchema) reqOpts.push('body');
+
             const optsArg = reqOpts.length > 0 ? `, { ${reqOpts.join(', ')} }` : '';
 
             // Build operation JSDoc
@@ -110,12 +120,17 @@ export function generateClient(
             // @param tags for path parameters (always) and query parameters (when described)
             for (const p of pathParams) {
                 let paramDesc = p.description ? `${p.description}` : p.name;
+
                 if (p.style) paramDesc += ` (style: ${p.style}${p.explode !== undefined ? `, explode: ${p.explode}` : ''})`;
+
                 docLines.push(`@param ${p.name} ${paramDesc}`);
             }
+
             for (const p of queryParams) {
                 let paramDesc = p.description || p.name;
+
                 if (p.style) paramDesc += ` (style: ${p.style}${p.explode !== undefined ? `, explode: ${p.explode}` : ''})`;
+
                 if (paramDesc !== p.name || p.style) {
                     docLines.push(`@param ${p.name} ${paramDesc}`);
                 }
@@ -124,6 +139,7 @@ export function generateClient(
             // @param for body
             if (bodySchema) {
                 const bodyDesc = op.requestBody?.description;
+
                 if (bodyDesc) {
                     docLines.push(`@param body ${bodyDesc}`);
                 } else {
@@ -136,6 +152,7 @@ export function generateClient(
                 methodLines.push(`  /** ${docLines[0]} */`);
             } else {
                 methodLines.push(`  /** ${docLines[0]}`);
+
                 for (let i = 1; i < docLines.length; i++) {
                     if (i === docLines.length - 1) {
                         methodLines.push(`   * ${docLines[i]} */`);

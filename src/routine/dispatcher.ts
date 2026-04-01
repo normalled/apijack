@@ -38,6 +38,7 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
             const mapping = config.commandMap[command]!;
             const methodName = mapping.operationId;
             const method = config.client?.[methodName];
+
             if (!method) throw new Error(`Client method "${methodName}" not found`);
 
             const callArgs: unknown[] = [];
@@ -51,6 +52,7 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
             // Body from args
             if (mapping.hasBody) {
                 const body: Record<string, unknown> = {};
+
                 for (const [key, val] of Object.entries(args)) {
                     if (key.startsWith('--')) {
                         // Skip path params and query params — they're handled separately
@@ -60,22 +62,27 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
                         const isQueryParam = mapping.queryParams.some(
                             (p: string) => `--${p}` === key,
                         );
+
                         if (!isPathParam && !isQueryParam) {
                             const propName = key.slice(2);
                             body[propName] = val;
                         }
                     }
                 }
+
                 if (Object.keys(body).length > 0) callArgs.push(body);
             }
 
             // Query params
             if (mapping.queryParams.length > 0) {
                 const queryObj: Record<string, unknown> = {};
+
                 for (const param of mapping.queryParams) {
                     const val = args[`--${param}`];
+
                     if (val !== undefined) queryObj[param] = val;
                 }
+
                 if (Object.keys(queryObj).length > 0) callArgs.push(queryObj);
             }
 
@@ -85,6 +92,7 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
         // 3. Consumer-registered dispatchers
         if (config.consumerHandlers?.has(command)) {
             const handler = config.consumerHandlers.get(command)!;
+
             return await handler(args, positionalArgs ?? [], config.ctx);
         }
 
@@ -93,20 +101,25 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
         // wait-until — poll with --interval (default 3s) and --timeout (default 120s) until truthy result
         if (command === 'wait-until') {
             const pollCmd = String(positionalArgs?.[0] || '');
+
             if (!pollCmd) throw new Error('wait-until requires a command to poll');
+
             const interval = Number(args['--interval'] || 3) * 1000;
             const timeout = Number(args['--timeout'] || 120) * 1000;
 
             const pollArgs: Record<string, unknown> = {};
+
             for (const [k, v] of Object.entries(args)) {
                 if (!['--interval', '--timeout'].includes(k)) pollArgs[k] = v;
             }
 
             const startTime = Date.now();
             let polls = 0;
+
             while (Date.now() - startTime < timeout) {
                 try {
                     const result = await dispatch(pollCmd, pollArgs, positionalArgs?.slice(1));
+
                     // Truthy check: non-zero number, non-empty string/array/object
                     if (
                         result !== 0
@@ -116,6 +129,7 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
                         && !(Array.isArray(result) && result.length === 0)
                     ) {
                         if (polls > 0) process.stderr.write('\n');
+
                         return result;
                     }
                 } catch {
@@ -125,32 +139,41 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
                 await new Promise(r => setTimeout(r, interval));
                 process.stderr.write('.');
             }
+
             if (polls > 0) process.stderr.write('\n');
+
             throw new Error(`wait-until timed out after ${timeout / 1000}s waiting for truthy result from: ${pollCmd}`);
         }
 
         // session refresh — call ctx.refreshSession()
         if (command === 'session refresh') {
             await config.ctx.refreshSession();
+
             return { refreshed: true };
         }
 
         // routine run — load and execute sub-routine
         if (command === 'routine run') {
             const routineName = String(positionalArgs?.[0] || '');
+
             if (!routineName) throw new Error('routine run requires a routine name');
+
             const subDef = _load(routineName, config.routinesDir, config.builtinsMap);
             const subErrors = _validate(subDef);
+
             if (subErrors.length > 0) throw new Error(`Sub-routine validation failed: ${subErrors.join(', ')}`);
 
             // Pass through any --set- overrides from args
             const subOverrides: Record<string, unknown> = {};
+
             for (const [k, v] of Object.entries(args)) {
                 if (k.startsWith('--set-')) subOverrides[k.slice(6)] = v;
             }
 
             const result = await _execute(subDef, subOverrides, dispatch);
+
             if (!result.success) throw new Error(`Sub-routine "${routineName}" failed`);
+
             return result;
         }
 

@@ -20,6 +20,7 @@ describe('config_switch tool', () => {
         // @ts-expect-error - mocking Bun.spawn
         Bun.spawn = (cmd: string[], _opts: unknown) => {
             spawnCalls.push(cmd);
+
             return {
                 stdout: new ReadableStream({
                     start(c) {

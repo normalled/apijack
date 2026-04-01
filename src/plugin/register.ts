@@ -26,6 +26,7 @@ export function registerPluginCommand(
 
             // Build the bundle if it doesn't exist
             const bundlePath = resolve(paths.sourceDir, 'dist', 'mcp-server.bundle.js');
+
             if (!existsSync(bundlePath)) {
                 console.log('Building MCP server bundle...');
                 const buildScript = resolve(paths.sourceDir, 'scripts', 'build-plugin.ts');
@@ -34,6 +35,7 @@ export function registerPluginCommand(
                     stderr: 'inherit',
                 });
                 const exitCode = await proc.exited;
+
                 if (exitCode !== 0) {
                     console.error('Bundle build failed.');
                     process.exit(1);
@@ -87,6 +89,7 @@ export function registerPluginCommand(
             const configPath = join(paths.userDataDir, 'plugin.json');
 
             let config: Record<string, unknown> = {};
+
             if (existsSync(configPath)) {
                 try {
                     config = JSON.parse(readFileSync(configPath, 'utf-8'));
@@ -94,10 +97,13 @@ export function registerPluginCommand(
             }
 
             const cidrs: string[] = (config.allowedCidrs as string[]) || [];
+
             if (cidrs.includes(cidr)) {
                 console.log(`CIDR ${cidr} is already in the allowlist.`);
+
                 return;
             }
+
             cidrs.push(cidr);
             config.allowedCidrs = cidrs;
             writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
@@ -113,6 +119,7 @@ export function registerPluginCommand(
 
             if (!existsSync(configPath)) {
                 console.error('No plugin config found.');
+
                 return;
             }
 
@@ -123,10 +130,13 @@ export function registerPluginCommand(
 
             const cidrs: string[] = (config.allowedCidrs as string[]) || [];
             const idx = cidrs.indexOf(cidr);
+
             if (idx === -1) {
                 console.log(`CIDR ${cidr} is not in the allowlist.`);
+
                 return;
             }
+
             cidrs.splice(idx, 1);
             config.allowedCidrs = cidrs;
             writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
@@ -142,6 +152,7 @@ export function registerPluginCommand(
 
             if (!existsSync(configPath)) {
                 console.log('No plugin config found.');
+
                 return;
             }
 

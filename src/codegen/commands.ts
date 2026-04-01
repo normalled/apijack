@@ -27,6 +27,7 @@ export function generateCommands(
 
         for (const method of HTTP_METHODS) {
             const op = methods[method] as OpenApiOperation | undefined;
+
             if (!op || !op.operationId) continue;
 
             const tag = op.tags?.[0] || 'default';
@@ -38,8 +39,10 @@ export function generateCommands(
             // Merge path-level params with operation params (op overrides by name+in)
             const opParams = op.parameters || [];
             const mergedParams: typeof opParams = [...pathLevelParams];
+
             for (const opParam of opParams) {
                 const idx = mergedParams.findIndex(p => p.name === opParam.name && p.in === opParam.in);
+
                 if (idx >= 0) mergedParams[idx] = opParam;
                 else mergedParams.push(opParam);
             }
@@ -58,10 +61,12 @@ export function generateCommands(
 
             // Detect primitive body types that can't be decomposed into properties
             let bodyPrimitiveType: CommandDef['bodyPrimitiveType'];
+
             if (hasBody && bodyProps.length === 0 && bodySchema) {
                 const resolved = bodySchema.$ref
                     ? schemas[bodySchema.$ref.split('/').pop()!]
                     : bodySchema;
+
                 if (resolved) {
                     if (resolved.type === 'string') bodyPrimitiveType = 'string';
                     else if (
@@ -75,6 +80,7 @@ export function generateCommands(
                         const itemType = resolved.items.$ref
                             ? schemas[resolved.items.$ref.split('/').pop()!]?.type
                             : resolved.items.type;
+
                         if (itemType === 'string') bodyPrimitiveType = 'string[]';
                         else if (itemType === 'integer' || itemType === 'number')
                             bodyPrimitiveType = 'number[]';
@@ -132,9 +138,12 @@ export function generateCommands(
             };
 
             if (!groups.has(groupKey)) groups.set(groupKey, new Map());
+
             const group = groups.get(groupKey)!;
             const rKey = resourceKey || '__root__';
+
             if (!group.has(rKey)) group.set(rKey, []);
+
             group.get(rKey)!.push(cmd);
         }
     }
@@ -156,6 +165,7 @@ export function generateCommands(
 
         for (const [resourceName, cmds] of resources) {
             let parent: string;
+
             if (resourceName === '__root__') {
                 parent = sanitizeVar(groupName);
             } else {
@@ -169,14 +179,17 @@ export function generateCommands(
 
             // Deduplicate verb names within the same parent
             const verbCounts = new Map<string, number>();
+
             for (const cmd of cmds) {
                 verbCounts.set(cmd.verb, (verbCounts.get(cmd.verb) || 0) + 1);
             }
+
             const verbSeen = new Map<string, number>();
 
             for (const cmd of cmds) {
                 const count = verbCounts.get(cmd.verb) || 1;
                 let cmdName = cmd.verb;
+
                 if (count > 1) {
                     // Use operationId as the command name when verbs collide
                     cmdName = cmd.operationId
@@ -184,6 +197,7 @@ export function generateCommands(
                         .toLowerCase()
                         .replace(/^-/, '');
                 }
+
                 verbSeen.set(
                     cmd.verb,
                     (verbSeen.get(cmd.verb) || 0) + 1,
@@ -206,9 +220,11 @@ export function generateCommands(
                 } else {
                     lines.push(`  ${parent}`);
                 }
+
                 lines.push(`    .command("${cmdName}${argStr}")`);
 
                 let cmdDesc: string;
+
                 if (cmd.deprecated) {
                     cmdDesc = `[DEPRECATED] ${cmd.summary || cmd.description}`;
                 } else if (cmd.summary) {
@@ -216,6 +232,7 @@ export function generateCommands(
                 } else {
                     cmdDesc = cmd.description;
                 }
+
                 lines.push(
                     `    .description("${cmdDesc.replace(/"/g, '\\"')}${arrayNote} (use -o routine-step to export as YAML)")`,
                 );
@@ -251,8 +268,11 @@ export function generateCommands(
                     } else {
                         for (const bp of cmd.bodyProps) {
                             let desc: string = bp.description || bp.name;
+
                             if (bp.enumValues) desc += ` [${bp.enumValues.join(', ')}]`;
+
                             if (bp.format) desc += ` (${bp.format})`;
+
                             if (bp.default !== undefined) desc += ` (default: ${bp.default})`;
 
                             const variantTag = bp.variant
@@ -276,6 +296,7 @@ export function generateCommands(
                             }
                         }
                     }
+
                     if (hasVariantProps) {
                         lines.push(
                             '    .option("-V", "Show all variant-specific flags in help")',
@@ -288,19 +309,24 @@ export function generateCommands(
                 );
 
                 const totalPositional = cmd.pathParams.length;
+
                 for (let i = 0; i < cmd.pathParams.length; i++) {
                     lines.push(
                         `      const ${cmd.pathParams[i].name} = actionArgs[${i}] as ${cmd.pathParams[i].type};`,
                     );
                 }
+
                 lines.push(
                     `      const opts = actionArgs[${totalPositional}] as Record<string, unknown>;`,
                 );
 
                 const callArgs: string[] = [];
+
                 for (const pp of cmd.pathParams) callArgs.push(pp.name);
+
                 if (cmd.hasBody) {
                     lines.push('      let body: any;');
+
                     if (cmd.bodyPrimitiveType) {
                         // Primitive body — convert from CLI flag
                         if (cmd.bodyPrimitiveType === 'string[]') {
@@ -327,11 +353,13 @@ export function generateCommands(
                         }
                     } else if (cmd.bodyProps.length > 0) {
                         lines.push('      const obj: Record<string, unknown> = {};');
+
                         for (const bp of cmd.bodyProps) {
                             lines.push(
                                 `      if (opts.${bp.camelName} !== undefined) obj["${bp.name}"] = opts.${bp.camelName};`,
                             );
                         }
+
                         if (cmd.bodyIsArray) {
                             lines.push(
                                 '      body = [obj]; // API expects an array',
@@ -340,8 +368,10 @@ export function generateCommands(
                             lines.push('      body = obj;');
                         }
                     }
+
                     callArgs.push('body');
                 }
+
                 if (cmd.queryParams.length > 0) {
                     const qpObj = cmd.queryParams
                         .map(p => `${p.name}: opts.${p.name}`)
@@ -377,5 +407,6 @@ export function generateCommands(
     }
 
     lines.push('}');
+
     return lines.join('\n');
 }

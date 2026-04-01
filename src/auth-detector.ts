@@ -59,6 +59,7 @@ export function detectAuthFromSpec(
 
     for (const prio of PRIORITY) {
         const match = detected.find(d => d.type === prio);
+
         if (match) return match;
     }
 
@@ -73,9 +74,12 @@ export async function fetchSecuritySchemes(
         const res = await fetch(specUrl, {
             headers: { Accept: 'application/json', ...headers },
         });
+
         if (!res.ok) return null;
+
         const spec = await res.json() as Record<string, unknown>;
         const components = spec.components as Record<string, unknown> | undefined;
+
         return (components?.securitySchemes as Record<string, SecurityScheme>) ?? null;
     } catch {
         return null;

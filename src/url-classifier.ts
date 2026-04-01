@@ -24,6 +24,7 @@ export function classifyUrl(
     if (SAFE_HOSTNAMES.has(cleanHost)) {
         return { safe: true, reason: 'localhost' };
     }
+
     if (SAFE_IPS.has(cleanHost)) {
         return { safe: true, reason: cleanHost };
     }
@@ -46,8 +47,11 @@ function isIPv4(host: string): boolean {
 
 export function matchesCidr(ip: string, cidr: string): boolean {
     const [network, bitsStr] = cidr.split('/');
+
     if (!network || !bitsStr) return false;
+
     const bits = parseInt(bitsStr, 10);
+
     if (bits < 0 || bits > 32) return false;
 
     const ipNum = ipToNumber(ip);
@@ -59,6 +63,7 @@ export function matchesCidr(ip: string, cidr: string): boolean {
 
 function ipToNumber(ip: string): number {
     const parts = ip.split('.');
+
     return (
         ((parseInt(parts[0]!) << 24)
             | (parseInt(parts[1]!) << 16)

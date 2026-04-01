@@ -24,6 +24,7 @@ export const getSpecTool = defineTool({
             const blocks: string[] = [];
             const typeRegex = /^export (?:interface|type) (\w+)/gm;
             let match;
+
             while ((match = typeRegex.exec(content)) !== null) {
                 blocks.push(match[1]);
             }
