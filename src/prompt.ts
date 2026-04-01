@@ -26,7 +26,6 @@ export function hiddenPrompt(message: string, defaultValue?: string): Promise<st
         process.stdout.write('\x1b[?2004h');
 
         let input = '';
-        let pasting = false;
         let escBuf = '';
 
         const cleanup = () => {
@@ -46,14 +45,7 @@ export function hiddenPrompt(message: string, defaultValue?: string): Promise<st
                 if (escBuf.length > 0 || c === '\x1b') {
                     escBuf += c;
                     // Check for bracketed paste start: \x1b[200~
-                    if (escBuf === '\x1b[200~') {
-                        pasting = true;
-                        escBuf = '';
-                        continue;
-                    }
-                    // Check for bracketed paste end: \x1b[201~
-                    if (escBuf === '\x1b[201~') {
-                        pasting = false;
+                    if (escBuf === '\x1b[200~' || escBuf === '\x1b[201~') {
                         escBuf = '';
                         continue;
                     }

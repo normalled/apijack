@@ -227,7 +227,8 @@ export function listRoutinesStructured(
     }
 }
 
-export function formatRoutineList(routines: string[], pathPrefix?: string): string {
+/** @deprecated pathPrefix is unused — remove in next major */
+export function formatRoutineList(routines: string[], _pathPrefix?: string): string {
     const cleaned = routines
         .map(r => r.replace(/\x1b\[[0-9;]*m/g, '').trim())
         .sort();
