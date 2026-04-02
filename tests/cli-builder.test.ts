@@ -210,24 +210,39 @@ describe("built-in commands", () => {
 
     process.argv = ["node", "testcli", "--help"];
 
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
-
-    try {
-      await cli.run();
-    } catch (e: any) {
-      // Expected
-    }
-
-    console.log = origLog;
-    const output = logs.join("\n");
+    const output = await captureOutput(() => cli.run());
 
     // Should show "Commands:" section with core commands
     expect(output).toContain("Commands:");
     // Should show usage and description
     expect(output).toContain("Usage: testcli");
     expect(output).toContain("A test CLI");
+  });
+
+  test("custom commands appear in their own section, visible without --help", async () => {
+    const cli = createCli(makeOptions());
+    cli.command("my-tool", (program) => {
+      program.command("my-tool").description("A custom tool");
+    });
+
+    // No --help flag — just bare invocation
+    process.argv = ["node", "testcli"];
+
+    const output = await captureOutput(() => cli.run());
+
+    expect(output).toContain("Custom Commands:");
+    expect(output).toContain("my-tool");
+    expect(output).toContain("A custom tool");
+  });
+
+  test("custom commands section is hidden when there are none", async () => {
+    const cli = createCli(makeOptions());
+
+    process.argv = ["node", "testcli"];
+
+    const output = await captureOutput(() => cli.run());
+
+    expect(output).not.toContain("Custom Commands:");
   });
 
   test("routine subcommands are registered (list, run, validate, test, init)", async () => {

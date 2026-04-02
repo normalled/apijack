@@ -43,7 +43,12 @@ const CORE_COMMANDS = new Set([
     'plugin',
 ]);
 
-function showCustomHelp(program: Command, cliName: string, showAll: boolean): void {
+function showCustomHelp(
+    program: Command,
+    cliName: string,
+    showAll: boolean,
+    customCommandNames: Set<string>,
+): void {
     console.log(`Usage: ${program.name()} [options] [command]\n`);
     console.log(`${program.description()}\n`);
 
@@ -58,14 +63,23 @@ function showCustomHelp(program: Command, cliName: string, showAll: boolean): vo
 
     // Core commands
     const core = program.commands.filter(c => CORE_COMMANDS.has(c.name()));
+    const custom = program.commands.filter(c => customCommandNames.has(c.name()));
     const api = program.commands.filter(
-        c => !CORE_COMMANDS.has(c.name()) && c.name() !== 'help',
+        c => !CORE_COMMANDS.has(c.name()) && !customCommandNames.has(c.name()) && c.name() !== 'help',
     );
 
     if (core.length > 0) {
         console.log('\nCommands:');
 
         for (const cmd of core) {
+            console.log(`  ${cmd.name().padEnd(30)} ${cmd.description()}`);
+        }
+    }
+
+    if (custom.length > 0) {
+        console.log('\nCustom Commands:');
+
+        for (const cmd of custom) {
             console.log(`  ${cmd.name().padEnd(30)} ${cmd.description()}`);
         }
     }
@@ -521,7 +535,8 @@ export function createCli(options: CliOptions): Cli {
             ) {
                 const showAll
                     = userArgs[0] === '--help' || userArgs[0] === '-h';
-                showCustomHelp(program, cliName, showAll);
+                const customCommandNames = new Set(consumerCommands.map(c => c.name));
+                showCustomHelp(program, cliName, showAll, customCommandNames);
                 process.exit(0);
             }
 
