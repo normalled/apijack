@@ -3,7 +3,7 @@ import type { AuthStrategy, AuthSession, ResolvedAuth, SessionAuthConfig } from 
 
 export interface CliContext {
     client: unknown;
-    session: AuthSession;
+    session: AuthSession | null;
     auth: ResolvedAuth;
     strategy: AuthStrategy;
     refreshSession(): Promise<void>;

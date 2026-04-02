@@ -10,6 +10,7 @@ export { resolveRequestHeaders } from './auth/resolve-headers';
 export { deepMergeSessionAuth } from './auth/config-merge';
 export type { RoutineDefinition, RoutineStep } from './routine/types';
 export { formatOutput } from './output';
+export type { CapturedRequest } from './output-request';
 export { updateEnvironmentField, verifyCredentials, getActiveEnvConfig } from './config';
 export { listRoutinesStructured } from './routine/loader';
 export { installPlugin } from './plugin/install';
