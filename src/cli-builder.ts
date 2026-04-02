@@ -24,6 +24,7 @@ import { prompt, hiddenPrompt } from './prompt';
 import { SessionAuthStrategy } from './auth/session-auth';
 import { resolveRequestHeaders } from './auth/resolve-headers';
 import { deepMergeSessionAuth } from './auth/config-merge';
+import { loadPreRequestHook } from './pre-request';
 
 export interface Cli {
     command(name: string, registrar: CommandRegistrar): void;
@@ -204,128 +205,188 @@ export function createCli(options: CliOptions): Cli {
                 resolved = resolveAuth(cliName, configOpts);
             }
 
-            // 5 + 6. Create session and build CliContext
+            // 5. Compute auth strategy (no network — just config)
+            let mergedSessionAuth: ReturnType<typeof deepMergeSessionAuth> | undefined;
+            let strategy = options.auth;
+            let sessionMgr: SessionManager | null = null;
+
+            if (resolved) {
+                const envConfig = getActiveEnvConfig(cliName, configOpts);
+                mergedSessionAuth = options.sessionAuth
+                    ? deepMergeSessionAuth(options.sessionAuth, envConfig?.sessionAuth)
+                    : undefined;
+                strategy = mergedSessionAuth
+                    ? new SessionAuthStrategy(options.auth, mergedSessionAuth)
+                    : options.auth;
+                sessionMgr = new SessionManager(cliName, join(configDir, 'session.json'));
+            }
+
+            // 6. Import generated commands (ALWAYS — no auth needed)
+            let commandsModule: Record<string, unknown> | null = null;
+            let ApiClientClass: (new (...args: unknown[]) => Record<string, unknown>) | null = null;
+
+            try {
+                const cmds = await import(resolve(generatedDir, 'commands'));
+
+                if (cmds.registerGeneratedCommands) {
+                    commandsModule = cmds;
+                    const clientMod = await import(resolve(generatedDir, 'client'));
+                    ApiClientClass = clientMod.ApiClient;
+                }
+            } catch {
+                // Generated commands not available — consumer hasn't run `generate` yet
+            }
+
+            // 7. Detect request-preview output modes
+            const oIdx = process.argv.indexOf('-o');
+            const oVal = oIdx >= 0 ? process.argv[oIdx + 1] : undefined;
+            const isDryRun = process.argv.includes('--dry-run') && process.argv[2] !== 'routine';
+            const isCurl = oVal === 'curl';
+            const isCurlWithCreds = oVal === 'curl-with-creds';
+            const isRequestPreview = isDryRun || isCurl || isCurlWithCreds;
+
+            // 8. Create CliContext with lazy session
             let ctx: CliContext | null = null;
 
             if (resolved) {
-                // Merge sessionAuth config: CLI author defaults + user env overrides
-                const envConfig = getActiveEnvConfig(cliName, configOpts);
-                const mergedSessionAuth = options.sessionAuth
-                    ? deepMergeSessionAuth(options.sessionAuth, envConfig?.sessionAuth)
-                    : undefined;
+                ctx = {
+                    client: null,
+                    session: null,
+                    auth: resolved,
+                    strategy,
+                    refreshSession: async () => {
+                        sessionMgr!.invalidate();
+                        ctx!.session = await sessionMgr!.resolve(strategy, resolved!);
+                    },
+                };
+            }
 
-                // Wrap strategy if sessionAuth is configured
-                const strategy = mergedSessionAuth
-                    ? new SessionAuthStrategy(options.auth, mergedSessionAuth)
-                    : options.auth;
+            // 9. Create ApiClient and register generated commands
+            if (commandsModule && ApiClientClass) {
+                const registerFn = commandsModule.registerGeneratedCommands as (
+                    program: Command, client: unknown, onResult: (result: unknown) => void,
+                ) => void;
 
-                try {
-                    const sessionMgr = new SessionManager(cliName, join(configDir, 'session.json'));
-                    const session = await sessionMgr.resolve(
-                        strategy,
-                        resolved,
-                    );
+                // Session resolver — lazy, runs once on first real API request
+                const resolveSession = async () => {
+                    if (!resolved || !sessionMgr) {
+                        throw new Error(`Not authenticated. Run '${cliName} setup' to configure credentials.`);
+                    }
 
-                    ctx = {
-                        client: null,
-                        session,
-                        auth: resolved,
-                        strategy,
-                        refreshSession: async () => {
-                            sessionMgr.invalidate();
-                            const newSession = await sessionMgr.resolve(
-                                strategy,
-                                resolved!,
-                            );
-                            ctx!.session = newSession;
-                        },
-                    };
+                    if (ctx && ctx.session) return;
 
-                    // 7. Register generated commands — try to import from consumer's generated dir
-                    try {
-                        const commandsModule = await import(
-                            resolve(generatedDir, 'commands'),
-                        );
+                    const session = await sessionMgr.resolve(strategy, resolved);
 
-                        if (commandsModule.registerGeneratedCommands) {
-                            const { ApiClient } = await import(
-                                resolve(generatedDir, 'client'),
-                            );
-                            const client = new ApiClient(
-                                resolved.baseUrl,
-                                (method: string) => resolveRequestHeaders(ctx!.session, mergedSessionAuth, method),
-                                mergedSessionAuth ? async () => { await ctx!.refreshSession(); } : undefined,
-                                mergedSessionAuth?.refreshOn,
-                            );
-                            ctx.client = client;
+                    if (ctx) ctx.session = session;
+                };
 
-                            // Detect request-preview output modes
-                            const oIdx = process.argv.indexOf('-o');
-                            const oVal = oIdx >= 0 ? process.argv[oIdx + 1] : undefined;
-                            const isDryRun = process.argv.includes('--dry-run') && process.argv[2] !== 'routine';
-                            const isCurl = oVal === 'curl';
-                            const isCurlWithCreds = oVal === 'curl-with-creds';
-                            const isRequestPreview = isDryRun || isCurl || isCurlWithCreds;
+                // Headers provider — reads from resolved session
+                const getHeaders = (method: string) =>
+                    resolveRequestHeaders(ctx?.session ?? { headers: {} }, mergedSessionAuth, method);
 
-                            if (isRequestPreview) {
-                                client.dryRun = true;
+                // Create client
+                const client = new ApiClientClass(
+                    resolved?.baseUrl ?? '',
+                    getHeaders,
+                    mergedSessionAuth ? async () => { await ctx!.refreshSession(); } : undefined,
+                    mergedSessionAuth?.refreshOn,
+                ) as Record<string, unknown>;
+
+                if (ctx) ctx.client = client;
+
+                // Wire ensureReady — lazy session resolution before first real request
+                client.ensureReady = resolveSession;
+
+                // Wire interceptRequest for request-preview modes
+                if (isRequestPreview) {
+                    if (isCurlWithCreds) {
+                        client.interceptRequest = async (
+                            req: { method: string; url: string; body?: unknown },
+                        ) => {
+                            await resolveSession();
+
+                            return {
+                                ...req,
+                                headers: { ...getHeaders(req.method), 'Content-Type': 'application/json' },
+                            };
+                        };
+                    } else {
+                        client.interceptRequest = (
+                            req: { method: string; url: string; body?: unknown },
+                        ) => ({
+                            ...req,
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+                    }
+                }
+
+                // Wire consumer pre-request hook
+                const consumerHook = await loadPreRequestHook(configDir);
+
+                if (consumerHook) {
+                    if (consumerHook.beforeDryRun) {
+                        // Sees ALL requests (before interceptor). structuredClone in generated pipeline.
+                        client.preRequest = consumerHook.handler;
+                    } else if (!isRequestPreview) {
+                        // Only sees real requests — compose after interceptor
+                        const existingInterceptor = client.interceptRequest as
+                            ((req: { method: string; url: string; body?: unknown }) => unknown | undefined) | undefined;
+                        client.interceptRequest = (
+                            req: { method: string; url: string; body?: unknown },
+                        ) => {
+                            if (existingInterceptor) {
+                                const result = existingInterceptor(req);
+
+                                if (result !== undefined) return result;
                             }
 
-                            const onResult = (result: unknown) => {
-                                if (result === undefined) return;
+                            try {
+                                consumerHook.handler(structuredClone(req));
+                            } catch { /* observer */ }
 
-                                // Handle request preview modes
-                                if (isRequestPreview && result && typeof result === 'object' && 'method' in result && 'url' in result) {
-                                    const captured = result as CapturedRequest;
+                            return undefined;
+                        };
+                    }
+                }
 
-                                    if (isCurl) {
-                                        console.log(formatCurl(captured, { includeCreds: false }));
-                                    } else if (isCurlWithCreds) {
-                                        console.log(formatCurl(captured, { includeCreds: true }));
-                                    } else {
-                                        console.log(formatDryRun(captured));
-                                    }
+                // Build onResult handler
+                const onResult = (result: unknown) => {
+                    if (result === undefined) return;
 
-                                    return;
-                                }
+                    // Handle request preview modes
+                    if (isRequestPreview && result && typeof result === 'object' && 'method' in result && 'url' in result) {
+                        const captured = result as CapturedRequest;
 
-                                const mode: OutputMode = program.opts().table
-                                    ? 'table'
-                                    : program.opts().quiet
-                                        ? 'quiet'
-                                        : 'json';
-                                const output = formatOutput(result, mode);
-
-                                if (output) console.log(output);
-                            };
-
-                            commandsModule.registerGeneratedCommands(
-                                program,
-                                client,
-                                onResult,
-                            );
+                        if (isCurl) {
+                            console.log(formatCurl(captured, { includeCreds: false }));
+                        } else if (isCurlWithCreds) {
+                            console.log(formatCurl(captured, { includeCreds: true }));
+                        } else {
+                            console.log(formatDryRun(captured));
                         }
-                    } catch {
-                        // Generated commands not available — consumer hasn't run `generate` yet
+
+                        return;
                     }
 
-                    // 8. Register consumer commands
-                    for (const { registrar } of consumerCommands) {
-                        registrar(program, ctx);
-                    }
-                } catch {
-                    // Auth/session failed — only setup/login will work
-                }
+                    const mode: OutputMode = program.opts().table
+                        ? 'table'
+                        : program.opts().quiet
+                            ? 'quiet'
+                            : 'json';
+                    const output = formatOutput(result, mode);
+
+                    if (output) console.log(output);
+                };
+
+                registerFn(program, client, onResult);
             }
 
-            // 8b. Register consumer commands (even without auth, so help text is available)
-            if (!ctx) {
-                for (const { registrar } of consumerCommands) {
-                    registrar(program, null as unknown as CliContext);
-                }
+            // 10. Register consumer commands
+            for (const { registrar } of consumerCommands) {
+                registrar(program, ctx ?? (null as unknown as CliContext));
             }
 
-            // 9. Build dispatcher
+            // 11. Build dispatcher
             let commandMap:
                 | Record<
                     string,
@@ -337,16 +398,14 @@ export function createCli(options: CliOptions): Cli {
                     }
                 >
                 | undefined;
+
             try {
-                const mapModule = await import(
-                    resolve(generatedDir, 'command-map'),
-                );
+                const mapModule = await import(resolve(generatedDir, 'command-map'));
                 commandMap = mapModule.commandMap;
             } catch {
                 // No command-map available
             }
 
-            // Only build dispatcher if we have a context
             let dispatch: CommandDispatcher | undefined;
 
             if (ctx) {
@@ -363,7 +422,7 @@ export function createCli(options: CliOptions): Cli {
                 });
             }
 
-            // 10. Register routine commands
+            // 12. Register routine commands
             registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir);
 
             // 11. Handle -o routine-step

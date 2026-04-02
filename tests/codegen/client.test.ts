@@ -1,4 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, beforeAll, afterAll } from "bun:test";
+import { mkdirSync, writeFileSync, rmSync } from "fs";
+import { join } from "path";
 import { generateClient } from "../../src/codegen/client";
 import type { OpenApiOperation } from "../../src/codegen/openapi-types";
 import fixture from "../fixtures/petstore.json";
@@ -10,14 +12,6 @@ describe("generateClient — unit tests", () => {
     const paths: Record<string, Record<string, OpenApiOperation>> = {};
     const output = generateClient(paths);
     expect(output).toContain("export class ApiClient {");
-  });
-
-  it("exports HeadersProvider type", () => {
-    const paths: Record<string, Record<string, OpenApiOperation>> = {};
-    const output = generateClient(paths);
-    expect(output).toContain(
-      "export type HeadersProvider = (method: string) => Record<string, string>;",
-    );
   });
 
   it("generates method with path params for GET endpoint", () => {
@@ -140,15 +134,50 @@ describe("generateClient — unit tests", () => {
     expect(output).toContain('return this.request("GET", "/items")');
   });
 
-  it("generates dryRun property on ApiClient", () => {
+  it("exports PreRequestHook type", () => {
     const output = generateClient({});
-    expect(output).toContain("dryRun = false");
+    expect(output).toContain(
+      "export type PreRequestHook = (req: { method: string; url: string; body?: unknown }) => void;",
+    );
   });
 
-  it("generates CapturedRequest return path when dryRun is true", () => {
+  it("exports RequestInterceptor type", () => {
     const output = generateClient({});
-    expect(output).toContain("if (this.dryRun)");
-    expect(output).toContain("return { method, url:");
+    expect(output).toContain(
+      "export type RequestInterceptor = (req: { method: string; url: string; body?: unknown }) => unknown | undefined;",
+    );
+  });
+
+  it("exports HeadersProvider type", () => {
+    const output = generateClient({});
+    expect(output).toContain(
+      "export type HeadersProvider = (method: string) => Record<string, string>;",
+    );
+  });
+
+  it("generates preRequest hook property", () => {
+    const output = generateClient({});
+    expect(output).toContain("preRequest?: PreRequestHook");
+  });
+
+  it("generates interceptRequest hook property", () => {
+    const output = generateClient({});
+    expect(output).toContain("interceptRequest?: RequestInterceptor");
+  });
+
+  it("generates ensureReady hook property", () => {
+    const output = generateClient({});
+    expect(output).toContain("ensureReady?: () => Promise<void>");
+  });
+
+  it("does not generate dryRun property", () => {
+    const output = generateClient({});
+    expect(output).not.toContain("dryRun");
+  });
+
+  it("does not generate CapturedRequest interface", () => {
+    const output = generateClient({});
+    expect(output).not.toContain("export interface CapturedRequest");
   });
 });
 
@@ -235,5 +264,68 @@ describe("generateClient — petstore fixture", () => {
   it("deprecated operation emits @deprecated JSDoc", () => {
     expect(output).toContain("@deprecated");
     expect(output).toContain("Delete an item");
+  });
+});
+
+describe("generateClient — behavioral tests (ensureReady)", () => {
+  const tmpDir = join(import.meta.dir, ".tmp-client-behavioral");
+  let ApiClient: new (...args: unknown[]) => Record<string, unknown>;
+
+  beforeAll(async () => {
+    mkdirSync(tmpDir, { recursive: true });
+    const source = generateClient({
+      "/items": {
+        get: { operationId: "listItems" },
+      },
+    } as Record<string, Record<string, OpenApiOperation>>);
+    writeFileSync(join(tmpDir, "client.ts"), source);
+    const mod = await import(join(tmpDir, "client.ts"));
+    ApiClient = mod.ApiClient;
+  });
+
+  afterAll(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("rejected ensureReady clears promise cache, allowing retry", async () => {
+    let callCount = 0;
+    const client = new ApiClient("http://example.com", () => ({}));
+    client.ensureReady = async () => {
+      callCount++;
+      if (callCount === 1) throw new Error("transient failure");
+    };
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("{}", { status: 200 })) as typeof fetch;
+
+    try {
+      // First call — ensureReady rejects
+      await expect((client as any).listItems()).rejects.toThrow("transient failure");
+
+      // Second call — ensureReady succeeds (cache was cleared on rejection)
+      await (client as any).listItems();
+      expect(callCount).toBe(2);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("concurrent requests share the same ensureReady promise", async () => {
+    let callCount = 0;
+    const client = new ApiClient("http://example.com", () => ({}));
+    client.ensureReady = async () => {
+      callCount++;
+      await new Promise(r => setTimeout(r, 10));
+    };
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("[]", { status: 200 })) as typeof fetch;
+
+    try {
+      await Promise.all([(client as any).listItems(), (client as any).listItems()]);
+      expect(callCount).toBe(1);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
   });
 });
