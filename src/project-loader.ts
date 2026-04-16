@@ -1,21 +1,29 @@
 import { existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
-import type { AuthStrategy } from './auth/types';
+import type { AuthStrategy, SessionAuthConfig } from './auth/types';
 import type { CommandRegistrar, DispatcherHandler } from './types';
+
+export interface ProjectAuth {
+    strategy: AuthStrategy | null;
+    onChallenge: SessionAuthConfig['onChallenge'] | null;
+}
 
 export async function loadProjectAuth(
     apijackDir: string,
-): Promise<AuthStrategy | null> {
+): Promise<ProjectAuth> {
     const authPath = join(apijackDir, 'auth.ts');
 
-    if (!existsSync(authPath)) return null;
+    if (!existsSync(authPath)) return { strategy: null, onChallenge: null };
 
     try {
         const mod = await import(authPath);
 
-        return (mod.default ?? mod) as AuthStrategy;
+        const strategy = (mod.default ?? null) as AuthStrategy | null;
+        const onChallenge = (mod.onChallenge ?? null) as SessionAuthConfig['onChallenge'] | null;
+
+        return { strategy, onChallenge };
     } catch {
-        return null;
+        return { strategy: null, onChallenge: null };
     }
 }
 

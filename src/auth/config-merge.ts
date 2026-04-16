@@ -9,9 +9,21 @@ export function deepMergeSessionAuth(
     base: SessionAuthConfig,
     override: Partial<SessionAuthConfig> | undefined,
 ): SessionAuthConfig {
-    if (!override) return structuredClone(base);
+    // Preserve function fields that structuredClone would strip
+    const baseFn = base.onChallenge;
+    const overrideFn = override?.onChallenge;
 
-    return deepMerge(structuredClone(base), override) as SessionAuthConfig;
+    const cloned = structuredClone({ ...base, onChallenge: undefined });
+
+    if (override) {
+        const { onChallenge: _, ...overrideData } = override;
+        deepMerge(cloned, overrideData);
+    }
+
+    const result = cloned as SessionAuthConfig;
+    result.onChallenge = overrideFn ?? baseFn;
+
+    return result;
 }
 
 function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {

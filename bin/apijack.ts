@@ -57,12 +57,15 @@ let authStrategy: AuthStrategy = new BasicAuthStrategy();
 let authResolved = false;
 
 // Check for project-level custom auth first
+let projectOnChallenge: SessionAuthConfig['onChallenge'] | null = null;
+
 if (projectRoot) {
     const projectAuth = await loadProjectAuth(join(projectRoot, '.apijack'));
-    if (projectAuth) {
-        authStrategy = projectAuth;
+    if (projectAuth.strategy) {
+        authStrategy = projectAuth.strategy;
         authResolved = true;
     }
+    projectOnChallenge = projectAuth.onChallenge ?? null;
 }
 
 // Fall back to config-based auth type
@@ -86,6 +89,9 @@ let sessionAuth: SessionAuthConfig | undefined;
     const env = getActiveEnvConfig(CLI_NAME, { configPath: join(configDir, 'config.json') });
     if (env) {
         sessionAuth = (env as Record<string, unknown>).sessionAuth as SessionAuthConfig | undefined;
+    }
+    if (sessionAuth && projectOnChallenge) {
+        sessionAuth.onChallenge = projectOnChallenge;
     }
 }
 
