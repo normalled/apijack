@@ -55,4 +55,52 @@ describe('evaluateCondition', () => {
         const ctx = makeCtx({ variables: { a: 'hello', b: 'world' } });
         expect(evaluateCondition('$a != $b', ctx)).toBe(true);
     });
+
+    test('$_find == undefined: true when array is empty', () => {
+        const ctx = makeCtx({ variables: { name: 'bob' } });
+        ctx.stepOutputs.set('items', { name: 'items', success: true, output: [] });
+        expect(evaluateCondition('$_find($items, name, $name) == undefined', ctx)).toBe(true);
+    });
+
+    test('$_find == undefined: true when value missing', () => {
+        const ctx = makeCtx({ variables: { name: 'carol' } });
+        ctx.stepOutputs.set('items', {
+            name: 'items',
+            success: true,
+            output: [{ name: 'alice' }, { name: 'bob' }],
+        });
+        expect(evaluateCondition('$_find($items, name, $name) == undefined', ctx)).toBe(true);
+    });
+
+    test('$_find == undefined: false when value is present', () => {
+        const ctx = makeCtx({ variables: { name: 'alice' } });
+        ctx.stepOutputs.set('items', {
+            name: 'items',
+            success: true,
+            output: [{ name: 'alice' }, { name: 'bob' }],
+        });
+        expect(evaluateCondition('$_find($items, name, $name) == undefined', ctx)).toBe(false);
+    });
+
+    test('$_contains == "true" when present', () => {
+        const ctx = makeCtx({ variables: { name: 'alice' } });
+        ctx.stepOutputs.set('items', {
+            name: 'items',
+            success: true,
+            output: [{ name: 'alice' }, { name: 'bob' }],
+        });
+        expect(evaluateCondition('$_contains($items, name, $name) == "true"', ctx)).toBe(true);
+        expect(evaluateCondition('$_contains($items, name, $name) == "false"', ctx)).toBe(false);
+    });
+
+    test('$_contains == "false" when absent', () => {
+        const ctx = makeCtx({ variables: { name: 'carol' } });
+        ctx.stepOutputs.set('items', {
+            name: 'items',
+            success: true,
+            output: [{ name: 'alice' }, { name: 'bob' }],
+        });
+        expect(evaluateCondition('$_contains($items, name, $name) == "false"', ctx)).toBe(true);
+        expect(evaluateCondition('$_contains($items, name, $name) == "true"', ctx)).toBe(false);
+    });
 });

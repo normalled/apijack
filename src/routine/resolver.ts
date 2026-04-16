@@ -4,7 +4,7 @@ const REF_PATTERN = /\$([a-zA-Z_][a-zA-Z0-9_\-]*(?:\.[a-zA-Z0-9_][a-zA-Z0-9_\-]*
 // No-arg built-in functions (match without parentheses)
 const NOARG_FUNC_PATTERN = /\$(_random_hex_color|_uuid)/g;
 // Parameterized built-in functions (require parentheses)
-const PARAM_FUNC_PATTERN = /\$(_random_int|_random_from|_random_distinct_from|_env)\(([^)]*)\)/g;
+const PARAM_FUNC_PATTERN = /\$(_random_int|_random_from|_random_distinct_from|_env|_find|_contains)\(([^)]*)\)/g;
 
 // ── Built-in functions ─────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ export function resetDistinctPools(): void {
     distinctPools.clear();
 }
 
-function evalBuiltinFunc(name: string, argsStr?: string): unknown {
+function evalBuiltinFunc(name: string, argsStr?: string, ctx?: RoutineContext): unknown {
     switch (name) {
         case '_random_hex_color': {
             const hex = Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, '0');
@@ -90,9 +90,45 @@ function evalBuiltinFunc(name: string, argsStr?: string): unknown {
 
             return '';
         }
+        case '_find': {
+            if (!argsStr || !ctx) return undefined;
+
+            const parts = argsStr.split(',').map(s => s.trim());
+
+            if (parts.length < 3) {
+                process.stderr.write(`Warning: $_find requires (array, field, value), got (${argsStr})\n`);
+
+                return undefined;
+            }
+
+            const arr = resolveValue(parts[0]!, ctx);
+            const field = stripQuotes(parts[1]!);
+            const value = resolveValue(parts.slice(2).join(',').trim(), ctx);
+
+            if (!Array.isArray(arr)) return undefined;
+
+            return arr.find(el =>
+                el != null
+                && typeof el === 'object'
+                && String((el as Record<string, unknown>)[field]) === String(value),
+            );
+        }
+        case '_contains': {
+            const found = evalBuiltinFunc('_find', argsStr, ctx);
+
+            return found !== undefined ? 'true' : 'false';
+        }
         default:
             return undefined;
     }
+}
+
+function stripQuotes(s: string): string {
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+        return s.slice(1, -1);
+    }
+
+    return s;
 }
 
 function getByDotPath(obj: unknown, path: string[]): unknown {
@@ -147,14 +183,14 @@ export function resolveValue(value: unknown, ctx: RoutineContext): unknown {
     const funcExact = value.match(/^\$(_random_hex_color|_uuid)$/);
 
     if (funcExact) {
-        return evalBuiltinFunc(funcExact[1]!);
+        return evalBuiltinFunc(funcExact[1]!, undefined, ctx);
     }
 
     // Exact match: built-in function with args
-    const funcCall = value.match(/^\$(_random_int|_random_from|_random_distinct_from|_env)\(([^)]*)\)$/);
+    const funcCall = value.match(/^\$(_random_int|_random_from|_random_distinct_from|_env|_find|_contains)\(([^)]*)\)$/);
 
     if (funcCall) {
-        return evalBuiltinFunc(funcCall[1]!, funcCall[2]);
+        return evalBuiltinFunc(funcCall[1]!, funcCall[2], ctx);
     }
 
     // Exact match: entire value is a single $ref — resolve to native type
@@ -171,13 +207,13 @@ export function resolveValue(value: unknown, ctx: RoutineContext): unknown {
 export function resolveString(str: string, ctx: RoutineContext): string {
     // First resolve parameterized built-in functions (require parens)
     let result = str.replace(PARAM_FUNC_PATTERN, (_match, name: string, argsStr: string) => {
-        const resolved = evalBuiltinFunc(name, argsStr);
+        const resolved = evalBuiltinFunc(name, argsStr, ctx);
 
         return resolved !== undefined ? String(resolved) : _match;
     });
     // Then no-arg built-in functions
     result = result.replace(NOARG_FUNC_PATTERN, (_match, name: string) => {
-        const resolved = evalBuiltinFunc(name);
+        const resolved = evalBuiltinFunc(name, undefined, ctx);
 
         return resolved !== undefined ? String(resolved) : _match;
     });
