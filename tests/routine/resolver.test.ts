@@ -337,3 +337,90 @@ describe('$_env', () => {
         expect(resolveValue('$_env(APIJACK_MISSING, a,b,c)', ctx)).toBe('a,b,c');
     });
 });
+
+describe('$_find', () => {
+    function ctxWithItems(items: unknown): RoutineContext {
+        const ctx = makeCtx();
+
+        ctx.stepOutputs.set('items', {
+            name: 'items',
+            success: true,
+            output: items,
+        });
+
+        return ctx;
+    }
+
+    test('finds element by string field', () => {
+        const ctx = ctxWithItems([
+            { name: 'alice', id: 1 },
+            { name: 'bob', id: 2 },
+        ]);
+
+        expect(resolveValue('$_find($items, name, bob)', ctx)).toEqual({ name: 'bob', id: 2 });
+    });
+
+    test('finds element by numeric field via string coercion', () => {
+        const ctx = ctxWithItems([
+            { name: 'alice', id: 1 },
+            { name: 'bob', id: 2 },
+        ]);
+
+        expect(resolveValue('$_find($items, id, 2)', ctx)).toEqual({ name: 'bob', id: 2 });
+    });
+
+    test('returns undefined when no element matches', () => {
+        const ctx = ctxWithItems([{ name: 'alice' }, { name: 'bob' }]);
+
+        expect(resolveValue('$_find($items, name, carol)', ctx)).toBeUndefined();
+    });
+
+    test('returns undefined when array ref is missing', () => {
+        const ctx = makeCtx();
+
+        expect(resolveValue('$_find($missing, name, bob)', ctx)).toBeUndefined();
+    });
+
+    test('returns undefined when ref is not an array', () => {
+        const ctx = makeCtx({ variables: { items: 'not-an-array' } });
+
+        expect(resolveValue('$_find($items, name, bob)', ctx)).toBeUndefined();
+    });
+
+    test('resolves $-ref as the value argument', () => {
+        const ctx = ctxWithItems([
+            { name: 'alice', id: 1 },
+            { name: 'bob', id: 2 },
+        ]);
+
+        ctx.variables.targetName = 'bob';
+
+        expect(resolveValue('$_find($items, name, $targetName)', ctx)).toEqual({ name: 'bob', id: 2 });
+    });
+});
+
+describe('$_contains', () => {
+    function ctxWithItems(items: unknown): RoutineContext {
+        const ctx = makeCtx();
+
+        ctx.stepOutputs.set('items', {
+            name: 'items',
+            success: true,
+            output: items,
+        });
+
+        return ctx;
+    }
+
+    test('returns "true" when element is present', () => {
+        const ctx = ctxWithItems([{ name: 'alice' }, { name: 'bob' }]);
+
+        expect(resolveValue('$_contains($items, name, alice)', ctx)).toBe('true');
+    });
+
+    test('returns "false" when element is absent', () => {
+        const ctx = ctxWithItems([{ name: 'alice' }, { name: 'bob' }]);
+
+        expect(resolveValue('$_contains($items, name, carol)', ctx)).toBe('false');
+    });
+});
