@@ -48,10 +48,11 @@ async function captureOutput(fn: () => Promise<void>): Promise<string> {
 }
 
 describe('createCli()', () => {
-    test('returns object with command(), dispatcher(), run() methods', () => {
+    test('returns object with command(), dispatcher(), resolver(), run() methods', () => {
         const cli = createCli(makeOptions());
         expect(typeof cli.command).toBe('function');
         expect(typeof cli.dispatcher).toBe('function');
+        expect(typeof cli.resolver).toBe('function');
         expect(typeof cli.run).toBe('function');
     });
 
@@ -68,6 +69,12 @@ describe('createCli()', () => {
         const handler: DispatcherHandler = async (_args, _pos, _ctx) => ({});
         // Should not throw
         cli.dispatcher('my-dispatch', handler);
+    });
+
+    test('resolver() stores handler for the composed dispatcher', () => {
+        const cli = createCli(makeOptions());
+        // Should not throw
+        cli.resolver('_my_fn', _argsStr => 'ok');
     });
 });
 

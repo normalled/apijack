@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { existsSync, mkdirSync, cpSync, readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
-import type { CommandDispatcher } from '../../types';
+import type { CommandDispatcher, CustomResolver } from '../../types';
 import { SessionManager } from '../../session';
 import { loadRoutineFile, loadSpecFile, listRoutines, validateRoutine, formatRoutineTree, formatRoutineList } from '../../routine/loader';
 import { executeRoutine } from '../../routine/executor';
@@ -43,6 +43,7 @@ export function registerRoutineCommand(
     routinesDir: string,
     dispatch: CommandDispatcher | undefined,
     builtinRoutinesDir?: string,
+    customResolvers?: Map<string, CustomResolver>,
 ): void {
     const builtinsMap = builtinRoutinesDir
         ? loadBuiltinRoutines(builtinRoutinesDir)
@@ -114,6 +115,7 @@ export function registerRoutineCommand(
                     dispatch,
                     overrides,
                     dryRun: opts.dryRun,
+                    customResolvers,
                     invalidateSession: () => sessionMgr.invalidate(),
                     onStep: (step, i, total) => {
                         console.log(`\x1b[36m[${i + 1}/${total}]\x1b[0m ${step.name}`);
@@ -185,6 +187,7 @@ export function registerRoutineCommand(
                     executeRoutine,
                     dispatch,
                     overrides,
+                    customResolvers,
                     routineName: name,
                     onStep: (step, i, total) => {
                         console.log(

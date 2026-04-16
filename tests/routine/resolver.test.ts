@@ -7,6 +7,7 @@ import {
     resetDistinctPools,
 } from '../../src/routine/resolver';
 import type { RoutineContext } from '../../src/routine/types';
+import type { CustomResolver } from '../../src/types';
 
 function makeCtx(overrides: Partial<RoutineContext> = {}): RoutineContext {
     return {
@@ -422,5 +423,44 @@ describe('$_contains', () => {
         const ctx = ctxWithItems([{ name: 'alice' }, { name: 'bob' }]);
 
         expect(resolveValue('$_contains($items, name, carol)', ctx)).toBe('false');
+    });
+});
+
+describe('custom resolvers via ctx.customResolvers', () => {
+    test('invokes custom resolver with args as exact match', () => {
+        const custom: CustomResolver = argsStr => `lookup:${argsStr}`;
+        const customResolvers = new Map<string, CustomResolver>([['_my_lookup', custom]]);
+        const ctx = makeCtx({ customResolvers });
+        expect(resolveValue('$_my_lookup(foo)', ctx)).toBe('lookup:foo');
+    });
+
+    test('invokes custom no-arg resolver as exact match', () => {
+        const custom: CustomResolver = () => 42;
+        const customResolvers = new Map<string, CustomResolver>([['_constant', custom]]);
+        const ctx = makeCtx({ customResolvers });
+        expect(resolveValue('$_constant', ctx)).toBe(42);
+    });
+
+    test('interpolates custom resolver inline in a string', () => {
+        const custom: CustomResolver = argsStr => `[${argsStr}]`;
+        const customResolvers = new Map<string, CustomResolver>([['_wrap', custom]]);
+        const ctx = makeCtx({ customResolvers });
+        expect(resolveValue('value: $_wrap(abc)', ctx)).toBe('value: [abc]');
+    });
+
+    test('built-in wins over custom with colliding name', () => {
+        // _uuid is built-in; a custom resolver with the same name should be ignored by evalBuiltinFunc
+        const custom: CustomResolver = () => 'custom-override';
+        const customResolvers = new Map<string, CustomResolver>([['_uuid', custom]]);
+        const ctx = makeCtx({ customResolvers });
+        const result = resolveValue('$_uuid', ctx) as string;
+        expect(result).not.toBe('custom-override');
+        expect(result).toMatch(/^[0-9a-f-]{36}$/);
+    });
+
+    test('custom resolver name takes effect only when registered', () => {
+        const ctx = makeCtx();
+        // Without registration the exact-match form returns undefined (unknown function)
+        expect(resolveValue('$_not_defined(x)', ctx)).toBeUndefined();
     });
 });
