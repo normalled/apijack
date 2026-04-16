@@ -79,6 +79,30 @@ describe('uninstallPlugin()', () => {
         expect(existsSync(testMarketplaceDir)).toBe(false);
     });
 
+    test('surfaces claude CLI failures as warnings', async () => {
+        const result = await uninstallPlugin({
+            marketplaceDir: testMarketplaceDir,
+            runClaude: async (args) => {
+                throw new Error(`fake: ${args.join(' ')}`);
+            },
+        });
+
+        expect(result.warnings).toHaveLength(2);
+        expect(result.warnings[0]).toContain('plugin uninstall apijack@apijack');
+        expect(result.warnings[1]).toContain('plugin marketplace remove apijack');
+        expect(result.message).toContain('Warnings:');
+    });
+
+    test('no warnings when claude CLI succeeds', async () => {
+        const result = await uninstallPlugin({
+            marketplaceDir: testMarketplaceDir,
+            runClaude: async () => {},
+        });
+
+        expect(result.warnings).toHaveLength(0);
+        expect(result.message).not.toContain('Warnings:');
+    });
+
     test('handles already-uninstalled gracefully', async () => {
         rmSync(testMarketplaceDir, { recursive: true, force: true });
 

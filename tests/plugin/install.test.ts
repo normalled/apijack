@@ -116,4 +116,47 @@ describe('installPlugin()', () => {
 
         expect(installPlugin(opts)).rejects.toThrow('boom');
     });
+
+    test('rolls back marketplace dir if claude CLI fails on a fresh install', async () => {
+        const { opts } = makeOpts({
+            runClaude: async () => {
+                throw new Error('register failed');
+            },
+        });
+
+        expect(existsSync(testMarketplaceDir)).toBe(false);
+        await installPlugin(opts).catch(() => {});
+        expect(existsSync(testMarketplaceDir)).toBe(false);
+    });
+
+    test('does not roll back a pre-existing marketplace dir on failure', async () => {
+        mkdirSync(testMarketplaceDir, { recursive: true });
+        const { opts } = makeOpts({
+            runClaude: async () => {
+                throw new Error('register failed');
+            },
+        });
+
+        await installPlugin(opts).catch(() => {});
+        expect(existsSync(testMarketplaceDir)).toBe(true);
+    });
+
+    test('surfaces checkClaudeCli errors and does not touch filesystem', async () => {
+        const opts = {
+            version: '0.1.0',
+            userDataDir: testDataDir,
+            marketplaceDir: testMarketplaceDir,
+            sourceDir: join(import.meta.dir, '../..'),
+            cliInvocation: ['bun', 'run', 'src/cli.ts'],
+            generatedDir: 'src/generated',
+            checkClaudeCli: () => {
+                throw new Error('claude not found');
+            },
+        };
+
+        await installPlugin(opts).catch((err) => {
+            expect(err.message).toContain('claude not found');
+        });
+        expect(existsSync(testMarketplaceDir)).toBe(false);
+    });
 });
