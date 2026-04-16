@@ -14,20 +14,59 @@ export class SessionAuthStrategy implements AuthStrategy {
         const baseSession = await this.base.authenticate(config);
 
         const method = this.config.session.method ?? 'GET';
-        const url = config.baseUrl + this.config.session.endpoint;
+        const baseUrl = config.baseUrl + this.config.session.endpoint;
 
-        const res = await fetch(url, {
+        let res = await fetch(baseUrl, {
             method,
             headers: baseSession.headers,
             redirect: 'manual',
         });
 
-        if (!res.ok) {
-            const body = await res.text();
-            throw new Error(`Session endpoint ${url} returned ${res.status}: ${body}`);
+        let challengeCookies: Record<string, string> | undefined;
+
+        if (!res.ok && this.config.onChallenge) {
+            let body = await res.text();
+            challengeCookies = this.collectAllCookies(res);
+            let params = await this.config.onChallenge(res.status, body);
+
+            while (params) {
+                const retryUrl = new URL(baseUrl);
+
+                for (const [k, v] of Object.entries(params)) {
+                    retryUrl.searchParams.set(k, v);
+                }
+
+                const retryHeaders: Record<string, string> = { ...baseSession.headers };
+
+                if (Object.keys(challengeCookies).length > 0) {
+                    retryHeaders.Cookie = Object.entries(challengeCookies)
+                        .map(([k, v]) => `${k}=${v}`)
+                        .join('; ');
+                }
+
+                res = await fetch(retryUrl.toString(), {
+                    method,
+                    headers: retryHeaders,
+                    redirect: 'manual',
+                });
+
+                // Accumulate cookies across retries
+                Object.assign(challengeCookies, this.collectAllCookies(res));
+
+                if (res.ok) break;
+
+                body = await res.text();
+                params = await this.config.onChallenge(res.status, body);
+            }
         }
 
-        const cookies = this.extractCookies(res);
+        if (!res.ok) {
+            const body = await res.text().catch(() => '');
+            throw new Error(`Session endpoint ${baseUrl} returned ${res.status}: ${body}`);
+        }
+
+        // Merge challenge cookies (e.g. remember_device) with extracted session cookies
+        const cookies = { ...challengeCookies, ...this.extractCookies(res) };
 
         return {
             headers: baseSession.headers,
@@ -56,6 +95,21 @@ export class SessionAuthStrategy implements AuthStrategy {
 
     async refresh(_session: AuthSession, config: ResolvedAuth): Promise<AuthSession> {
         return this.authenticate(config);
+    }
+
+    private collectAllCookies(res: Response): Record<string, string> {
+        const cookies: Record<string, string> = {};
+
+        for (const raw of res.headers.getSetCookie()) {
+            const [nameValue] = raw.split(';');
+            const eqIdx = nameValue.indexOf('=');
+
+            if (eqIdx < 0) continue;
+
+            cookies[nameValue.slice(0, eqIdx).trim()] = nameValue.slice(eqIdx + 1).trim();
+        }
+
+        return cookies;
     }
 
     private extractCookies(res: Response): Record<string, string> {

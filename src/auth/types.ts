@@ -32,4 +32,6 @@ export interface SessionAuthConfig {
         applyTo?: string[];
     }>;
     refreshOn?: number[];
+    /** Called when the session endpoint returns a non-OK response. Return query params to retry, or null to give up. */
+    onChallenge?: (status: number, body: string) => Promise<Record<string, string> | null>;
 }
