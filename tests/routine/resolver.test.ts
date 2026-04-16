@@ -299,3 +299,31 @@ describe("$_random_distinct_from", () => {
     expect(result).toBe("only");
   });
 });
+
+describe("$_env", () => {
+  const ctx = makeCtx();
+
+  test("resolves env var value when set", () => {
+    process.env.APIJACK_TEST_KEY = "secret";
+    expect(resolveValue("$_env(APIJACK_TEST_KEY)", ctx)).toBe("secret");
+    delete process.env.APIJACK_TEST_KEY;
+  });
+
+  test("falls back to default when var unset", () => {
+    expect(resolveValue("$_env(APIJACK_MISSING_VAR, fallback)", ctx)).toBe("fallback");
+  });
+
+  test("returns empty string when var unset and no default", () => {
+    expect(resolveValue("$_env(APIJACK_MISSING_VAR)", ctx)).toBe("");
+  });
+
+  test("interpolates within larger string", () => {
+    process.env.APIJACK_TEST_KEY = "xyz";
+    expect(resolveValue("key=$_env(APIJACK_TEST_KEY)", ctx)).toBe("key=xyz");
+    delete process.env.APIJACK_TEST_KEY;
+  });
+
+  test("default value preserves commas", () => {
+    expect(resolveValue("$_env(APIJACK_MISSING, a,b,c)", ctx)).toBe("a,b,c");
+  });
+});
