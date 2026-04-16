@@ -41,7 +41,7 @@
     "api-client",
     "sdk-generator"
   ],
-  "version": "1.6.1",
+  "version": "1.7.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -71,8 +71,8 @@
   },
   "scripts": {
     "test": "bun test",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
+    "lint": "eslint src/ tests/ bin/",
+    "lint:fix": "eslint src/ tests/ bin/ --fix",
     "build:plugin": "bun run scripts/build-plugin.ts",
     "prepack": "bun run build:plugin"
   },

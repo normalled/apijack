@@ -2,23 +2,17 @@ import { homedir } from 'os';
 import { join, resolve } from 'path';
 
 export interface PluginPaths {
-    claudeDir: string;
-    installedPluginsFile: string;
-    settingsFile: string;
     userDataDir: string;
+    marketplaceDir: string;
     sourceDir: string;
 }
 
 export function getPluginPaths(_version: string): PluginPaths {
-    const home = homedir();
-    const claudeDir = join(home, '.claude');
-    const pluginsDir = join(claudeDir, 'plugins');
+    const userDataDir = join(homedir(), '.apijack');
 
     return {
-        claudeDir,
-        installedPluginsFile: join(pluginsDir, 'installed_plugins.json'),
-        settingsFile: join(claudeDir, 'settings.json'),
-        userDataDir: join(home, '.apijack'),
+        userDataDir,
+        marketplaceDir: join(userDataDir, 'plugin-marketplace'),
         sourceDir: resolve(import.meta.dir, '../..'),
     };
 }

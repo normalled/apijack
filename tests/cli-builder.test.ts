@@ -1,19 +1,19 @@
-import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
-import { Command } from "commander";
-import { createCli, type Cli } from "../src/cli-builder";
-import type { CliOptions, CliContext, CommandRegistrar, DispatcherHandler } from "../src/types";
-import { BasicAuthStrategy } from "../src/auth/basic";
+import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
+import { Command } from 'commander';
+import { createCli, type Cli } from '../src/cli-builder';
+import type { CliOptions, CliContext, CommandRegistrar, DispatcherHandler } from '../src/types';
+import { BasicAuthStrategy } from '../src/auth/basic';
 
 function makeOptions(overrides: Partial<CliOptions> = {}): CliOptions {
-  return {
-    name: "testcli",
-    description: "A test CLI",
-    version: "1.0.0",
-    specPath: "/v3/api-docs",
-    auth: new BasicAuthStrategy(),
-    outputModes: ["json", "table", "quiet"],
-    ...overrides,
-  };
+    return {
+        name: 'testcli',
+        description: 'A test CLI',
+        version: '1.0.0',
+        specPath: '/v3/api-docs',
+        auth: new BasicAuthStrategy(),
+        outputModes: ['json', 'table', 'quiet'],
+        ...overrides,
+    };
 }
 
 /**
@@ -21,53 +21,61 @@ function makeOptions(overrides: Partial<CliOptions> = {}): CliOptions {
  * during an async callback. Commander's --help writes directly to stdout.
  */
 async function captureOutput(fn: () => Promise<void>): Promise<string> {
-  const logs: string[] = [];
-  const origLog = console.log;
-  const origErr = console.error;
-  const origWrite = process.stdout.write;
+    const logs: string[] = [];
+    const origLog = console.log;
+    const origErr = console.error;
+    const origWrite = process.stdout.write;
 
-  console.log = (...args: unknown[]) => logs.push(args.join(" "));
-  console.error = (...args: unknown[]) => logs.push(args.join(" "));
-  process.stdout.write = (chunk: any, ...rest: any[]) => {
-    logs.push(typeof chunk === "string" ? chunk : chunk.toString());
-    return true;
-  };
+    console.log = (...args: unknown[]) => logs.push(args.join(' '));
+    console.error = (...args: unknown[]) => logs.push(args.join(' '));
+    process.stdout.write = (chunk: any, ...rest: any[]) => {
+        logs.push(typeof chunk === 'string' ? chunk : chunk.toString());
 
-  try {
-    await fn();
-  } catch {
+        return true;
+    };
+
+    try {
+        await fn();
+    } catch {
     // Expected: process.exit calls
-  } finally {
-    console.log = origLog;
-    console.error = origErr;
-    process.stdout.write = origWrite;
-  }
+    } finally {
+        console.log = origLog;
+        console.error = origErr;
+        process.stdout.write = origWrite;
+    }
 
-  return logs.join("\n");
+    return logs.join('\n');
 }
 
-describe("createCli()", () => {
-  test("returns object with command(), dispatcher(), run() methods", () => {
-    const cli = createCli(makeOptions());
-    expect(typeof cli.command).toBe("function");
-    expect(typeof cli.dispatcher).toBe("function");
-    expect(typeof cli.run).toBe("function");
-  });
+describe('createCli()', () => {
+    test('returns object with command(), dispatcher(), resolver(), run() methods', () => {
+        const cli = createCli(makeOptions());
+        expect(typeof cli.command).toBe('function');
+        expect(typeof cli.dispatcher).toBe('function');
+        expect(typeof cli.resolver).toBe('function');
+        expect(typeof cli.run).toBe('function');
+    });
 
-  test("command() stores registrar for later invocation", () => {
-    const cli = createCli(makeOptions());
-    const registrar: CommandRegistrar = (_program, _ctx) => {};
-    // Should not throw
-    cli.command("my-cmd", registrar);
+    test('command() stores registrar for later invocation', () => {
+        const cli = createCli(makeOptions());
+        const registrar: CommandRegistrar = (_program, _ctx) => {};
+        // Should not throw
+        cli.command('my-cmd', registrar);
     // We verify this is wired correctly in integration-style tests below
-  });
+    });
 
-  test("dispatcher() stores handler for the composed dispatcher", () => {
-    const cli = createCli(makeOptions());
-    const handler: DispatcherHandler = async (_args, _pos, _ctx) => ({});
-    // Should not throw
-    cli.dispatcher("my-dispatch", handler);
-  });
+    test('dispatcher() stores handler for the composed dispatcher', () => {
+        const cli = createCli(makeOptions());
+        const handler: DispatcherHandler = async (_args, _pos, _ctx) => ({});
+        // Should not throw
+        cli.dispatcher('my-dispatch', handler);
+    });
+
+    test('resolver() stores handler for the composed dispatcher', () => {
+        const cli = createCli(makeOptions());
+        // Should not throw
+        cli.resolver('_my_fn', _argsStr => 'ok');
+    });
 });
 
 /**
@@ -75,305 +83,305 @@ describe("createCli()", () => {
  * we construct the CLI and inspect the Commander program that would be built.
  * We do this by mocking process.argv and intercepting parseAsync.
  */
-describe("built-in commands", () => {
-  let originalArgv: string[];
-  let originalExit: typeof process.exit;
-  let exitCode: number | undefined;
+describe('built-in commands', () => {
+    let originalArgv: string[];
+    let originalExit: typeof process.exit;
+    let exitCode: number | undefined;
 
-  beforeEach(() => {
-    originalArgv = process.argv;
-    originalExit = process.exit;
-    exitCode = undefined;
-    // Mock process.exit to prevent test runner from dying
-    (process as any).exit = (code?: number) => {
-      exitCode = code ?? 0;
-      throw new Error(`process.exit(${code})`);
-    };
-  });
-
-  afterEach(() => {
-    process.argv = originalArgv;
-    (process as any).exit = originalExit;
-  });
-
-  test("setup, login, config (list, switch), generate, and routine commands are registered", async () => {
-    // Use --help with a non-existent command to force Commander to parse and build the tree
-    const cli = createCli(makeOptions());
-
-    // We can build a program internally by running with --help, which will call showCustomHelp and exit
-    // Instead, let's test the structure by hooking into run() at the parse stage
-    process.argv = ["node", "testcli", "--help"];
-
-    // Capture console output
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
-
-    try {
-      await cli.run();
-    } catch (e: any) {
-      // Expected: process.exit(0) from showCustomHelp
-    }
-
-    console.log = origLog;
-    const output = logs.join("\n");
-
-    // Verify core commands appear in help
-    expect(output).toContain("setup");
-    expect(output).toContain("login");
-    expect(output).toContain("config");
-    expect(output).toContain("generate");
-    expect(output).toContain("routine");
-  });
-
-  test("knownSites option registers config import and config update-password", async () => {
-    const cli = createCli(
-      makeOptions({
-        knownSites: {
-          staging: { url: "https://staging.example.com", description: "Staging" },
-        },
-      }),
-    );
-
-    process.argv = ["node", "testcli", "config", "--help"];
-
-    const output = await captureOutput(() => cli.run());
-
-    // config import and update-password should be registered as subcommands
-    expect(output).toContain("import");
-    expect(output).toContain("update-password");
-  });
-
-  test("config import is NOT registered when knownSites is not provided", async () => {
-    const cli = createCli(makeOptions({ knownSites: undefined }));
-
-    process.argv = ["node", "testcli", "config", "--help"];
-
-    const output = await captureOutput(() => cli.run());
-
-    // config import should NOT be present
-    expect(output).not.toContain("import");
-    expect(output).not.toContain("update-password");
-  });
-
-  test("output mode flags are registered (--table, --quiet, -o)", async () => {
-    const cli = createCli(makeOptions());
-
-    process.argv = ["node", "testcli", "--help"];
-
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
-
-    try {
-      await cli.run();
-    } catch (e: any) {
-      // Expected
-    }
-
-    console.log = origLog;
-    const output = logs.join("\n");
-
-    expect(output).toContain("--table");
-    expect(output).toContain("--quiet");
-    expect(output).toContain("-o <format>");
-  });
-
-  test("output mode flags respect outputModes option", async () => {
-    // Only json mode (no table or quiet)
-    const cli = createCli(makeOptions({ outputModes: ["json"] }));
-
-    process.argv = ["node", "testcli", "--help"];
-
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
-
-    try {
-      await cli.run();
-    } catch (e: any) {
-      // Expected
-    }
-
-    console.log = origLog;
-    const output = logs.join("\n");
-
-    // --table and --quiet should NOT be registered since not in outputModes
-    expect(output).not.toContain("--table");
-    expect(output).not.toContain("--quiet");
-    // -o should still be registered
-    expect(output).toContain("-o <format>");
-  });
-
-  test("custom help separates core commands from API commands", async () => {
-    const cli = createCli(makeOptions());
-
-    process.argv = ["node", "testcli", "--help"];
-
-    const output = await captureOutput(() => cli.run());
-
-    // Should show "Commands:" section with core commands
-    expect(output).toContain("Commands:");
-    // Should show usage and description
-    expect(output).toContain("Usage: testcli");
-    expect(output).toContain("A test CLI");
-  });
-
-  test("custom commands appear in their own section, visible without --help", async () => {
-    const cli = createCli(makeOptions());
-    cli.command("my-tool", (program) => {
-      program.command("my-tool").description("A custom tool");
+    beforeEach(() => {
+        originalArgv = process.argv;
+        originalExit = process.exit;
+        exitCode = undefined;
+        // Mock process.exit to prevent test runner from dying
+        (process as any).exit = (code?: number) => {
+            exitCode = code ?? 0;
+            throw new Error(`process.exit(${code})`);
+        };
     });
 
-    // No --help flag — just bare invocation
-    process.argv = ["node", "testcli"];
+    afterEach(() => {
+        process.argv = originalArgv;
+        (process as any).exit = originalExit;
+    });
 
-    const output = await captureOutput(() => cli.run());
+    test('setup, login, config (list, switch), generate, and routine commands are registered', async () => {
+    // Use --help with a non-existent command to force Commander to parse and build the tree
+        const cli = createCli(makeOptions());
 
-    expect(output).toContain("Custom Commands:");
-    expect(output).toContain("my-tool");
-    expect(output).toContain("A custom tool");
-  });
+        // We can build a program internally by running with --help, which will call showCustomHelp and exit
+        // Instead, let's test the structure by hooking into run() at the parse stage
+        process.argv = ['node', 'testcli', '--help'];
 
-  test("custom commands section is hidden when there are none", async () => {
-    const cli = createCli(makeOptions());
+        // Capture console output
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...args: unknown[]) => logs.push(args.join(' '));
 
-    process.argv = ["node", "testcli"];
+        try {
+            await cli.run();
+        } catch (e: any) {
+            // Expected: process.exit(0) from showCustomHelp
+        }
 
-    const output = await captureOutput(() => cli.run());
+        console.log = origLog;
+        const output = logs.join('\n');
 
-    expect(output).not.toContain("Custom Commands:");
-  });
+        // Verify core commands appear in help
+        expect(output).toContain('setup');
+        expect(output).toContain('login');
+        expect(output).toContain('config');
+        expect(output).toContain('generate');
+        expect(output).toContain('routine');
+    });
 
-  test("routine subcommands are registered (list, run, validate, test, init)", async () => {
-    const cli = createCli(makeOptions());
+    test('knownSites option registers config import and config update-password', async () => {
+        const cli = createCli(
+            makeOptions({
+                knownSites: {
+                    staging: { url: 'https://staging.example.com', description: 'Staging' },
+                },
+            }),
+        );
 
-    process.argv = ["node", "testcli", "routine", "--help"];
+        process.argv = ['node', 'testcli', 'config', '--help'];
 
-    const output = await captureOutput(() => cli.run());
+        const output = await captureOutput(() => cli.run());
 
-    expect(output).toContain("list");
-    expect(output).toContain("run");
-    expect(output).toContain("validate");
-    expect(output).toContain("test");
-    expect(output).toContain("init");
-  });
+        // config import and update-password should be registered as subcommands
+        expect(output).toContain('import');
+        expect(output).toContain('update-password');
+    });
 
-  test("env var prefix is derived from cliName uppercased", async () => {
+    test('config import is NOT registered when knownSites is not provided', async () => {
+        const cli = createCli(makeOptions({ knownSites: undefined }));
+
+        process.argv = ['node', 'testcli', 'config', '--help'];
+
+        const output = await captureOutput(() => cli.run());
+
+        // config import should NOT be present
+        expect(output).not.toContain('import');
+        expect(output).not.toContain('update-password');
+    });
+
+    test('output mode flags are registered (--table, --quiet, -o)', async () => {
+        const cli = createCli(makeOptions());
+
+        process.argv = ['node', 'testcli', '--help'];
+
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...args: unknown[]) => logs.push(args.join(' '));
+
+        try {
+            await cli.run();
+        } catch (e: any) {
+            // Expected
+        }
+
+        console.log = origLog;
+        const output = logs.join('\n');
+
+        expect(output).toContain('--table');
+        expect(output).toContain('--quiet');
+        expect(output).toContain('-o <format>');
+    });
+
+    test('output mode flags respect outputModes option', async () => {
+    // Only json mode (no table or quiet)
+        const cli = createCli(makeOptions({ outputModes: ['json'] }));
+
+        process.argv = ['node', 'testcli', '--help'];
+
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...args: unknown[]) => logs.push(args.join(' '));
+
+        try {
+            await cli.run();
+        } catch (e: any) {
+            // Expected
+        }
+
+        console.log = origLog;
+        const output = logs.join('\n');
+
+        // --table and --quiet should NOT be registered since not in outputModes
+        expect(output).not.toContain('--table');
+        expect(output).not.toContain('--quiet');
+        // -o should still be registered
+        expect(output).toContain('-o <format>');
+    });
+
+    test('custom help separates core commands from API commands', async () => {
+        const cli = createCli(makeOptions());
+
+        process.argv = ['node', 'testcli', '--help'];
+
+        const output = await captureOutput(() => cli.run());
+
+        // Should show "Commands:" section with core commands
+        expect(output).toContain('Commands:');
+        // Should show usage and description
+        expect(output).toContain('Usage: testcli');
+        expect(output).toContain('A test CLI');
+    });
+
+    test('custom commands appear in their own section, visible without --help', async () => {
+        const cli = createCli(makeOptions());
+        cli.command('my-tool', (program) => {
+            program.command('my-tool').description('A custom tool');
+        });
+
+        // No --help flag — just bare invocation
+        process.argv = ['node', 'testcli'];
+
+        const output = await captureOutput(() => cli.run());
+
+        expect(output).toContain('Custom Commands:');
+        expect(output).toContain('my-tool');
+        expect(output).toContain('A custom tool');
+    });
+
+    test('custom commands section is hidden when there are none', async () => {
+        const cli = createCli(makeOptions());
+
+        process.argv = ['node', 'testcli'];
+
+        const output = await captureOutput(() => cli.run());
+
+        expect(output).not.toContain('Custom Commands:');
+    });
+
+    test('routine subcommands are registered (list, run, validate, test, init)', async () => {
+        const cli = createCli(makeOptions());
+
+        process.argv = ['node', 'testcli', 'routine', '--help'];
+
+        const output = await captureOutput(() => cli.run());
+
+        expect(output).toContain('list');
+        expect(output).toContain('run');
+        expect(output).toContain('validate');
+        expect(output).toContain('test');
+        expect(output).toContain('init');
+    });
+
+    test('env var prefix is derived from cliName uppercased', async () => {
     // Set env vars matching the test CLI name
-    process.env.TESTCLI_URL = "https://env.example.com";
-    process.env.TESTCLI_USER = "envuser";
-    process.env.TESTCLI_PASS = "envpass";
+        process.env.TESTCLI_URL = 'https://env.example.com';
+        process.env.TESTCLI_USER = 'envuser';
+        process.env.TESTCLI_PASS = 'envpass';
 
-    const cli = createCli(makeOptions({ name: "testcli" }));
+        const cli = createCli(makeOptions({ name: 'testcli' }));
 
-    // Run with a non-existent command that won't match — we just want to verify auth resolution
-    process.argv = ["node", "testcli", "--help"];
+        // Run with a non-existent command that won't match — we just want to verify auth resolution
+        process.argv = ['node', 'testcli', '--help'];
 
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...args: unknown[]) => logs.push(args.join(' '));
 
-    try {
-      await cli.run();
-    } catch (e: any) {
-      // Expected: process.exit from help
-    }
+        try {
+            await cli.run();
+        } catch (e: any) {
+            // Expected: process.exit from help
+        }
 
-    console.log = origLog;
+        console.log = origLog;
 
-    // Clean up
-    delete process.env.TESTCLI_URL;
-    delete process.env.TESTCLI_USER;
-    delete process.env.TESTCLI_PASS;
+        // Clean up
+        delete process.env.TESTCLI_URL;
+        delete process.env.TESTCLI_USER;
+        delete process.env.TESTCLI_PASS;
 
-    // If we got this far without error, env var resolution worked
-    expect(exitCode).toBe(0);
-  });
+        // If we got this far without error, env var resolution worked
+        expect(exitCode).toBe(0);
+    });
 
-  test("program name and version are set correctly", async () => {
-    const cli = createCli(
-      makeOptions({
-        name: "mycli",
-        description: "My custom CLI tool",
-        version: "2.5.0",
-      }),
-    );
+    test('program name and version are set correctly', async () => {
+        const cli = createCli(
+            makeOptions({
+                name: 'mycli',
+                description: 'My custom CLI tool',
+                version: '2.5.0',
+            }),
+        );
 
-    process.argv = ["node", "mycli", "--help"];
+        process.argv = ['node', 'mycli', '--help'];
 
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...args: unknown[]) => logs.push(args.join(' '));
 
-    try {
-      await cli.run();
-    } catch (e: any) {
-      // Expected
-    }
+        try {
+            await cli.run();
+        } catch (e: any) {
+            // Expected
+        }
 
-    console.log = origLog;
-    const output = logs.join("\n");
+        console.log = origLog;
+        const output = logs.join('\n');
 
-    expect(output).toContain("Usage: mycli");
-    expect(output).toContain("My custom CLI tool");
-  });
+        expect(output).toContain('Usage: mycli');
+        expect(output).toContain('My custom CLI tool');
+    });
 
-  test("--dry-run flag is registered", async () => {
-    const cli = createCli(makeOptions());
+    test('--dry-run flag is registered', async () => {
+        const cli = createCli(makeOptions());
 
-    process.argv = ["node", "testcli", "--help"];
+        process.argv = ['node', 'testcli', '--help'];
 
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...args: unknown[]) => logs.push(args.join(' '));
 
-    try {
-      await cli.run();
-    } catch (e: any) {
-      // Expected
-    }
+        try {
+            await cli.run();
+        } catch (e: any) {
+            // Expected
+        }
 
-    console.log = origLog;
-    const output = logs.join("\n");
+        console.log = origLog;
+        const output = logs.join('\n');
 
-    expect(output).toContain("--dry-run");
-  });
+        expect(output).toContain('--dry-run');
+    });
 
-  test("-o help text includes curl and curl-with-creds formats", async () => {
-    const cli = createCli(makeOptions());
+    test('-o help text includes curl and curl-with-creds formats', async () => {
+        const cli = createCli(makeOptions());
 
-    process.argv = ["node", "testcli", "--help"];
+        process.argv = ['node', 'testcli', '--help'];
 
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (...args: unknown[]) => logs.push(args.join(' '));
 
-    try {
-      await cli.run();
-    } catch (e: any) {
-      // Expected
-    }
+        try {
+            await cli.run();
+        } catch (e: any) {
+            // Expected
+        }
 
-    console.log = origLog;
-    const output = logs.join("\n");
+        console.log = origLog;
+        const output = logs.join('\n');
 
-    expect(output).toContain("curl");
-    expect(output).toContain("curl-with-creds");
-  });
+        expect(output).toContain('curl');
+        expect(output).toContain('curl-with-creds');
+    });
 });
 
-describe("index exports", () => {
-  test("all expected exports are available", async () => {
-    const indexModule = await import("../src/index");
+describe('index exports', () => {
+    test('all expected exports are available', async () => {
+        const indexModule = await import('../src/index');
 
-    // Functions
-    expect(typeof indexModule.createCli).toBe("function");
-    expect(typeof indexModule.BasicAuthStrategy).toBe("function");
-    expect(typeof indexModule.BearerTokenStrategy).toBe("function");
-    expect(typeof indexModule.ApiKeyStrategy).toBe("function");
-    expect(typeof indexModule.formatOutput).toBe("function");
-    expect(typeof indexModule.updateEnvironmentField).toBe("function");
-    expect(typeof indexModule.verifyCredentials).toBe("function");
-  });
+        // Functions
+        expect(typeof indexModule.createCli).toBe('function');
+        expect(typeof indexModule.BasicAuthStrategy).toBe('function');
+        expect(typeof indexModule.BearerTokenStrategy).toBe('function');
+        expect(typeof indexModule.ApiKeyStrategy).toBe('function');
+        expect(typeof indexModule.formatOutput).toBe('function');
+        expect(typeof indexModule.updateEnvironmentField).toBe('function');
+        expect(typeof indexModule.verifyCredentials).toBe('function');
+    });
 });

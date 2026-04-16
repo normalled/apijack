@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test';
-import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers } from '../src/project-loader';
+import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectResolvers } from '../src/project-loader';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -11,10 +11,11 @@ describe('loadProjectAuth()', () => {
         rmSync(testRoot, { recursive: true, force: true });
     });
 
-    test('returns null when no auth.ts exists', async () => {
+    test('returns null strategy and onChallenge when no auth.ts exists', async () => {
         mkdirSync(testRoot, { recursive: true });
         const result = await loadProjectAuth(testRoot);
-        expect(result).toBeNull();
+        expect(result.strategy).toBeNull();
+        expect(result.onChallenge).toBeNull();
     });
 
     test('loads auth strategy from auth.ts', async () => {
@@ -31,8 +32,27 @@ describe('loadProjectAuth()', () => {
         `);
 
         const result = await loadProjectAuth(testRoot);
-        expect(result).not.toBeNull();
-        expect(typeof result!.authenticate).toBe('function');
+        expect(result.strategy).not.toBeNull();
+        expect(typeof result.strategy!.authenticate).toBe('function');
+        expect(result.onChallenge).toBeNull();
+    });
+
+    test('loads onChallenge from auth.ts', async () => {
+        const root = join(tmpdir(), 'apijack-loader-onchallenge-' + Date.now());
+        mkdirSync(root, { recursive: true });
+        writeFileSync(join(root, 'auth.ts'), `
+            export async function onChallenge(status, body) {
+                return { retry: 'true' };
+            }
+        `);
+
+        try {
+            const result = await loadProjectAuth(root);
+            expect(result.strategy).toBeNull();
+            expect(typeof result.onChallenge).toBe('function');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
     });
 });
 
@@ -105,5 +125,79 @@ describe('loadProjectDispatchers()', () => {
         expect(result.size).toBe(1);
         expect(result.has('notify')).toBe(true);
         expect(typeof result.get('notify')).toBe('function');
+    });
+});
+
+describe('loadProjectResolvers()', () => {
+    afterEach(() => {
+        rmSync(testRoot, { recursive: true, force: true });
+    });
+
+    test('returns empty map when no resolvers/ dir exists', async () => {
+        mkdirSync(testRoot, { recursive: true });
+        const result = await loadProjectResolvers(testRoot);
+        expect(result.size).toBe(0);
+    });
+
+    test('loads resolver functions from resolvers/*.ts (name from export)', async () => {
+        const resDir = join(testRoot, 'resolvers');
+        mkdirSync(resDir, { recursive: true });
+        writeFileSync(join(resDir, 'lookup.ts'), `
+            export const name = '_my_lookup';
+            export default (argsStr) => 'resolved:' + argsStr;
+        `);
+
+        const result = await loadProjectResolvers(testRoot);
+        expect(result.size).toBe(1);
+        expect(result.has('_my_lookup')).toBe(true);
+        expect(result.get('_my_lookup')!('hello')).toBe('resolved:hello');
+    });
+
+    test('falls back to filename when export name is missing', async () => {
+        const resDir = join(testRoot, 'resolvers');
+        mkdirSync(resDir, { recursive: true });
+        writeFileSync(join(resDir, '_from_file.ts'), `
+            export default () => 42;
+        `);
+
+        const result = await loadProjectResolvers(testRoot);
+        expect(result.size).toBe(1);
+        expect(result.has('_from_file')).toBe(true);
+        expect(result.get('_from_file')!()).toBe(42);
+    });
+
+    test('skips resolvers whose name does not start with "_"', async () => {
+        const resDir = join(testRoot, 'resolvers');
+        mkdirSync(resDir, { recursive: true });
+        writeFileSync(join(resDir, 'bad.ts'), `
+            export const name = 'no_underscore';
+            export default () => 'x';
+        `);
+
+        const result = await loadProjectResolvers(testRoot);
+        expect(result.size).toBe(0);
+    });
+
+    test('skips resolvers whose filename does not start with "_" when no export name', async () => {
+        const resDir = join(testRoot, 'resolvers');
+        mkdirSync(resDir, { recursive: true });
+        writeFileSync(join(resDir, 'plainname.ts'), `
+            export default () => 'x';
+        `);
+
+        const result = await loadProjectResolvers(testRoot);
+        expect(result.size).toBe(0);
+    });
+
+    test('skips resolvers whose name collides with a built-in', async () => {
+        const resDir = join(testRoot, 'resolvers');
+        mkdirSync(resDir, { recursive: true });
+        writeFileSync(join(resDir, 'uuid.ts'), `
+            export const name = '_uuid';
+            export default () => 'overridden';
+        `);
+
+        const result = await loadProjectResolvers(testRoot);
+        expect(result.size).toBe(0);
     });
 });

@@ -1,11 +1,18 @@
-import type { CliContext, DispatcherHandler, CommandDispatcher } from '../types';
+import type { CliContext, DispatcherHandler, CommandDispatcher, CustomResolver } from '../types';
 import { loadRoutineFile, validateRoutine } from './loader';
 import { executeRoutine } from './executor';
 
 export interface DispatcherConfig {
-    commandMap?: Record<string, { operationId: string; pathParams: string[]; queryParams: string[]; hasBody: boolean }>;
+    commandMap?: Record<string, {
+        operationId: string;
+        pathParams: string[];
+        queryParams: string[];
+        hasBody: boolean;
+        bodyFields?: Array<{ name: string; type: string; required: boolean; description?: string }>;
+    }>;
     client?: Record<string, unknown>;
     consumerHandlers?: Map<string, DispatcherHandler>;
+    customResolvers?: Map<string, CustomResolver>;
     preDispatch?: (command: string, args: Record<string, unknown>, ctx: CliContext) => Promise<void>;
     ctx: CliContext;
     routinesDir: string;
@@ -52,19 +59,18 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
             // Body from args
             if (mapping.hasBody) {
                 const body: Record<string, unknown> = {};
+                const bodyFieldNames = new Set(mapping.bodyFields?.map(f => f.name) ?? []);
 
                 for (const [key, val] of Object.entries(args)) {
                     if (key.startsWith('--')) {
-                        // Skip path params and query params — they're handled separately
-                        const isPathParam = mapping.pathParams.some(
-                            (p: string) => `--${p}` === key,
-                        );
-                        const isQueryParam = mapping.queryParams.some(
-                            (p: string) => `--${p}` === key,
-                        );
+                        const propName = key.slice(2);
+                        const isBodyField = bodyFieldNames.has(propName);
+                        // A field that's declared as a body field stays in the body
+                        // even if its name collides with a path or query param.
+                        const isPathParam = mapping.pathParams.includes(propName);
+                        const isQueryParam = mapping.queryParams.includes(propName);
 
-                        if (!isPathParam && !isQueryParam) {
-                            const propName = key.slice(2);
+                        if (isBodyField || (!isPathParam && !isQueryParam)) {
                             body[propName] = val;
                         }
                     }
@@ -170,7 +176,9 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
                 if (k.startsWith('--set-')) subOverrides[k.slice(6)] = v;
             }
 
-            const result = await _execute(subDef, subOverrides, dispatch);
+            const result = await _execute(subDef, subOverrides, dispatch, {
+                customResolvers: config.customResolvers,
+            });
 
             if (!result.success) throw new Error(`Sub-routine "${routineName}" failed`);
 

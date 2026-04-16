@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // bin/apijack.ts
 import { resolve, join, dirname } from 'path';
-import { mkdirSync } from 'fs';
+import { mkdirSync, existsSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { createCli } from '../src/cli-builder';
 import type { AuthStrategy, SessionAuthConfig } from '../src/auth/types';
@@ -9,7 +9,7 @@ import { BasicAuthStrategy } from '../src/auth/basic';
 import { BearerTokenStrategy } from '../src/auth/bearer';
 import { ApiKeyStrategy } from '../src/auth/api-key';
 import { findProjectConfig, loadProjectConfig, resolveConfigDir } from '../src/project';
-import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers } from '../src/project-loader';
+import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectResolvers } from '../src/project-loader';
 import { checkForUpdate } from '../src/updater';
 import { getActiveEnvConfig } from '../src/config';
 import pkg from '../package.json';
@@ -30,8 +30,37 @@ const projectConfig = projectConfigPath ? loadProjectConfig(projectConfigPath) :
 const configDir = resolveConfigDir(projectConfigPath);
 const projectRoot = projectConfigPath ? dirname(projectConfigPath) : null;
 
+// Load .env from project root (Bun auto-loads from cwd, which may differ when invoked via symlink)
+if (projectRoot) {
+    const envPath = join(projectRoot, '.env');
+
+    if (existsSync(envPath)) {
+        for (const line of readFileSync(envPath, 'utf-8').split(/\r?\n/)) {
+            const trimmed = line.trim();
+
+            if (!trimmed || trimmed.startsWith('#')) continue;
+
+            const eq = trimmed.indexOf('=');
+
+            if (eq < 0) continue;
+
+            const key = trimmed.slice(0, eq).trim();
+            let val = trimmed.slice(eq + 1).trim();
+
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+                val = val.slice(1, -1);
+            }
+
+            if (!(key in process.env)) {
+                process.env[key] = val;
+            }
+        }
+    }
+}
+
 // 4. Resolve generated dir
 let generatedDir: string;
+
 if (projectConfig?.generatedDir && projectRoot) {
     generatedDir = resolve(projectRoot, projectConfig.generatedDir);
 } else if (projectRoot) {
@@ -44,6 +73,7 @@ if (projectConfig?.generatedDir && projectRoot) {
 
 // 5. Resolve spec path
 let specPath = '/v3/api-docs';
+
 if (projectConfig?.specUrl) {
     try {
         specPath = new URL(projectConfig.specUrl).pathname;
@@ -57,21 +87,28 @@ let authStrategy: AuthStrategy = new BasicAuthStrategy();
 let authResolved = false;
 
 // Check for project-level custom auth first
+let projectOnChallenge: SessionAuthConfig['onChallenge'] | null = null;
+
 if (projectRoot) {
     const projectAuth = await loadProjectAuth(join(projectRoot, '.apijack'));
-    if (projectAuth) {
-        authStrategy = projectAuth;
+
+    if (projectAuth.strategy) {
+        authStrategy = projectAuth.strategy;
         authResolved = true;
     }
+
+    projectOnChallenge = projectAuth.onChallenge ?? null;
 }
 
 // Fall back to config-based auth type
 if (!authResolved) {
     const env = getActiveEnvConfig(CLI_NAME, { configPath: join(configDir, 'config.json') });
+
     if (env) {
         const authType = (env as Record<string, unknown>).authType as string | undefined;
+
         if (authType === 'bearer') {
-            authStrategy = new BearerTokenStrategy(async (config) => config.password);
+            authStrategy = new BearerTokenStrategy(async config => config.password);
         } else if (authType === 'apiKey') {
             const headerName = (env as Record<string, unknown>).authHeader as string ?? 'X-API-Key';
             const apiKey = (env as Record<string, unknown>).apiKey as string ?? '';
@@ -84,8 +121,13 @@ if (!authResolved) {
 let sessionAuth: SessionAuthConfig | undefined;
 {
     const env = getActiveEnvConfig(CLI_NAME, { configPath: join(configDir, 'config.json') });
+
     if (env) {
         sessionAuth = (env as Record<string, unknown>).sessionAuth as SessionAuthConfig | undefined;
+    }
+
+    if (sessionAuth && projectOnChallenge) {
+        sessionAuth.onChallenge = projectOnChallenge;
     }
 }
 
@@ -105,13 +147,21 @@ const cli = createCli({
 // 9. Register project-level extensions
 if (projectRoot) {
     const commands = await loadProjectCommands(join(projectRoot, '.apijack'));
+
     for (const cmd of commands) {
         cli.command(cmd.name, cmd.registrar);
     }
 
     const dispatchers = await loadProjectDispatchers(join(projectRoot, '.apijack'));
+
     for (const [name, handler] of dispatchers) {
         cli.dispatcher(name, handler);
+    }
+
+    const resolvers = await loadProjectResolvers(join(projectRoot, '.apijack'));
+
+    for (const [name, fn] of resolvers) {
+        cli.resolver(name, fn);
     }
 }
 

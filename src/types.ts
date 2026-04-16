@@ -34,6 +34,13 @@ export type DispatcherHandler = (
     ctx: CliContext,
 ) => Promise<unknown>;
 
+export interface CustomResolverHelpers {
+    /** Resolve `$refs` and built-in functions inside a string against the current routine context. */
+    resolve: (value: string) => unknown;
+}
+
+export type CustomResolver = (argsStr?: string, helpers?: CustomResolverHelpers) => unknown;
+
 export type CommandDispatcher = (
     command: string,
     args: Record<string, unknown>,

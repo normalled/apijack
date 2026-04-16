@@ -1,6 +1,7 @@
 export { createCli } from './cli-builder';
 export type { Cli } from './cli-builder';
-export type { CliOptions, CliContext, CommandRegistrar, DispatcherHandler, CommandDispatcher } from './types';
+export type { CliOptions, CliContext, CommandRegistrar, DispatcherHandler, CommandDispatcher, CustomResolver, CustomResolverHelpers } from './types';
+export { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectResolvers } from './project-loader';
 export type { AuthStrategy, AuthSession, ResolvedAuth, SessionAuthConfig } from './auth/types';
 export { BasicAuthStrategy } from './auth/basic';
 export { BearerTokenStrategy } from './auth/bearer';

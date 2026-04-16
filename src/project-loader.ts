@@ -1,21 +1,37 @@
 import { existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
-import type { AuthStrategy } from './auth/types';
-import type { CommandRegistrar, DispatcherHandler } from './types';
+import type { AuthStrategy, SessionAuthConfig } from './auth/types';
+import type { CommandRegistrar, DispatcherHandler, CustomResolver } from './types';
+
+const BUILTIN_RESOLVER_NAMES = new Set([
+    '_random_hex_color',
+    '_uuid',
+    '_random_int',
+    '_random_from',
+    '_random_distinct_from',
+]);
+
+export interface ProjectAuth {
+    strategy: AuthStrategy | null;
+    onChallenge: SessionAuthConfig['onChallenge'] | null;
+}
 
 export async function loadProjectAuth(
     apijackDir: string,
-): Promise<AuthStrategy | null> {
+): Promise<ProjectAuth> {
     const authPath = join(apijackDir, 'auth.ts');
 
-    if (!existsSync(authPath)) return null;
+    if (!existsSync(authPath)) return { strategy: null, onChallenge: null };
 
     try {
         const mod = await import(authPath);
 
-        return (mod.default ?? mod) as AuthStrategy;
+        const strategy = (mod.default ?? null) as AuthStrategy | null;
+        const onChallenge = (mod.onChallenge ?? null) as SessionAuthConfig['onChallenge'] | null;
+
+        return { strategy, onChallenge };
     } catch {
-        return null;
+        return { strategy: null, onChallenge: null };
     }
 }
 
@@ -76,4 +92,45 @@ export async function loadProjectDispatchers(
     }
 
     return dispatchers;
+}
+
+export async function loadProjectResolvers(
+    apijackDir: string,
+): Promise<Map<string, CustomResolver>> {
+    const resDir = join(apijackDir, 'resolvers');
+
+    if (!existsSync(resDir)) return new Map();
+
+    const resolvers = new Map<string, CustomResolver>();
+    const files = readdirSync(resDir).filter(f => f.endsWith('.ts'));
+
+    for (const file of files) {
+        try {
+            const mod = await import(join(resDir, file));
+            const name = mod.name ?? basename(file, '.ts');
+            const resolver = mod.default as CustomResolver;
+
+            if (typeof resolver !== 'function') continue;
+
+            if (typeof name !== 'string' || !name.startsWith('_')) {
+                process.stderr.write(
+                    `Warning: skipping resolver "${file}" — name "${name}" must start with "_" (e.g. "_my_fn")\n`,
+                );
+                continue;
+            }
+
+            if (BUILTIN_RESOLVER_NAMES.has(name)) {
+                process.stderr.write(
+                    `Warning: skipping resolver "${file}" — name "${name}" collides with a built-in\n`,
+                );
+                continue;
+            }
+
+            resolvers.set(name, resolver);
+        } catch {
+            // Skip files that fail to import
+        }
+    }
+
+    return resolvers;
 }

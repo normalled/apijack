@@ -81,6 +81,26 @@ steps:
 - `$_random_from(a,b,c)` — pick one randomly (may repeat)
 - `$_random_distinct_from(a,b,c)` — pick one randomly, no repeats until all used (then cycles)
 
+**Environment:**
+- `$_env(VAR)` / `$_env(VAR, default)` — read from environment. `.env` at the project root is auto-loaded at startup; real env vars take precedence.
+
+**Array lookup:**
+- `$_find($array, field, value)` — return the first element of `$array` where `element[field] == value`, or `undefined` if nothing matches. The array arg and the value arg resolve `$refs`; the field is a literal name.
+- `$_contains($array, field, value)` — returns `"true"` or `"false"`. Useful in conditions.
+
+Example — skip creation when an entity already exists:
+```yaml
+- name: list-projects
+  command: projects list
+  output: projects
+
+- name: create
+  command: projects create
+  args:
+    --name: "$name"
+  condition: "$_find($projects, name, $name) == undefined"
+```
+
 Variables can reference other variables in defaults: `run_id: "run-$_timestamp"`.
 
 Override at runtime: `<cli> routine run my-routine --set project_name=prod`.
@@ -118,7 +138,7 @@ Skip steps when a condition is false:
   condition: "$created.status == ready"
 ```
 
-Supported operators: `==`, `!=`, or bare `$ref` for truthy check.
+Supported operators: `==`, `!=`, or bare `$ref` for truthy check. The RHS may be a literal, a `$ref`, or the keyword `undefined` (for strict `=== undefined` comparison — useful with `$_find`). Function calls like `$_find(...)` are allowed on the LHS.
 
 ## Loops
 
@@ -244,6 +264,54 @@ Built-in commands available in routines:
 <cli> routine list --tree                  # Show tree structure
 ```
 
+## Custom Resolvers
+
+If the built-in `$_*` functions aren't enough, add project-specific resolvers by dropping a `.ts` file into `.apijack/resolvers/`. They show up as `$_<name>(...)` inside routines, just like the built-ins.
+
+**`.apijack/resolvers/uppercase.ts`:**
+```ts
+import type { CustomResolverHelpers } from '@apijack/core';
+
+export const name = '_uppercase';
+
+export default function uppercase(argsStr?: string, helpers?: CustomResolverHelpers): string {
+    // helpers.resolve() expands $refs and built-in functions inside the arg
+    const raw = argsStr ?? '';
+    const resolved = helpers ? String(helpers.resolve(raw)) : raw;
+
+    return resolved.toUpperCase();
+}
+```
+
+**Use it in a routine:**
+```yaml
+variables:
+  greeting: "hello-world"
+steps:
+  - name: create
+    command: resources create
+    args:
+      --title: "$_uppercase($greeting)"   # → "HELLO-WORLD"
+```
+
+**Rules:**
+- File name (or `export const name`) becomes the function name. It **must** start with `_` to match the `$_*` call syntax.
+- Built-in names (`_env`, `_find`, `_uuid`, `_random_*`, etc.) are reserved — a colliding custom resolver is skipped with a stderr warning.
+- `helpers.resolve(value)` runs the arg through the full resolver (same rules as a routine value), so `$refs`, `$_env(...)`, and other `$_*` functions inside the arg get expanded before your function sees them. Skip it to receive literal args (like `$_env` does).
+- Resolvers are sync. Return the value directly.
+
+## Project Extensions
+
+The `.apijack/` directory at a project root is auto-loaded when the CLI runs inside that project. Drop a file in one of these subdirs and it's picked up:
+
+| Directory | File exports | Used as |
+|-----------|--------------|---------|
+| `.apijack/resolvers/*.ts` | `default`: `(argsStr?, helpers?) => unknown`, optional `name` | Custom `$_*(...)` routine functions |
+| `.apijack/commands/*.ts` | `default`: `(program, ctx) => void`, optional `name` | Extra CLI subcommands |
+| `.apijack/dispatchers/*.ts` | `default`: `(args, posArgs, ctx) => Promise<unknown>`, optional `name` | Handle non-API commands invoked from routines |
+| `.apijack/auth.ts` | `default`: `AuthStrategy`, optional `onChallenge` | Project-level auth strategy |
+| `.apijack/routines/*.yaml` | Routine YAML | Available via `routine run <name>` |
+
 ## Common Patterns
 
 ### Create-then-verify
@@ -272,6 +340,26 @@ Built-in commands available in routines:
   args:
     --id: "$job.id"
     --timeout: "120"
+```
+
+### Idempotent create (skip if exists)
+
+```yaml
+- name: list-existing
+  command: projects list
+  output: projects
+
+- name: create
+  command: projects create
+  args:
+    --name: "$name"
+  condition: "$_find($projects, name, $name) == undefined"
+  output: created
+
+- name: verify
+  command: projects list
+  output: final
+  assert: "$_contains($final, name, $name) == true"
 ```
 
 ### Batch operations

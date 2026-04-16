@@ -5,6 +5,7 @@ import type {
     CommandRegistrar,
     DispatcherHandler,
     CommandDispatcher,
+    CustomResolver,
 } from './types';
 import { resolveAuth, verifyCredentials, saveEnvironment, getActiveEnvConfig } from './config';
 import { SessionManager } from './session';
@@ -29,6 +30,7 @@ import { loadPreRequestHook } from './pre-request';
 export interface Cli {
     command(name: string, registrar: CommandRegistrar): void;
     dispatcher(name: string, handler: DispatcherHandler): void;
+    resolver(name: string, handler: CustomResolver): void;
     run(): Promise<void>;
 }
 
@@ -102,6 +104,7 @@ function showCustomHelp(
 export function createCli(options: CliOptions): Cli {
     const consumerCommands: { name: string; registrar: CommandRegistrar }[] = [];
     const consumerDispatchers = new Map<string, DispatcherHandler>();
+    const consumerResolvers = new Map<string, CustomResolver>();
     const cliName = options.name;
     const configOpts = options.configPath ? { configPath: options.configPath } : undefined;
     const configDir = options.configPath
@@ -117,6 +120,10 @@ export function createCli(options: CliOptions): Cli {
 
         dispatcher(name: string, handler: DispatcherHandler): void {
             consumerDispatchers.set(name, handler);
+        },
+
+        resolver(name: string, handler: CustomResolver): void {
+            consumerResolvers.set(name, handler);
         },
 
         async run(): Promise<void> {
@@ -422,11 +429,14 @@ export function createCli(options: CliOptions): Cli {
 
             let dispatch: CommandDispatcher | undefined;
 
+            const customResolvers = consumerResolvers.size > 0 ? consumerResolvers : undefined;
+
             if (ctx) {
                 dispatch = buildDispatcher({
                     commandMap,
                     client: ctx.client,
                     consumerHandlers: consumerDispatchers.size > 0 ? consumerDispatchers : undefined,
+                    customResolvers,
                     preDispatch: options.preDispatch,
                     ctx,
                     routinesDir,
@@ -437,7 +447,7 @@ export function createCli(options: CliOptions): Cli {
             }
 
             // 12. Register routine commands
-            registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir);
+            registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir, customResolvers);
 
             // 11. Handle -o routine-step
             const isRoutineStep

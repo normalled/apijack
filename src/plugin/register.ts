@@ -44,27 +44,20 @@ export function registerPluginCommand(
 
             const result = await installPlugin({
                 version,
-                claudeDir: paths.claudeDir,
                 userDataDir: paths.userDataDir,
+                marketplaceDir: paths.marketplaceDir,
                 sourceDir: paths.sourceDir,
                 cliInvocation,
                 generatedDir: opts.generatedDir ?? 'src/generated',
             });
 
             if (result.success) {
-                console.log(result.message);
-                console.log(`\n  Plugin dir:    ${result.marketplaceDir}`);
+                console.log(`\n${result.message}`);
+                console.log(`\n  Marketplace:   ${result.marketplaceDir}`);
+                console.log(`  Plugin dir:    ${result.pluginDir}`);
                 console.log(`  User data:     ${paths.userDataDir}`);
                 console.log(`  CLI invocation: ${cliInvocation.join(' ')}`);
-                console.log('\n── Next steps ──────────────────────────────────────');
-                console.log('1. In Claude Code, run:  /reload-plugins');
-                console.log('2. Then try a prompt like:');
-                console.log('');
-                console.log('   "Use /setup-api to connect apijack to my todo list');
-                console.log('    API at http://localhost:8080, then use /write-routine');
-                console.log('    to automate an e2e test: create 10 todos and then');
-                console.log('    delete them all."');
-                console.log('');
+                console.log('\nIn Claude Code, run /reload-plugins to activate.');
             }
         });
 
@@ -73,7 +66,7 @@ export function registerPluginCommand(
         .description('Remove Claude Code plugin registration')
         .action(async () => {
             const paths = getPluginPaths(version);
-            const result = await uninstallPlugin({ claudeDir: paths.claudeDir });
+            const result = await uninstallPlugin({ marketplaceDir: paths.marketplaceDir });
             console.log(result.message);
         });
 

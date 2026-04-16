@@ -1,10 +1,38 @@
 name: tutorial-e2e
 description: >
   End-to-end test of the full tutorial workflow:
+  verify custom resolver ($_uppercase) round-trips via a TODO,
   create 50 TODOs, color each randomly in shuffled order,
   delete all in reverse creation order, verify empty.
 
+variables:
+  greeting: "hello-from-variable"
+
 steps:
+  - name: custom-resolver-literal
+    command: todos create
+    args:
+      --title: "$_uppercase(hello-resolver)"
+    output: literal
+    assert: "$literal.title == HELLO-RESOLVER"
+
+  - name: custom-resolver-ref
+    command: todos create
+    args:
+      --title: "$_uppercase($greeting)"
+    output: resolved
+    assert: "$resolved.title == HELLO-FROM-VARIABLE"
+
+  - name: custom-resolver-cleanup-literal
+    command: todos delete
+    args:
+      --id: "$literal.id"
+
+  - name: custom-resolver-cleanup-ref
+    command: todos delete
+    args:
+      --id: "$resolved.id"
+
   - name: create-todos
     range: [1, 50]
     as: n
