@@ -5,18 +5,33 @@ description: >
   create 50 TODOs, color each randomly in shuffled order,
   delete all in reverse creation order, verify empty.
 
+variables:
+  greeting: "hello-from-variable"
+
 steps:
-  - name: custom-resolver-create
+  - name: custom-resolver-literal
     command: todos create
     args:
       --title: "$_uppercase(hello-resolver)"
-    output: uppercased
-    assert: "$uppercased.title == HELLO-RESOLVER"
+    output: literal
+    assert: "$literal.title == HELLO-RESOLVER"
 
-  - name: custom-resolver-cleanup
+  - name: custom-resolver-ref
+    command: todos create
+    args:
+      --title: "$_uppercase($greeting)"
+    output: resolved
+    assert: "$resolved.title == HELLO-FROM-VARIABLE"
+
+  - name: custom-resolver-cleanup-literal
     command: todos delete
     args:
-      --id: "$uppercased.id"
+      --id: "$literal.id"
+
+  - name: custom-resolver-cleanup-ref
+    command: todos delete
+    args:
+      --id: "$resolved.id"
 
   - name: create-todos
     range: [1, 50]
