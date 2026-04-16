@@ -437,6 +437,42 @@ describe('buildDispatcher', () => {
         expect(client.updateItem).toHaveBeenCalledWith(5, { title: 'New' }, { force: true });
     });
 
+    test('command-map body keeps field that is both a path param and a body field', async () => {
+        // Regression: fetch-agent takes agentId as a path param AND requires it in the request body.
+        // Previously the dispatcher stripped any flag whose name matched a path param, dropping agentId from the body.
+        const client = {
+            fetchAgent: mock(async (..._args: unknown[]) => ({ ok: true })),
+        };
+        const ctx = makeCtx({ client });
+        const dispatch = buildDispatcher({
+            commandMap: {
+                'fetch-agent': {
+                    operationId: 'fetchAgent',
+                    pathParams: ['agentId'],
+                    queryParams: [],
+                    hasBody: true,
+                    bodyFields: [
+                        { name: 'authenticationId', type: 'number', required: true },
+                        { name: 'agentId', type: 'string', required: true },
+                    ],
+                },
+            },
+            client,
+            ctx,
+            routinesDir: '/tmp/routines',
+        });
+
+        await dispatch('fetch-agent', {
+            '--agentId': 'v2_agt_abc',
+            '--authenticationId': 1,
+        });
+
+        expect(client.fetchAgent).toHaveBeenCalledWith(
+            'v2_agt_abc',
+            { authenticationId: 1, agentId: 'v2_agt_abc' },
+        );
+    });
+
     test('command-map throws if client method not found', async () => {
         const client = {}; // no methods
         const ctx = makeCtx({ client });
