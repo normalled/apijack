@@ -11,10 +11,11 @@ describe('loadProjectAuth()', () => {
         rmSync(testRoot, { recursive: true, force: true });
     });
 
-    test('returns null when no auth.ts exists', async () => {
+    test('returns null strategy and onChallenge when no auth.ts exists', async () => {
         mkdirSync(testRoot, { recursive: true });
         const result = await loadProjectAuth(testRoot);
-        expect(result).toBeNull();
+        expect(result.strategy).toBeNull();
+        expect(result.onChallenge).toBeNull();
     });
 
     test('loads auth strategy from auth.ts', async () => {
@@ -31,8 +32,27 @@ describe('loadProjectAuth()', () => {
         `);
 
         const result = await loadProjectAuth(testRoot);
-        expect(result).not.toBeNull();
-        expect(typeof result!.authenticate).toBe('function');
+        expect(result.strategy).not.toBeNull();
+        expect(typeof result.strategy!.authenticate).toBe('function');
+        expect(result.onChallenge).toBeNull();
+    });
+
+    test('loads onChallenge from auth.ts', async () => {
+        const root = join(tmpdir(), 'apijack-loader-onchallenge-' + Date.now());
+        mkdirSync(root, { recursive: true });
+        writeFileSync(join(root, 'auth.ts'), `
+            export async function onChallenge(status, body) {
+                return { retry: 'true' };
+            }
+        `);
+
+        try {
+            const result = await loadProjectAuth(root);
+            expect(result.strategy).toBeNull();
+            expect(typeof result.onChallenge).toBe('function');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
     });
 });
 
