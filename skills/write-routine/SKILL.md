@@ -81,6 +81,9 @@ steps:
 - `$_random_from(a,b,c)` — pick one randomly (may repeat)
 - `$_random_distinct_from(a,b,c)` — pick one randomly, no repeats until all used (then cycles)
 
+**Environment:**
+- `$_env(VAR)` / `$_env(VAR, default)` — read from environment. `.env` at the project root is auto-loaded at startup; real env vars take precedence.
+
 Variables can reference other variables in defaults: `run_id: "run-$_timestamp"`.
 
 Override at runtime: `<cli> routine run my-routine --set project_name=prod`.

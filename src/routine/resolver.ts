@@ -4,7 +4,7 @@ const REF_PATTERN = /\$([a-zA-Z_][a-zA-Z0-9_\-]*(?:\.[a-zA-Z0-9_][a-zA-Z0-9_\-]*
 // No-arg built-in functions (match without parentheses)
 const NOARG_FUNC_PATTERN = /\$(_random_hex_color|_uuid)/g;
 // Parameterized built-in functions (require parentheses)
-const PARAM_FUNC_PATTERN = /\$(_random_int|_random_from|_random_distinct_from)\(([^)]*)\)/g;
+const PARAM_FUNC_PATTERN = /\$(_random_int|_random_from|_random_distinct_from|_env)\(([^)]*)\)/g;
 
 // ── Built-in functions ─────────────────────────────────────────────
 
@@ -73,6 +73,22 @@ function evalBuiltinFunc(name: string, argsStr?: string): unknown {
 
             return pool.pop()!;
         }
+        case '_env': {
+            if (!argsStr) return '';
+
+            const firstComma = argsStr.indexOf(',');
+            const varName = (firstComma === -1 ? argsStr : argsStr.slice(0, firstComma)).trim();
+            const defaultVal = firstComma === -1 ? undefined : argsStr.slice(firstComma + 1).trim();
+
+            const value = process.env[varName];
+
+            if (value !== undefined) return value;
+            if (defaultVal !== undefined) return defaultVal;
+
+            process.stderr.write(`Warning: env var ${varName} is not set\n`);
+
+            return '';
+        }
         default:
             return undefined;
     }
@@ -134,7 +150,7 @@ export function resolveValue(value: unknown, ctx: RoutineContext): unknown {
     }
 
     // Exact match: built-in function with args
-    const funcCall = value.match(/^\$(_random_int|_random_from|_random_distinct_from)\(([^)]*)\)$/);
+    const funcCall = value.match(/^\$(_random_int|_random_from|_random_distinct_from|_env)\(([^)]*)\)$/);
 
     if (funcCall) {
         return evalBuiltinFunc(funcCall[1]!, funcCall[2]);
