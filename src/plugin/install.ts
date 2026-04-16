@@ -1,68 +1,65 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync, cpSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, cpSync, rmSync } from 'fs';
 import { join } from 'path';
+
+export type ClaudeRunner = (args: string[]) => Promise<void>;
 
 export interface InstallOptions {
     version: string;
-    claudeDir: string;
     userDataDir: string;
+    marketplaceDir: string;
     sourceDir: string;
     cliInvocation: string[];
     generatedDir: string;
+    /** Overridable for tests. Defaults to spawning the real `claude` CLI. */
+    runClaude?: ClaudeRunner;
 }
 
 export interface InstallResult {
     success: boolean;
     marketplaceDir: string;
+    pluginDir: string;
     message: string;
 }
 
 export async function installPlugin(opts: InstallOptions): Promise<InstallResult> {
     const {
         version,
-        claudeDir,
         userDataDir,
+        marketplaceDir,
         sourceDir,
         cliInvocation,
         generatedDir,
     } = opts;
 
-    // 1. Place plugin files in local marketplace: marketplaces/local/apijack/
-    const localMarketplaceDir = join(claudeDir, 'plugins', 'marketplaces', 'local');
-    const pluginDir = join(localMarketplaceDir, 'apijack');
-    mkdirSync(join(localMarketplaceDir, '.claude-plugin'), { recursive: true });
+    const runClaude = opts.runClaude ?? defaultRunClaude;
+
+    if (!opts.runClaude) ensureClaudeCli();
+
+    const pluginDir = join(marketplaceDir, 'apijack');
+
+    // 1. Lay out the marketplace directory
+    mkdirSync(join(marketplaceDir, '.claude-plugin'), { recursive: true });
     mkdirSync(join(pluginDir, '.claude-plugin'), { recursive: true });
 
-    // Register in local marketplace.json with source: "./apijack"
-    const localMarketplacePath = join(localMarketplaceDir, '.claude-plugin', 'marketplace.json');
-    let localMarketplace: Record<string, unknown> = {
-        $schema: 'https://anthropic.com/claude-code/marketplace.schema.json',
-        name: 'local',
-        owner: { name: 'Local Plugins' },
-        plugins: [],
-    };
+    writeFileSync(
+        join(marketplaceDir, '.claude-plugin', 'marketplace.json'),
+        JSON.stringify({
+            name: 'apijack',
+            owner: { name: 'apijack' },
+            metadata: {
+                description: 'apijack plugin marketplace — MCP server, skills, and routines for Jacking into OpenAPI specs',
+            },
+            plugins: [
+                {
+                    name: 'apijack',
+                    description: 'Jack into any OpenAPI spec — full CLI with AI-agentic workflow automation',
+                    category: 'development',
+                    source: './apijack',
+                },
+            ],
+        }, null, 2) + '\n',
+    );
 
-    if (existsSync(localMarketplacePath)) {
-        try {
-            localMarketplace = JSON.parse(readFileSync(localMarketplacePath, 'utf-8'));
-        } catch {}
-    }
-
-    const plugins = (localMarketplace.plugins as Array<{ name: string; [k: string]: unknown }>) || [];
-    const idx = plugins.findIndex(p => p.name === 'apijack');
-    const marketplaceEntry = {
-        name: 'apijack',
-        description: 'Jack into any OpenAPI spec — full CLI with AI-agentic workflow automation',
-        category: 'development',
-        source: './apijack',
-    };
-
-    if (idx >= 0) plugins[idx] = marketplaceEntry;
-    else plugins.push(marketplaceEntry);
-
-    localMarketplace.plugins = plugins;
-    writeFileSync(localMarketplacePath, JSON.stringify(localMarketplace, null, 2) + '\n');
-
-    // Write plugin.json manifest
     writeFileSync(
         join(pluginDir, '.claude-plugin', 'plugin.json'),
         JSON.stringify({
@@ -76,7 +73,6 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
         }, null, 2) + '\n',
     );
 
-    // Write .mcp.json with CLAUDE_PLUGIN_ROOT reference
     writeFileSync(
         join(pluginDir, '.mcp.json'),
         JSON.stringify({
@@ -90,7 +86,7 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
         }, null, 2) + '\n',
     );
 
-    // Copy bundle
+    // 2. Copy bundle
     const distDir = join(pluginDir, 'dist');
     mkdirSync(distDir, { recursive: true });
     const bundleSrc = join(sourceDir, 'dist', 'mcp-server.bundle.js');
@@ -99,7 +95,7 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
         cpSync(bundleSrc, join(distDir, 'mcp-server.bundle.js'));
     }
 
-    // Copy skills (clear first to remove stale entries from previous versions)
+    // 3. Copy skills (clear first to remove stale entries from previous versions)
     const skillsDst = join(pluginDir, 'skills');
 
     if (existsSync(skillsDst)) {
@@ -112,62 +108,46 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
         cpSync(skillsSrc, skillsDst, { recursive: true });
     }
 
-    // Clean up old registrations and cache before re-registering
-    const installedPath = join(claudeDir, 'plugins', 'installed_plugins.json');
-    const settingsPath = join(claudeDir, 'settings.json');
-
-    const oldCacheDir = join(claudeDir, 'plugins', 'cache', 'local', 'apijack');
-
-    if (existsSync(oldCacheDir)) {
-        rmSync(oldCacheDir, { recursive: true, force: true });
-    }
-
-    const oldMarketplaceDir = join(claudeDir, 'plugins', 'marketplaces', 'apijack');
-
-    if (existsSync(oldMarketplaceDir)) {
-        rmSync(oldMarketplaceDir, { recursive: true, force: true });
-    }
-
-    // 3. Register in installed_plugins.json and enable in settings.json
-    const installedPlugins = existsSync(installedPath)
-        ? JSON.parse(readFileSync(installedPath, 'utf-8'))
-        : { version: 2, plugins: {} };
-
-    if (!installedPlugins.plugins) installedPlugins.plugins = {};
-
-    delete installedPlugins.plugins['apijack@apijack'];
-    installedPlugins.plugins['apijack@local'] = [{
-        scope: 'user',
-        installPath: pluginDir,
-        version,
-        installedAt: new Date().toISOString(),
-        lastUpdated: new Date().toISOString(),
-        gitCommitSha: '',
-    }];
-    writeFileSync(installedPath, JSON.stringify(installedPlugins, null, 2) + '\n');
-
-    const settings = existsSync(settingsPath)
-        ? JSON.parse(readFileSync(settingsPath, 'utf-8'))
-        : {};
-
-    if (!settings.enabledPlugins) settings.enabledPlugins = {};
-
-    delete settings.enabledPlugins['apijack@apijack'];
-    settings.enabledPlugins['apijack@local'] = true;
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-
-    // 4. Create user data directory
+    // 4. Write runtime config for the MCP entry point
     mkdirSync(join(userDataDir, 'routines'), { recursive: true });
-
-    // 5. Write plugin config for the MCP entry point
     writeFileSync(
         join(userDataDir, 'plugin.json'),
         JSON.stringify({ cliInvocation, generatedDir }, null, 2) + '\n',
     );
 
+    // 5. Register marketplace and install via claude CLI
+    await runClaude(['plugin', 'marketplace', 'add', marketplaceDir]);
+    await runClaude(['plugin', 'install', 'apijack@apijack']);
+
     return {
         success: true,
-        marketplaceDir: pluginDir,
+        marketplaceDir,
+        pluginDir,
         message: `apijack plugin v${version} installed`,
     };
+}
+
+function ensureClaudeCli(): void {
+    const proc = Bun.spawnSync(['claude', '--version'], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+    });
+
+    if (proc.exitCode !== 0) {
+        throw new Error(
+            'Claude Code CLI ("claude") not found on PATH. Install Claude Code before running "apijack plugin install".',
+        );
+    }
+}
+
+async function defaultRunClaude(args: string[]): Promise<void> {
+    const proc = Bun.spawn(['claude', ...args], {
+        stdout: 'inherit',
+        stderr: 'inherit',
+    });
+    const exitCode = await proc.exited;
+
+    if (exitCode !== 0) {
+        throw new Error(`claude ${args.join(' ')} exited ${exitCode}`);
+    }
 }
