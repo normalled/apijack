@@ -83,6 +83,7 @@ function evalBuiltinFunc(name: string, argsStr?: string): unknown {
             const value = process.env[varName];
 
             if (value !== undefined) return value;
+
             if (defaultVal !== undefined) return defaultVal;
 
             process.stderr.write(`Warning: env var ${varName} is not set\n`);
