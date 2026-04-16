@@ -1,6 +1,6 @@
 import { describe, expect, test, mock, beforeEach } from 'bun:test';
 import { buildDispatcher, type DispatcherConfig } from '../../src/routine/dispatcher';
-import type { CliContext, DispatcherHandler, CommandDispatcher } from '../../src/types';
+import type { CliContext, DispatcherHandler, CommandDispatcher, CustomResolver } from '../../src/types';
 
 function makeCtx(overrides: Partial<CliContext> = {}): CliContext {
     return {
@@ -299,6 +299,41 @@ describe('buildDispatcher', () => {
             stepsSkipped: 0,
             stepsFailed: 0,
         });
+    });
+
+    test('routine run forwards customResolvers from DispatcherConfig into executor', async () => {
+        const ctx = makeCtx();
+        const customResolvers = new Map<string, CustomResolver>([
+            ['_my_fn', () => 'hi'],
+        ]);
+
+        const mockLoadRoutineFile = mock(() => ({
+            name: 'sub-routine',
+            steps: [{ name: 'step-1', command: 'cmd-a' }],
+            variables: {},
+        }));
+        const mockValidateRoutine = mock(() => []);
+        const mockExecuteRoutine = mock(async () => ({
+            success: true,
+            stepsRun: 1,
+            stepsSkipped: 0,
+            stepsFailed: 0,
+        }));
+
+        const dispatch = buildDispatcher({
+            ctx,
+            routinesDir: '/tmp/routines',
+            customResolvers,
+            _loadRoutineFile: mockLoadRoutineFile as any,
+            _validateRoutine: mockValidateRoutine as any,
+            _executeRoutine: mockExecuteRoutine as any,
+        } as any);
+
+        await dispatch('routine run', {}, ['my-sub']);
+
+        const executeCall = mockExecuteRoutine.mock.calls[0]!;
+        // 4th arg is the options object — customResolvers should be forwarded
+        expect(executeCall[3]).toEqual({ customResolvers });
     });
 
     test('routine run throws on validation errors', async () => {

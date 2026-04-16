@@ -29,8 +29,11 @@ export interface StepResult {
     error?: string;
 }
 
+import type { CustomResolver } from '../types';
+
 export interface RoutineContext {
     variables: Record<string, unknown>;
     stepOutputs: Map<string, StepResult>;
     forEachItem?: { name: string; value: unknown };
+    customResolvers?: Map<string, CustomResolver>;
 }

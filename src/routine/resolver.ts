@@ -1,10 +1,13 @@
 import type { RoutineContext } from './types';
 
 const REF_PATTERN = /\$([a-zA-Z_][a-zA-Z0-9_\-]*(?:\.[a-zA-Z0-9_][a-zA-Z0-9_\-]*)*)/g;
-// No-arg built-in functions (match without parentheses)
-const NOARG_FUNC_PATTERN = /\$(_random_hex_color|_uuid)/g;
-// Parameterized built-in functions (require parentheses)
-const PARAM_FUNC_PATTERN = /\$(_random_int|_random_from|_random_distinct_from|_env|_find|_contains)\(([^)]*)\)/g;
+// Parameterized built-in / custom functions (require parentheses). Run first in resolveString.
+const PARAM_FUNC_PATTERN = /\$(_[a-zA-Z_][a-zA-Z0-9_]*)\(([^)]*)\)/g;
+// No-arg built-in / custom functions. Run after PARAM_FUNC_PATTERN so only unparenned names remain.
+const NOARG_FUNC_PATTERN = /\$(_[a-zA-Z_][a-zA-Z0-9_]*)/g;
+// Exact-match equivalents for single-value resolution (resolveValue)
+const EXACT_PARAM_FUNC_PATTERN = /^\$(_[a-zA-Z_][a-zA-Z0-9_]*)\(([^)]*)\)$/;
+const EXACT_NOARG_FUNC_PATTERN = /^\$(_[a-zA-Z_][a-zA-Z0-9_]*)$/;
 
 // ── Built-in functions ─────────────────────────────────────────────
 
@@ -118,8 +121,13 @@ function evalBuiltinFunc(name: string, argsStr?: string, ctx?: RoutineContext): 
 
             return found !== undefined ? 'true' : 'false';
         }
-        default:
+        default: {
+            const custom = ctx?.customResolvers?.get(name);
+
+            if (custom) return custom(argsStr);
+
             return undefined;
+        }
     }
 }
 
@@ -179,18 +187,21 @@ export function resolveValue(value: unknown, ctx: RoutineContext): unknown {
 
     if (!value.includes('$')) return value;
 
-    // Exact match: built-in function (no args)
-    const funcExact = value.match(/^\$(_random_hex_color|_uuid)$/);
-
-    if (funcExact) {
-        return evalBuiltinFunc(funcExact[1]!, undefined, ctx);
-    }
-
-    // Exact match: built-in function with args
-    const funcCall = value.match(/^\$(_random_int|_random_from|_random_distinct_from|_env|_find|_contains)\(([^)]*)\)$/);
+    // Exact match: function call with args (check before no-arg so foo() isn't captured as no-arg)
+    const funcCall = value.match(EXACT_PARAM_FUNC_PATTERN);
 
     if (funcCall) {
         return evalBuiltinFunc(funcCall[1]!, funcCall[2], ctx);
+    }
+
+    // Exact match: function without args. Only dispatch to evalBuiltinFunc if it actually
+    // resolves — otherwise fall through to ref resolution (so e.g. `$_timestamp` variables work).
+    const funcExact = value.match(EXACT_NOARG_FUNC_PATTERN);
+
+    if (funcExact) {
+        const result = evalBuiltinFunc(funcExact[1]!, undefined, ctx);
+
+        if (result !== undefined) return result;
     }
 
     // Exact match: entire value is a single $ref — resolve to native type

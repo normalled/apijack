@@ -1,4 +1,4 @@
-import type { CliContext, DispatcherHandler, CommandDispatcher } from '../types';
+import type { CliContext, DispatcherHandler, CommandDispatcher, CustomResolver } from '../types';
 import { loadRoutineFile, validateRoutine } from './loader';
 import { executeRoutine } from './executor';
 
@@ -12,6 +12,7 @@ export interface DispatcherConfig {
     }>;
     client?: Record<string, unknown>;
     consumerHandlers?: Map<string, DispatcherHandler>;
+    customResolvers?: Map<string, CustomResolver>;
     preDispatch?: (command: string, args: Record<string, unknown>, ctx: CliContext) => Promise<void>;
     ctx: CliContext;
     routinesDir: string;
@@ -175,7 +176,9 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
                 if (k.startsWith('--set-')) subOverrides[k.slice(6)] = v;
             }
 
-            const result = await _execute(subDef, subOverrides, dispatch);
+            const result = await _execute(subDef, subOverrides, dispatch, {
+                customResolvers: config.customResolvers,
+            });
 
             if (!result.success) throw new Error(`Sub-routine "${routineName}" failed`);
 

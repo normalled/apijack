@@ -34,6 +34,8 @@ export type DispatcherHandler = (
     ctx: CliContext,
 ) => Promise<unknown>;
 
+export type CustomResolver = (argsStr?: string) => unknown;
+
 export type CommandDispatcher = (
     command: string,
     args: Record<string, unknown>,
