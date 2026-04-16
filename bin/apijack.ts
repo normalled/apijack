@@ -9,7 +9,7 @@ import { BasicAuthStrategy } from '../src/auth/basic';
 import { BearerTokenStrategy } from '../src/auth/bearer';
 import { ApiKeyStrategy } from '../src/auth/api-key';
 import { findProjectConfig, loadProjectConfig, resolveConfigDir } from '../src/project';
-import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers } from '../src/project-loader';
+import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectResolvers } from '../src/project-loader';
 import { checkForUpdate } from '../src/updater';
 import { getActiveEnvConfig } from '../src/config';
 import pkg from '../package.json';
@@ -156,6 +156,12 @@ if (projectRoot) {
 
     for (const [name, handler] of dispatchers) {
         cli.dispatcher(name, handler);
+    }
+
+    const resolvers = await loadProjectResolvers(join(projectRoot, '.apijack'));
+
+    for (const [name, fn] of resolvers) {
+        cli.resolver(name, fn);
     }
 }
 
