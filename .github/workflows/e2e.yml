@@ -2,9 +2,9 @@ name: E2E
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   codegen-petstore:
