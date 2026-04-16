@@ -122,11 +122,13 @@ function evalBuiltinFunc(name: string, argsStr?: string, ctx?: RoutineContext): 
             return found !== undefined ? 'true' : 'false';
         }
         default: {
-            const custom = ctx?.customResolvers?.get(name);
+            if (!ctx) return undefined;
 
-            if (custom) return custom(argsStr);
+            const custom = ctx.customResolvers?.get(name);
 
-            return undefined;
+            if (!custom) return undefined;
+
+            return custom(argsStr, { resolve: v => resolveValue(v, ctx) });
         }
     }
 }

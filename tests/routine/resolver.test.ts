@@ -463,4 +463,32 @@ describe('custom resolvers via ctx.customResolvers', () => {
         // Without registration the exact-match form returns undefined (unknown function)
         expect(resolveValue('$_not_defined(x)', ctx)).toBeUndefined();
     });
+
+    test('helpers.resolve resolves $refs inside custom resolver args', () => {
+        const custom: CustomResolver = (argsStr, helpers) => {
+            const value = helpers ? String(helpers.resolve(argsStr ?? '')) : argsStr;
+
+            return String(value).toUpperCase();
+        };
+        const customResolvers = new Map<string, CustomResolver>([['_upper', custom]]);
+        const ctx = makeCtx({ variables: { greeting: 'hello' }, customResolvers });
+        expect(resolveValue('$_upper($greeting)', ctx)).toBe('HELLO');
+    });
+
+    test('helpers.resolve resolves built-in functions inside custom resolver args', () => {
+        const custom: CustomResolver = (argsStr, helpers) =>
+            (helpers ? helpers.resolve(argsStr ?? '') : argsStr);
+        const customResolvers = new Map<string, CustomResolver>([['_passthrough', custom]]);
+        const ctx = makeCtx({ customResolvers });
+        const result = resolveValue('$_passthrough($_uuid)', ctx) as string;
+        expect(result).toMatch(/^[0-9a-f-]{36}$/);
+    });
+
+    test('legacy (argsStr-only) resolvers still work without helpers', () => {
+        // Backwards-compat: existing resolvers that ignore the second arg keep working.
+        const custom: CustomResolver = argsStr => `legacy:${argsStr}`;
+        const customResolvers = new Map<string, CustomResolver>([['_legacy', custom]]);
+        const ctx = makeCtx({ customResolvers });
+        expect(resolveValue('$_legacy(anything)', ctx)).toBe('legacy:anything');
+    });
 });
