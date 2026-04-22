@@ -38,6 +38,7 @@ export async function loadProjectAuth(
 export interface LoadedCommand {
     name: string;
     registrar: CommandRegistrar;
+    requiresAuth?: boolean;
 }
 
 export async function loadProjectCommands(
@@ -55,9 +56,10 @@ export async function loadProjectCommands(
             const mod = await import(join(cmdDir, file));
             const name = mod.name ?? basename(file, '.ts');
             const registrar = mod.default as CommandRegistrar;
+            const requiresAuth = typeof mod.requiresAuth === 'boolean' ? mod.requiresAuth : undefined;
 
             if (typeof registrar === 'function') {
-                commands.push({ name, registrar });
+                commands.push({ name, registrar, requiresAuth });
             }
         } catch {
             // Skip files that fail to import
@@ -67,14 +69,20 @@ export async function loadProjectCommands(
     return commands;
 }
 
+export interface LoadedDispatcher {
+    name: string;
+    handler: DispatcherHandler;
+    requiresAuth?: boolean;
+}
+
 export async function loadProjectDispatchers(
     apijackDir: string,
-): Promise<Map<string, DispatcherHandler>> {
+): Promise<LoadedDispatcher[]> {
     const dispDir = join(apijackDir, 'dispatchers');
 
-    if (!existsSync(dispDir)) return new Map();
+    if (!existsSync(dispDir)) return [];
 
-    const dispatchers = new Map<string, DispatcherHandler>();
+    const dispatchers: LoadedDispatcher[] = [];
     const files = readdirSync(dispDir).filter(f => f.endsWith('.ts'));
 
     for (const file of files) {
@@ -82,9 +90,10 @@ export async function loadProjectDispatchers(
             const mod = await import(join(dispDir, file));
             const name = mod.name ?? basename(file, '.ts');
             const handler = mod.default as DispatcherHandler;
+            const requiresAuth = typeof mod.requiresAuth === 'boolean' ? mod.requiresAuth : undefined;
 
             if (typeof handler === 'function') {
-                dispatchers.set(name, handler);
+                dispatchers.push({ name, handler, requiresAuth });
             }
         } catch {
             // Skip files that fail to import

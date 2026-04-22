@@ -27,9 +27,17 @@ import { resolveRequestHeaders } from './auth/resolve-headers';
 import { deepMergeSessionAuth } from './auth/config-merge';
 import { loadPreRequestHook } from './pre-request';
 
+export interface CommandOptions {
+    requiresAuth?: boolean;
+}
+
+export interface DispatcherOptions {
+    requiresAuth?: boolean;
+}
+
 export interface Cli {
-    command(name: string, registrar: CommandRegistrar): void;
-    dispatcher(name: string, handler: DispatcherHandler): void;
+    command(name: string, registrar: CommandRegistrar, options?: CommandOptions): void;
+    dispatcher(name: string, handler: DispatcherHandler, options?: DispatcherOptions): void;
     resolver(name: string, handler: CustomResolver): void;
     run(): Promise<void>;
 }
@@ -102,8 +110,8 @@ function showCustomHelp(
 }
 
 export function createCli(options: CliOptions): Cli {
-    const consumerCommands: { name: string; registrar: CommandRegistrar }[] = [];
-    const consumerDispatchers = new Map<string, DispatcherHandler>();
+    const consumerCommands: { name: string; registrar: CommandRegistrar; requiresAuth?: boolean }[] = [];
+    const consumerDispatchers = new Map<string, { handler: DispatcherHandler; requiresAuth?: boolean }>();
     const consumerResolvers = new Map<string, CustomResolver>();
     const cliName = options.name;
     const configOpts = options.configPath ? { configPath: options.configPath } : undefined;
@@ -112,14 +120,17 @@ export function createCli(options: CliOptions): Cli {
         : join(homedir(), `.${cliName}`);
     const routinesDir = join(configDir, 'routines');
     const generatedDir = options.generatedDir ?? join(process.cwd(), 'src', 'generated');
+    const defaultRequiresAuth = options.customCommandDefaults?.requiresAuth ?? false;
+    const effectiveRequiresAuth = (explicit: boolean | undefined): boolean =>
+        explicit ?? defaultRequiresAuth;
 
     const cli: Cli = {
-        command(name: string, registrar: CommandRegistrar): void {
-            consumerCommands.push({ name, registrar });
+        command(name: string, registrar: CommandRegistrar, cmdOpts?: CommandOptions): void {
+            consumerCommands.push({ name, registrar, requiresAuth: cmdOpts?.requiresAuth });
         },
 
-        dispatcher(name: string, handler: DispatcherHandler): void {
-            consumerDispatchers.set(name, handler);
+        dispatcher(name: string, handler: DispatcherHandler, dispOpts?: DispatcherOptions): void {
+            consumerDispatchers.set(name, { handler, requiresAuth: dispOpts?.requiresAuth });
         },
 
         resolver(name: string, handler: CustomResolver): void {
@@ -264,7 +275,23 @@ export function createCli(options: CliOptions): Cli {
             const isDryRun = process.argv.includes('--dry-run') && process.argv[2] !== 'routine';
             const isCurl = oVal === 'curl';
             const isCurlWithCreds = oVal === 'curl-with-creds';
+            const isRoutineStep = oVal === 'routine-step';
             const isRequestPreview = isDryRun || isCurl || isCurlWithCreds;
+            // Skip auth resolution for preview/inspection modes. curl-with-creds still resolves.
+            const skipAuthResolution = isRoutineStep || isDryRun || isCurl || isHelpOrVersion;
+
+            // Shared session resolver — lazy, runs on first API request or explicit consumer call
+            const resolveSession = async (): Promise<void> => {
+                if (!resolved || !sessionMgr) {
+                    throw new Error(`Not authenticated. Run '${cliName} setup' to configure credentials.`);
+                }
+
+                if (ctx && ctx.session) return;
+
+                const session = await sessionMgr.resolve(strategy, resolved);
+
+                if (ctx) ctx.session = session;
+            };
 
             // 8. Create CliContext with lazy session
             let ctx: CliContext | null = null;
@@ -279,6 +306,18 @@ export function createCli(options: CliOptions): Cli {
                         sessionMgr!.invalidate();
                         ctx!.session = await sessionMgr!.resolve(strategy, resolved!);
                     },
+                    resolveSession,
+                    saveSession: async () => {
+                        if (!sessionMgr) {
+                            throw new Error(`Not authenticated. Run '${cliName} setup' to configure credentials.`);
+                        }
+
+                        if (ctx!.session) {
+                            sessionMgr.save(ctx!.session);
+                        } else {
+                            sessionMgr.invalidate();
+                        }
+                    },
                 };
             }
 
@@ -287,19 +326,6 @@ export function createCli(options: CliOptions): Cli {
                 const registerFn = commandsModule.registerGeneratedCommands as (
                     program: Command, client: unknown, onResult: (result: unknown) => void,
                 ) => void;
-
-                // Session resolver — lazy, runs once on first real API request
-                const resolveSession = async () => {
-                    if (!resolved || !sessionMgr) {
-                        throw new Error(`Not authenticated. Run '${cliName} setup' to configure credentials.`);
-                    }
-
-                    if (ctx && ctx.session) return;
-
-                    const session = await sessionMgr.resolve(strategy, resolved);
-
-                    if (ctx) ctx.session = session;
-                };
 
                 // Headers provider — reads from resolved session
                 const getHeaders = (method: string) =>
@@ -402,9 +428,34 @@ export function createCli(options: CliOptions): Cli {
                 registerFn(program, client, onResult);
             }
 
-            // 10. Register consumer commands
-            for (const { registrar } of consumerCommands) {
+            // 10. Register consumer commands and attach per-command requiresAuth preAction hooks.
+            // Track the actual Command instances each registrar adds (not just the logical name),
+            // so the hook still fires if the registrar names its subcommand differently.
+            const requiresAuthCommands = new Set<Command>();
+
+            for (const { registrar, requiresAuth } of consumerCommands) {
+                const before = new Set(program.commands);
+                // When auth is not configured, ctx is null. Consumers should only touch ctx
+                // inside action callbacks (which won't run until run() is further along).
                 registrar(program, ctx ?? (null as unknown as CliContext));
+
+                if (effectiveRequiresAuth(requiresAuth)) {
+                    for (const cmd of program.commands) {
+                        if (!before.has(cmd)) requiresAuthCommands.add(cmd);
+                    }
+                }
+            }
+
+            if (requiresAuthCommands.size > 0 && !skipAuthResolution) {
+                program.hook('preAction', async (_thisCommand, actionCommand) => {
+                    let cmd: Command = actionCommand;
+
+                    while (cmd.parent && cmd.parent !== program) cmd = cmd.parent;
+
+                    if (requiresAuthCommands.has(cmd)) {
+                        await resolveSession();
+                    }
+                });
             }
 
             // 11. Build dispatcher
@@ -431,11 +482,30 @@ export function createCli(options: CliOptions): Cli {
 
             const customResolvers = consumerResolvers.size > 0 ? consumerResolvers : undefined;
 
+            // Unwrap dispatcher entries and wrap requiresAuth handlers with ensureReady
+            let dispatcherHandlers: Map<string, DispatcherHandler> | undefined;
+
+            if (consumerDispatchers.size > 0) {
+                dispatcherHandlers = new Map();
+
+                for (const [name, entry] of consumerDispatchers) {
+                    if (effectiveRequiresAuth(entry.requiresAuth)) {
+                        dispatcherHandlers.set(name, async (args, positional, dctx) => {
+                            await resolveSession();
+
+                            return entry.handler(args, positional, dctx);
+                        });
+                    } else {
+                        dispatcherHandlers.set(name, entry.handler);
+                    }
+                }
+            }
+
             if (ctx) {
                 dispatch = buildDispatcher({
                     commandMap,
-                    client: ctx.client,
-                    consumerHandlers: consumerDispatchers.size > 0 ? consumerDispatchers : undefined,
+                    client: ctx.client as Record<string, unknown> | undefined,
+                    consumerHandlers: dispatcherHandlers,
                     customResolvers,
                     preDispatch: options.preDispatch,
                     ctx,
@@ -449,11 +519,7 @@ export function createCli(options: CliOptions): Cli {
             // 12. Register routine commands
             registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir, customResolvers);
 
-            // 11. Handle -o routine-step
-            const isRoutineStep
-                = process.argv.includes('-o')
-                    && process.argv[process.argv.indexOf('-o') + 1] === 'routine-step';
-
+            // 13. Handle -o routine-step
             if (isRoutineStep) {
                 program.hook('preAction', (_thisCommand, actionCommand) => {
                     const cmdParts: string[] = [];
