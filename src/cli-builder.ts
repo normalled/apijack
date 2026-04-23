@@ -17,6 +17,7 @@ import { buildDispatcher } from './routine/dispatcher';
 import { homedir } from 'os';
 import { resolve, join } from 'path';
 import { registerPluginCommand } from './plugin/register';
+import { registerPluginsCommand } from './commands/plugins/register';
 import { PluginRegistry } from './plugin/registry';
 import { loadPluginPeerInfo, checkPeerRange } from './plugin/peer-version';
 import { PluginPeerMismatchError } from './plugin/errors';
@@ -221,6 +222,7 @@ export function createCli(options: CliOptions): Cli {
                 join(homedir(), '.' + options.name, 'routines'),
             );
             registerPluginCommand(program, cliName, options.version);
+            registerPluginsCommand(program, pluginRegistry, options.version);
 
             // 4. Resolve auth
             let resolved = resolveAuth(cliName, configOpts);
