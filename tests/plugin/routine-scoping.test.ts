@@ -162,3 +162,63 @@ describe('buildRoutineResolvers', () => {
         expect(map.has('_mixed_dynamic')).toBe(true);
     });
 });
+
+describe('sub-routine plugin scoping', () => {
+    test('sub without plugins: inherits parent map (factory not re-invoked)', () => {
+        const reg = new PluginRegistry();
+        let factoryCalls = 0;
+        reg.register({
+            name: 'counter',
+            createRoutineResolvers: () => {
+                factoryCalls++;
+                return { _counter: () => 'X' };
+            },
+        });
+        // Parent routine: factory called once
+        const parentMap = buildRoutineResolvers(
+            mkRoutine({ name: 'parent', plugins: { counter: {} } }),
+            undefined,
+            reg,
+        );
+        expect(factoryCalls).toBe(1);
+
+        // Sub-routine with no plugins: block — dispatcher suppresses registry,
+        // so buildRoutineResolvers returns parent's map unchanged (inherit semantics).
+        const subMap = buildRoutineResolvers(
+            mkRoutine({ name: 'sub' }),
+            parentMap,
+            undefined,
+        );
+        expect(factoryCalls).toBe(1);
+        expect(subMap.has('_counter')).toBe(true);
+    });
+
+    test('sub with plugins: triggers fresh factory call (override semantics)', () => {
+        const reg = new PluginRegistry();
+        let factoryCalls = 0;
+        reg.register({
+            name: 'counter',
+            createRoutineResolvers: () => {
+                factoryCalls++;
+                return { _counter: () => 'X' };
+            },
+        });
+        const parentMap = buildRoutineResolvers(
+            mkRoutine({ name: 'parent', plugins: { counter: {} } }),
+            undefined,
+            reg,
+        );
+        expect(factoryCalls).toBe(1);
+
+        // Sub-routine with its own plugins: block — dispatcher passes the registry,
+        // factory is re-invoked with sub's opts. Sub's resolvers override parent's
+        // for its subtree (via Map.set).
+        const subMap = buildRoutineResolvers(
+            mkRoutine({ name: 'sub', plugins: { counter: {} } }),
+            parentMap,
+            reg,
+        );
+        expect(factoryCalls).toBe(2);
+        expect(subMap.has('_counter')).toBe(true);
+    });
+});

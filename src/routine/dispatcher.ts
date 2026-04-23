@@ -178,9 +178,18 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
                 if (k.startsWith('--set-')) subOverrides[k.slice(6)] = v;
             }
 
+            // Sub-routine plugin scoping:
+            // - If sub has its own `plugins:` block, pass the registry so
+            //   createRoutineResolvers is re-invoked with sub's opts (fresh closures
+            //   that shadow the parent's for this subtree).
+            // - If sub has no `plugins:` block, suppress re-invocation by omitting
+            //   the registry; the executor's buildRoutineResolvers returns the
+            //   parent's resolver map unchanged (inherits parent's closures).
+            const subHasPlugins = !!subDef.plugins && Object.keys(subDef.plugins).length > 0;
+
             const result = await _execute(subDef, subOverrides, dispatch, {
                 customResolvers: config.customResolvers,
-                pluginRegistry: config.pluginRegistry,
+                pluginRegistry: subHasPlugins ? config.pluginRegistry : undefined,
             });
 
             if (!result.success) throw new Error(`Sub-routine "${routineName}" failed`);
