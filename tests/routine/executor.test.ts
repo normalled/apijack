@@ -1,5 +1,6 @@
 import { describe, expect, test, mock } from 'bun:test';
 import { executeRoutine } from '../../src/routine/executor';
+import { PluginRegistry } from '../../src/plugin/registry';
 import type { RoutineDefinition, RoutineStep } from '../../src/routine/types';
 import type { CommandDispatcher } from '../../src/types';
 
@@ -443,5 +444,48 @@ describe('executeRoutine', () => {
 
         const label = dispatched[0]!.label as string;
         expect(label).toMatch(/^run-\d+$/);
+    });
+});
+
+describe('executeRoutine with plugin registry', () => {
+    test('invokes createRoutineResolvers once per routine run', async () => {
+        const reg = new PluginRegistry();
+        let factoryCalls = 0;
+        reg.register({
+            name: 'counter',
+            createRoutineResolvers: (opts) => {
+                factoryCalls++;
+                let n = (opts as { start?: number })?.start ?? 0;
+
+                return { _counter: () => String(n++) };
+            },
+        });
+
+        const routine = makeRoutine({
+            plugins: { counter: { start: 10 } },
+            steps: [
+                { name: 's1', command: 'cmd', args: { out: '$_counter()' } },
+                { name: 's2', command: 'cmd', args: { out: '$_counter()' } },
+            ],
+        });
+        const { dispatcher, calls } = makeMockDispatcher();
+        await executeRoutine(routine, {}, dispatcher, { pluginRegistry: reg });
+        await executeRoutine(routine, {}, dispatcher, { pluginRegistry: reg });
+
+        expect(factoryCalls).toBe(2);
+        // First run: 10, 11. Second run fresh closure: 10, 11.
+        expect(calls[0]!.args.out).toBe('10');
+        expect(calls[1]!.args.out).toBe('11');
+        expect(calls[2]!.args.out).toBe('10');
+        expect(calls[3]!.args.out).toBe('11');
+    });
+
+    test('executor works without a pluginRegistry (backward compat)', async () => {
+        const routine = makeRoutine({
+            steps: [{ name: 's1', command: 'cmd', args: {} }],
+        });
+        const { dispatcher } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher);
+        expect(result.success).toBe(true);
     });
 });
