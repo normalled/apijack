@@ -34,3 +34,76 @@ describe('PluginRegistry', () => {
         expect(r.get('unknown')).toBeUndefined();
     });
 });
+
+describe('PluginRegistry.validateNamespace (via validateAll)', () => {
+    test('passes when all resolvers are within namespace', () => {
+        const r = new PluginRegistry();
+        r.register({
+            name: 'faker',
+            resolvers: { _faker: () => 'x', _faker_seed: () => 'y' },
+        });
+        expect(() => r.validateAll()).not.toThrow();
+    });
+
+    test('throws PluginNamespaceError when resolver name is outside namespace', () => {
+        const r = new PluginRegistry();
+        r.register({
+            name: 'faker',
+            resolvers: { _other: () => 'x' },
+        });
+        expect(() => r.validateAll()).toThrow(/faker.*_other/);
+    });
+
+    test('invokes createRoutineResolvers with {} to validate its keys', () => {
+        const r = new PluginRegistry();
+        r.register({
+            name: 'faker',
+            createRoutineResolvers: () => ({ _faker: () => 'x' }),
+        });
+        expect(() => r.validateAll()).not.toThrow();
+    });
+
+    test('catches namespace violation in createRoutineResolvers output', () => {
+        const r = new PluginRegistry();
+        r.register({
+            name: 'faker',
+            createRoutineResolvers: () => ({ _stranger: () => 'x' }),
+        });
+        expect(() => r.validateAll()).toThrow(/faker.*_stranger/);
+    });
+
+    test('allows exact match name (_faker only, no suffix)', () => {
+        const r = new PluginRegistry();
+        r.register({
+            name: 'faker',
+            resolvers: { _faker: () => 'x' },
+        });
+        expect(() => r.validateAll()).not.toThrow();
+    });
+
+    test('rejects prefix-match without underscore separator (e.g. _fakerish)', () => {
+        const r = new PluginRegistry();
+        r.register({
+            name: 'faker',
+            resolvers: { _fakerish: () => 'x' },
+        });
+        expect(() => r.validateAll()).toThrow(/_fakerish/);
+    });
+
+    test('plugin name must match lowercase identifier grammar', () => {
+        const r = new PluginRegistry();
+        expect(() => r.register({ name: 'Faker' })).toThrow(/invalid plugin name/i);
+        expect(() => r.register({ name: 'faker-plus' })).toThrow(/invalid plugin name/i);
+        expect(() => r.register({ name: '1faker' })).toThrow(/invalid plugin name/i);
+    });
+
+    test('tolerates createRoutineResolvers throwing on empty opts (skips namespace check)', () => {
+        const r = new PluginRegistry();
+        r.register({
+            name: 'strict',
+            createRoutineResolvers: () => { throw new Error('needs opts'); },
+        });
+        // Should not throw PluginNamespaceError because dry call failed gracefully
+        expect(() => r.validateAll()).not.toThrow();
+    });
+});
