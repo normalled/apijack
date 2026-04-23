@@ -516,7 +516,16 @@ export function createCli(options: CliOptions): Cli {
 
             let dispatch: CommandDispatcher | undefined;
 
-            const customResolvers = consumerResolvers.size > 0 ? consumerResolvers : undefined;
+            // Merge consumer resolvers (from cli.resolver()) + stateless plugin resolvers
+            const mergedResolvers = new Map<string, CustomResolver>(consumerResolvers);
+
+            for (const plugin of pluginRegistry.getAll()) {
+                for (const [key, fn] of Object.entries(plugin.resolvers ?? {})) {
+                    mergedResolvers.set(key, fn);
+                }
+            }
+
+            const customResolvers = mergedResolvers.size > 0 ? mergedResolvers : undefined;
 
             // Unwrap dispatcher entries and wrap requiresAuth handlers with ensureReady
             let dispatcherHandlers: Map<string, DispatcherHandler> | undefined;
