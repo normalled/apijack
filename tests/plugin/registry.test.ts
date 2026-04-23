@@ -33,6 +33,13 @@ describe('PluginRegistry', () => {
         expect(r.get('known')?.name).toBe('known');
         expect(r.get('unknown')).toBeUndefined();
     });
+
+    test('plugin name must match lowercase identifier grammar', () => {
+        const r = new PluginRegistry();
+        expect(() => r.register({ name: 'Faker' })).toThrow(/invalid plugin name/i);
+        expect(() => r.register({ name: 'faker-plus' })).toThrow(/invalid plugin name/i);
+        expect(() => r.register({ name: '1faker' })).toThrow(/invalid plugin name/i);
+    });
 });
 
 describe('PluginRegistry.validateNamespace (via validateAll)', () => {
@@ -90,13 +97,6 @@ describe('PluginRegistry.validateNamespace (via validateAll)', () => {
         expect(() => r.validateAll()).toThrow(/_fakerish/);
     });
 
-    test('plugin name must match lowercase identifier grammar', () => {
-        const r = new PluginRegistry();
-        expect(() => r.register({ name: 'Faker' })).toThrow(/invalid plugin name/i);
-        expect(() => r.register({ name: 'faker-plus' })).toThrow(/invalid plugin name/i);
-        expect(() => r.register({ name: '1faker' })).toThrow(/invalid plugin name/i);
-    });
-
     test('tolerates createRoutineResolvers throwing on empty opts (skips namespace check)', () => {
         const r = new PluginRegistry();
         r.register({
@@ -137,5 +137,20 @@ describe('PluginRegistry.validateCollisions (via validateAll)', () => {
             createRoutineResolvers: () => ({ _uuid: () => 'x' }),
         });
         expect(() => r.validateAll()).toThrow(/_uuid/);
+    });
+
+    test('createRoutineResolvers is invoked at most once per validateAll call', () => {
+        const r = new PluginRegistry();
+        let factoryCalls = 0;
+        r.register({
+            name: 'counted',
+            createRoutineResolvers: () => {
+                factoryCalls++;
+
+                return { _counted: () => 'x' };
+            },
+        });
+        r.validateAll();
+        expect(factoryCalls).toBe(1);
     });
 });

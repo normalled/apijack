@@ -1,18 +1,13 @@
 import type { ApijackPlugin, CustomResolver } from '../types';
+import { BUILTIN_RESOLVER_NAMES } from '../routine/resolver';
 import { PluginNamespaceError, PluginCollisionError } from './errors';
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9_]*$/;
 
-const BUILTIN_RESOLVER_NAMES: ReadonlySet<string> = new Set([
-    '_uuid',
-    '_random_int',
-    '_random_from',
-    '_random_distinct_from',
-    '_random_hex_color',
-    '_env',
-    '_find',
-    '_contains',
-]);
+interface PluginInfo {
+    staticKeys: string[];
+    factoryKeys: string[] | null;
+}
 
 export class PluginRegistry {
     private plugins = new Map<string, ApijackPlugin>();
@@ -41,13 +36,31 @@ export class PluginRegistry {
 
     validateAll(projectResolvers?: Map<string, CustomResolver>): void {
         for (const plugin of this.plugins.values()) {
-            this.validateNamespace(plugin);
+            const info = this.collectPluginInfo(plugin);
+            this.validateNamespace(plugin, info);
+            this.validateCollisions(plugin, info, projectResolvers);
         }
-
-        this.validateCollisions(projectResolvers);
     }
 
-    private validateNamespace(plugin: ApijackPlugin): void {
+    private collectPluginInfo(plugin: ApijackPlugin): PluginInfo {
+        const staticKeys = Object.keys(plugin.resolvers ?? {});
+
+        if (!plugin.createRoutineResolvers) {
+            return { staticKeys, factoryKeys: null };
+        }
+
+        try {
+            return {
+                staticKeys,
+                factoryKeys: Object.keys(plugin.createRoutineResolvers({})),
+            };
+        } catch {
+            // Plugin rejected the dry call; skip factory-output checks.
+            return { staticKeys, factoryKeys: null };
+        }
+    }
+
+    private validateNamespace(plugin: ApijackPlugin, info: PluginInfo): void {
         const prefix = `_${plugin.name}`;
         const check = (name: string): void => {
             if (name !== prefix && !name.startsWith(`${prefix}_`)) {
@@ -55,54 +68,34 @@ export class PluginRegistry {
             }
         };
 
-        for (const key of Object.keys(plugin.resolvers ?? {})) check(key);
+        for (const key of info.staticKeys) check(key);
 
-        if (plugin.createRoutineResolvers) {
-            let dry: Record<string, unknown>;
-
-            try {
-                dry = plugin.createRoutineResolvers({});
-            } catch {
-                // Plugin refused the dry call; skip namespace validation of factory output.
-                return;
-            }
-
-            for (const key of Object.keys(dry)) check(key);
+        if (info.factoryKeys) {
+            for (const key of info.factoryKeys) check(key);
         }
     }
 
-    private validateCollisions(projectResolvers?: Map<string, CustomResolver>): void {
-        for (const plugin of this.plugins.values()) {
-            const keys = this.collectResolverKeys(plugin);
+    private validateCollisions(
+        plugin: ApijackPlugin,
+        info: PluginInfo,
+        projectResolvers?: Map<string, CustomResolver>,
+    ): void {
+        const allKeys = info.factoryKeys
+            ? [...info.staticKeys, ...info.factoryKeys]
+            : info.staticKeys;
 
-            for (const key of keys) {
-                if (BUILTIN_RESOLVER_NAMES.has(key)) {
-                    throw new PluginCollisionError(key, `plugin "${plugin.name}"`, 'core built-in');
-                }
+        for (const key of allKeys) {
+            if (BUILTIN_RESOLVER_NAMES.has(key)) {
+                throw new PluginCollisionError(key, `plugin "${plugin.name}"`, 'core built-in');
+            }
 
-                if (projectResolvers?.has(key)) {
-                    throw new PluginCollisionError(
-                        key,
-                        `plugin "${plugin.name}"`,
-                        '.apijack/resolvers/ project resolver',
-                    );
-                }
+            if (projectResolvers?.has(key)) {
+                throw new PluginCollisionError(
+                    key,
+                    `plugin "${plugin.name}"`,
+                    '.apijack/resolvers/ project resolver',
+                );
             }
         }
-    }
-
-    private collectResolverKeys(plugin: ApijackPlugin): string[] {
-        const keys: string[] = [];
-        keys.push(...Object.keys(plugin.resolvers ?? {}));
-
-        if (plugin.createRoutineResolvers) {
-            try {
-                keys.push(...Object.keys(plugin.createRoutineResolvers({})));
-            } catch {
-                // ignore if plugin rejects empty opts
-            }
-        }
-
-        return keys;
     }
 }

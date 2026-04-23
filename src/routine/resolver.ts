@@ -7,6 +7,22 @@ const NOARG_FUNC_PATTERN = /\$(_[a-zA-Z_][a-zA-Z0-9_]*)/g;
 // Exact-match equivalent for single-value resolution (resolveValue)
 const EXACT_NOARG_FUNC_PATTERN = /^\$(_[a-zA-Z_][a-zA-Z0-9_]*)$/;
 
+/**
+ * Names of core built-in resolvers. Single source of truth — mirrors the switch-case
+ * in `evalBuiltinFunc`. Consumed by plugin collision checks and project-resolver loading
+ * to prevent silent overrides.
+ */
+export const BUILTIN_RESOLVER_NAMES: ReadonlySet<string> = new Set([
+    '_uuid',
+    '_random_int',
+    '_random_from',
+    '_random_distinct_from',
+    '_random_hex_color',
+    '_env',
+    '_find',
+    '_contains',
+]);
+
 // ── Built-in functions ─────────────────────────────────────────────
 
 /** Fisher-Yates shuffle — unbiased random permutation. */
