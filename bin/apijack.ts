@@ -10,6 +10,7 @@ import { BearerTokenStrategy } from '../src/auth/bearer';
 import { ApiKeyStrategy } from '../src/auth/api-key';
 import { findProjectConfig, loadProjectConfig, resolveConfigDir } from '../src/project';
 import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectResolvers } from '../src/project-loader';
+import { loadProjectSettings } from '../src/settings';
 import { checkForUpdate } from '../src/updater';
 import { getActiveEnvConfig } from '../src/config';
 import pkg from '../package.json';
@@ -131,7 +132,12 @@ let sessionAuth: SessionAuthConfig | undefined;
     }
 }
 
-// 8. Create CLI
+// 8. Load project settings (framework-level flags, separate from per-env config)
+const projectSettings = projectRoot
+    ? loadProjectSettings(join(projectRoot, '.apijack'))
+    : {};
+
+// 9. Create CLI
 const cli = createCli({
     name: CLI_NAME,
     description: 'Jack into any OpenAPI spec and rip a full-featured CLI',
@@ -142,20 +148,21 @@ const cli = createCli({
     generatedDir,
     allowedCidrs: projectConfig?.allowedCidrs,
     configPath: join(configDir, 'config.json'),
+    customCommandDefaults: projectSettings.customCommands?.defaults,
 });
 
-// 9. Register project-level extensions
+// 10. Register project-level extensions
 if (projectRoot) {
     const commands = await loadProjectCommands(join(projectRoot, '.apijack'));
 
     for (const cmd of commands) {
-        cli.command(cmd.name, cmd.registrar);
+        cli.command(cmd.name, cmd.registrar, { requiresAuth: cmd.requiresAuth });
     }
 
     const dispatchers = await loadProjectDispatchers(join(projectRoot, '.apijack'));
 
-    for (const [name, handler] of dispatchers) {
-        cli.dispatcher(name, handler);
+    for (const disp of dispatchers) {
+        cli.dispatcher(disp.name, disp.handler, { requiresAuth: disp.requiresAuth });
     }
 
     const resolvers = await loadProjectResolvers(join(projectRoot, '.apijack'));
@@ -165,5 +172,5 @@ if (projectRoot) {
     }
 }
 
-// 10. Run
+// 11. Run
 await cli.run();
