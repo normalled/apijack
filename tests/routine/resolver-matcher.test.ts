@@ -91,12 +91,26 @@ describe('findFunctionCalls', () => {
         expect(findFunctionCalls('$var(a)')).toEqual([]);
     });
 
-    test('throws on unclosed parens', () => {
-        expect(() => findFunctionCalls('$_foo(a, b')).toThrow(/unclosed/i);
+    test('skips past unclosed parens, returns no match for that span', () => {
+        expect(findFunctionCalls('$_foo(a, b')).toEqual([]);
     });
 
-    test('throws on unclosed string literal', () => {
-        expect(() => findFunctionCalls('$_foo("unclosed)')).toThrow(/unclosed/i);
+    test('skips past unclosed string literal, returns no match for that span', () => {
+        expect(findFunctionCalls('$_foo("unclosed)')).toEqual([]);
+    });
+
+    test('skips malformed span but still matches subsequent valid calls', () => {
+        const result = findFunctionCalls('$_foo(unclosed $_bar(x)');
+        expect(result).toHaveLength(1);
+        expect(result[0]?.name).toBe('_bar');
+        expect(result[0]?.argsStr).toBe('x');
+    });
+
+    test('skips malformed span but still matches preceding valid calls', () => {
+        const result = findFunctionCalls('$_valid(a) $_foo(unclosed');
+        expect(result).toHaveLength(1);
+        expect(result[0]?.name).toBe('_valid');
+        expect(result[0]?.argsStr).toBe('a');
     });
 });
 

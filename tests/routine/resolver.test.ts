@@ -552,4 +552,15 @@ describe('resolver matcher integration', () => {
         // $tail resolves via REF_PATTERN. Matcher failure did not short-circuit the later passes.
         expect(resolveString('$_uuid $_foo(unclosed $tail', ctx2)).toMatch(/^[0-9a-f-]{36} FOO\(unclosed TAIL$/);
     });
+
+    test('mixed valid + malformed: valid call resolves, malformed span passes through (old-regex parity)', () => {
+        const ctx = makeCtx({
+            customResolvers: new Map<string, CustomResolver>([
+                ['_valid', argsStr => `V[${argsStr}]`],
+            ]),
+        });
+        // Old regex: $_valid(a) resolved → "V[a]"; $_foo(unclosed → NO_ARG/REF ate $_foo → "(unclosed"
+        // New matcher (with skip-past fix): same final output
+        expect(resolveValue('$_valid(a) $_foo(unclosed', ctx)).toBe('V[a] (unclosed');
+    });
 });

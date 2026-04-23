@@ -75,7 +75,7 @@ function findMatchingParen(input: string, openIdx: number): number {
         j++;
     }
 
-    throw new Error(`unclosed parenthesis starting near index ${openIdx - 1}`);
+    throw new Error(`unclosed parenthesis starting at index ${openIdx}`);
 }
 
 export function findFunctionCalls(input: string): CallMatch[] {
@@ -102,7 +102,17 @@ export function findFunctionCalls(input: string): CallMatch[] {
             continue;
         }
 
-        const closeIdx = findMatchingParen(input, nameEnd);
+        let closeIdx: number;
+
+        try {
+            closeIdx = findMatchingParen(input, nameEnd);
+        } catch {
+            // Malformed: unclosed paren or unclosed string literal inside args.
+            // Skip past the opening `(` and keep scanning for further valid calls.
+            i = nameEnd + 1;
+            continue;
+        }
+
         const name = input.slice(i + 1, nameEnd);
         const argsStr = input.slice(nameEnd + 1, closeIdx);
         results.push({ name, argsStr, start: i, end: closeIdx + 1 });
@@ -113,17 +123,15 @@ export function findFunctionCalls(input: string): CallMatch[] {
 }
 
 export function isExactFunctionCall(input: string): { name: string; argsStr: string } | null {
-    const trimmed = input;
+    if (input[0] !== '$' || input[1] !== '_') return null;
 
-    if (trimmed[0] !== '$' || trimmed[1] !== '_') return null;
-
-    const matches = findFunctionCalls(trimmed);
+    const matches = findFunctionCalls(input);
 
     if (matches.length !== 1) return null;
 
     const m = matches[0]!;
 
-    if (m.start !== 0 || m.end !== trimmed.length) return null;
+    if (m.start !== 0 || m.end !== input.length) return null;
 
     return { name: m.name, argsStr: m.argsStr };
 }
