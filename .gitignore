@@ -14,3 +14,4 @@ wiki/
 
 .claude/skills/*-issue
 .claude/skills/next*
+.claude/scheduled_tasks.lock
