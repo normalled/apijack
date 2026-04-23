@@ -53,3 +53,19 @@ export type CommandDispatcher = (
     args: Record<string, unknown>,
     positionalArgs?: unknown[],
 ) => Promise<unknown>;
+
+export interface ApijackPlugin {
+    /** Plugin identifier. Must match /^[a-z][a-z0-9_]*$/. Also the required namespace prefix:
+     *  a plugin named "faker" can register resolvers "_faker" and "_faker_*", and no others. */
+    name: string;
+    /** Semver string shown by `<cli> plugins list`. Not used for resolution logic. */
+    version?: string;
+    /** Stateless resolvers registered process-wide for every routine. */
+    resolvers?: Record<string, CustomResolver>;
+    /** Factory producing per-routine resolvers. Called once per routine with
+     *  `routine.plugins[plugin.name] ?? {}`. Must tolerate `{}` (empty opts). */
+    createRoutineResolvers?: (opts: unknown) => Record<string, CustomResolver>;
+    /** Internal: set by the plugin so core can locate its package.json for peer-version checks.
+     *  Typically set as `__package: { name: "@normalled/apijack-plugin-faker" }`. */
+    __package?: { name: string };
+}

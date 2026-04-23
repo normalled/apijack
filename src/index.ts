@@ -9,7 +9,13 @@ export type {
     CommandDispatcher,
     CustomResolver,
     CustomResolverHelpers,
+    ApijackPlugin,
 } from './types';
+export {
+    PluginNamespaceError,
+    PluginCollisionError,
+    PluginPeerMismatchError,
+} from './plugin/errors';
 export { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectResolvers } from './project-loader';
 export type { LoadedCommand, LoadedDispatcher } from './project-loader';
 export { loadProjectSettings } from './settings';
