@@ -198,27 +198,30 @@ describe('sub-routine plugin scoping', () => {
         let factoryCalls = 0;
         reg.register({
             name: 'counter',
-            createRoutineResolvers: () => {
+            createRoutineResolvers: (opts) => {
                 factoryCalls++;
-                return { _counter: () => 'X' };
+                const tag = (opts as { tag?: string }).tag ?? 'default';
+                return { _counter: () => tag };
             },
         });
         const parentMap = buildRoutineResolvers(
-            mkRoutine({ name: 'parent', plugins: { counter: {} } }),
+            mkRoutine({ name: 'parent', plugins: { counter: { tag: 'parent' } } }),
             undefined,
             reg,
         );
         expect(factoryCalls).toBe(1);
 
         // Sub-routine with its own plugins: block — dispatcher passes the registry,
-        // factory is re-invoked with sub's opts. Sub's resolvers override parent's
-        // for its subtree (via Map.set).
+        // factory is re-invoked with sub's opts. Sub's resolver overrides parent's
+        // for its subtree (via Map.set in buildRoutineResolvers).
         const subMap = buildRoutineResolvers(
-            mkRoutine({ name: 'sub', plugins: { counter: {} } }),
+            mkRoutine({ name: 'sub', plugins: { counter: { tag: 'sub' } } }),
             parentMap,
             reg,
         );
         expect(factoryCalls).toBe(2);
-        expect(subMap.has('_counter')).toBe(true);
+        // Proves the override: parent's closure returns 'parent', sub's returns 'sub'
+        expect((parentMap.get('_counter')!)(undefined, undefined)).toBe('parent');
+        expect((subMap.get('_counter')!)(undefined, undefined)).toBe('sub');
     });
 });
