@@ -492,3 +492,46 @@ describe('custom resolvers via ctx.customResolvers', () => {
         expect(resolveValue('$_legacy(anything)', ctx)).toBe('legacy:anything');
     });
 });
+
+describe('resolver matcher integration', () => {
+    test('resolves nested $_foo(..., $_bar(...))', () => {
+        const ctx = makeCtx({
+            customResolvers: new Map<string, CustomResolver>([
+                ['_bar', () => 'BAR'],
+                ['_foo', (argsStr, helpers) => {
+                    // Plugin is expected to use helpers.resolve on argsStr
+                    return helpers?.resolve(argsStr ?? '');
+                }],
+            ]),
+        });
+        expect(resolveValue('$_foo($_bar())', ctx)).toBe('BAR');
+    });
+
+    test('resolves multi-line argument content', () => {
+        const ctx = makeCtx({
+            customResolvers: new Map<string, CustomResolver>([
+                ['_echo', argsStr => argsStr],
+            ]),
+        });
+        const input = '$_echo(\n  hello,\n  world\n)';
+        expect(resolveValue(input, ctx)).toBe('\n  hello,\n  world\n');
+    });
+
+    test('preserves close-paren inside string literal argument', () => {
+        const ctx = makeCtx({
+            customResolvers: new Map<string, CustomResolver>([
+                ['_echo', argsStr => argsStr],
+            ]),
+        });
+        expect(resolveValue('$_echo("has ) inside")', ctx)).toBe('"has ) inside"');
+    });
+
+    test('preserves braces/brackets inside args', () => {
+        const ctx = makeCtx({
+            customResolvers: new Map<string, CustomResolver>([
+                ['_echo', argsStr => argsStr],
+            ]),
+        });
+        expect(resolveValue('$_echo({a: [1, 2]})', ctx)).toBe('{a: [1, 2]}');
+    });
+});
