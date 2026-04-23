@@ -6,6 +6,7 @@ import type {
     DispatcherHandler,
     CommandDispatcher,
     CustomResolver,
+    ApijackPlugin,
 } from './types';
 import { resolveAuth, verifyCredentials, saveEnvironment, getActiveEnvConfig } from './config';
 import { SessionManager } from './session';
@@ -15,6 +16,7 @@ import { buildDispatcher } from './routine/dispatcher';
 import { homedir } from 'os';
 import { resolve, join } from 'path';
 import { registerPluginCommand } from './plugin/register';
+import { PluginRegistry } from './plugin/registry';
 import { registerSetupCommand, setupAction } from './commands/setup/setup';
 import { registerConfigCommand } from './commands/config/register';
 import { registerGenerateCommand } from './commands/generate/generate';
@@ -39,6 +41,7 @@ export interface Cli {
     command(name: string, registrar: CommandRegistrar, options?: CommandOptions): void;
     dispatcher(name: string, handler: DispatcherHandler, options?: DispatcherOptions): void;
     resolver(name: string, handler: CustomResolver): void;
+    use(plugin: ApijackPlugin): void;
     run(): Promise<void>;
 }
 
@@ -113,6 +116,7 @@ export function createCli(options: CliOptions): Cli {
     const consumerCommands: { name: string; registrar: CommandRegistrar; requiresAuth?: boolean }[] = [];
     const consumerDispatchers = new Map<string, { handler: DispatcherHandler; requiresAuth?: boolean }>();
     const consumerResolvers = new Map<string, CustomResolver>();
+    const pluginRegistry = new PluginRegistry();
     const cliName = options.name;
     const configOpts = options.configPath ? { configPath: options.configPath } : undefined;
     const configDir = options.configPath
@@ -135,6 +139,10 @@ export function createCli(options: CliOptions): Cli {
 
         resolver(name: string, handler: CustomResolver): void {
             consumerResolvers.set(name, handler);
+        },
+
+        use(plugin: ApijackPlugin): void {
+            pluginRegistry.register(plugin);
         },
 
         async run(): Promise<void> {

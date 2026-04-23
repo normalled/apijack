@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import { Command } from 'commander';
 import { createCli, type Cli } from '../src/cli-builder';
-import type { CliOptions, CliContext, CommandRegistrar, DispatcherHandler } from '../src/types';
+import type { CliOptions, CliContext, CommandRegistrar, DispatcherHandler, ApijackPlugin } from '../src/types';
 import { BasicAuthStrategy } from '../src/auth/basic';
 
 function makeOptions(overrides: Partial<CliOptions> = {}): CliOptions {
@@ -383,5 +383,31 @@ describe('index exports', () => {
         expect(typeof indexModule.formatOutput).toBe('function');
         expect(typeof indexModule.updateEnvironmentField).toBe('function');
         expect(typeof indexModule.verifyCredentials).toBe('function');
+    });
+});
+
+describe('cli.use()', () => {
+    test('accepts a plugin without error', () => {
+        const cli = createCli({
+            name: 'smoke',
+            description: 'smoke',
+            version: '0.0.0',
+            specPath: '',
+            auth: new BasicAuthStrategy(),
+        });
+        const plugin: ApijackPlugin = { name: 'noop', version: '0.1.0' };
+        expect(() => cli.use(plugin)).not.toThrow();
+    });
+
+    test('throws when same plugin name registered twice', () => {
+        const cli = createCli({
+            name: 'smoke',
+            description: 'smoke',
+            version: '0.0.0',
+            specPath: '',
+            auth: new BasicAuthStrategy(),
+        });
+        cli.use({ name: 'x' });
+        expect(() => cli.use({ name: 'x' })).toThrow(/already registered/);
     });
 });
