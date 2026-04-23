@@ -411,3 +411,75 @@ describe('cli.use()', () => {
         expect(() => cli.use({ name: 'x' })).toThrow(/already registered/);
     });
 });
+
+describe('cli.run() plugin validation', () => {
+    test('throws PluginNamespaceError when plugin registers wrong-namespace resolver', async () => {
+        const cli = createCli({
+            name: 'smoke',
+            description: 'smoke',
+            version: '1.9.0',
+            specPath: '',
+            auth: new BasicAuthStrategy(),
+        });
+        cli.use({
+            name: 'faker',
+            resolvers: { _other: () => 'x' },
+        });
+        await expect(cli.run()).rejects.toThrow(/faker.*_other/);
+    });
+
+    test('throws PluginCollisionError when plugin shadows a core built-in', async () => {
+        const cli = createCli({
+            name: 'smoke',
+            description: 'smoke',
+            version: '1.9.0',
+            specPath: '',
+            auth: new BasicAuthStrategy(),
+        });
+        cli.use({
+            name: 'uuid',
+            resolvers: { _uuid: () => 'collision' },
+        });
+        await expect(cli.run()).rejects.toThrow(/_uuid/);
+    });
+
+    test('warns to stderr when plugin has no __package', async () => {
+        let stderrOut = '';
+        const origErrWrite = process.stderr.write.bind(process.stderr);
+        const origOutWrite = process.stdout.write.bind(process.stdout);
+        const origLog = console.log;
+        const origExit = process.exit;
+        process.stderr.write = ((c: string | Uint8Array) => {
+            stderrOut += String(c);
+
+            return true;
+        }) as never;
+        // Suppress stdout/help output and neutralise process.exit so run()'s downstream
+        // help path can't terminate the test runner.
+        process.stdout.write = (() => true) as never;
+        console.log = () => {};
+        (process as unknown as { exit: (code?: number) => never }).exit = ((code?: number) => {
+            throw new Error(`process.exit(${code})`);
+        }) as never;
+        const cli = createCli({
+            name: 'smoke',
+            description: 'smoke',
+            version: '1.9.0',
+            specPath: '',
+            auth: new BasicAuthStrategy(),
+        });
+        cli.use({ name: 'nopkg', resolvers: { _nopkg: () => 'x' } });
+        try {
+            // run() may do more than validation; we just need it to at least reach the peer-check pass.
+            // Catch any downstream errors unrelated to plugin validation.
+            await cli.run().catch(() => {});
+        } finally {
+            process.stderr.write = origErrWrite as never;
+            process.stdout.write = origOutWrite as never;
+            console.log = origLog;
+            (process as unknown as { exit: typeof origExit }).exit = origExit;
+        }
+        expect(stderrOut).toContain('nopkg');
+        expect(stderrOut).toMatch(/did not self-report|skipping peer-version/i);
+    });
+});

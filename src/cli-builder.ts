@@ -17,6 +17,8 @@ import { homedir } from 'os';
 import { resolve, join } from 'path';
 import { registerPluginCommand } from './plugin/register';
 import { PluginRegistry } from './plugin/registry';
+import { loadPluginPeerInfo, checkPeerRange } from './plugin/peer-version';
+import { PluginPeerMismatchError } from './plugin/errors';
 import { registerSetupCommand, setupAction } from './commands/setup/setup';
 import { registerConfigCommand } from './commands/config/register';
 import { registerGenerateCommand } from './commands/generate/generate';
@@ -146,6 +148,32 @@ export function createCli(options: CliOptions): Cli {
         },
 
         async run(): Promise<void> {
+            // 0. Validate plugins (namespace, collisions, peer versions)
+            pluginRegistry.validateAll(consumerResolvers);
+
+            for (const plugin of pluginRegistry.getAll()) {
+                if (!plugin.__package) {
+                    process.stderr.write(
+                        `Warning: plugin "${plugin.name}" did not self-report its package; skipping peer-version check.\n`,
+                    );
+                    continue;
+                }
+
+                const info = loadPluginPeerInfo(plugin.__package.name, process.cwd());
+                const mismatchMsg = checkPeerRange({
+                    declaredRange: info.declaredRange,
+                    installedVersion: options.version,
+                });
+
+                if (mismatchMsg) {
+                    throw new PluginPeerMismatchError(
+                        plugin.name,
+                        info.declaredRange ?? '(none)',
+                        options.version,
+                    );
+                }
+            }
+
             const program = new Command();
 
             // 1. Build Commander program
