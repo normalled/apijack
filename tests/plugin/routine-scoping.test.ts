@@ -171,6 +171,7 @@ describe('sub-routine plugin scoping', () => {
             name: 'counter',
             createRoutineResolvers: () => {
                 factoryCalls++;
+
                 return { _counter: () => 'X' };
             },
         });
@@ -201,6 +202,7 @@ describe('sub-routine plugin scoping', () => {
             createRoutineResolvers: (opts) => {
                 factoryCalls++;
                 const tag = (opts as { tag?: string }).tag ?? 'default';
+
                 return { _counter: () => tag };
             },
         });
