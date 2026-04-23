@@ -594,4 +594,61 @@ describe('cli.run() plugin validation', () => {
             rmSync(workDir, { recursive: true, force: true });
         }
     });
+
+    test('plugins check is reachable even when validation would fail at startup', async () => {
+        const origArgv = process.argv;
+        const origStderr = process.stderr.write.bind(process.stderr);
+        const origStdout = process.stdout.write.bind(process.stdout);
+        const origLog = console.log;
+        const origExit = process.exit;
+        let stderrOut = '';
+        let exitCode: number | undefined;
+
+        try {
+            process.argv = ['node', 'cli', 'plugins', 'check'];
+            process.stderr.write = ((c: string | Uint8Array) => {
+                stderrOut += String(c);
+
+                return true;
+            }) as never;
+            process.stdout.write = (() => true) as never;
+            console.log = () => {};
+            process.exit = ((code?: number) => {
+                exitCode = code;
+                throw new Error('__exit__');
+            }) as never;
+
+            const cli = createCli({
+                name: 'smoke',
+                description: 'smoke',
+                version: '1.9.0',
+                specPath: '',
+                auth: new BasicAuthStrategy(),
+            });
+            // Register a plugin that would fail namespace validation.
+            cli.use({
+                name: 'faker',
+                resolvers: { _other: () => 'x' },
+            });
+
+            // cli.run() would normally throw PluginNamespaceError at startup.
+            // With the guard for `plugins check`, the action runs and reports
+            // the error non-destructively via stderr + exit(1).
+            try {
+                await cli.run();
+            } catch (e) {
+                // swallow our synthetic exit
+                if ((e as Error).message !== '__exit__') throw e;
+            }
+        } finally {
+            process.argv = origArgv;
+            process.stderr.write = origStderr as never;
+            process.stdout.write = origStdout as never;
+            console.log = origLog;
+            process.exit = origExit;
+        }
+        expect(exitCode).toBe(1);
+        expect(stderrOut).toContain('faker');
+        expect(stderrOut).toContain('_other');
+    });
 });

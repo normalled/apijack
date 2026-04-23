@@ -73,6 +73,10 @@ See [Building a CLI](https://github.com/normalled/apijack/wiki/Building-a-CLI) f
 - **Project mode** -- project-local config, routines, and extensions ([details](https://github.com/normalled/apijack/wiki/Project-Mode))
 - **OpenAPI 3.0 + 3.1** -- comprehensive spec support ([compatibility matrix](https://github.com/normalled/apijack/wiki/OpenAPI-Compatibility))
 
+## Plugins
+
+apijack supports pre-built plugins as standalone npm packages for common utilities. Install via `cli.use(plugin())` and configure per-routine via a top-level `plugins:` block in routine YAML. See `CLAUDE.md` for the full contract and `<cli> plugins list` to inspect registered plugins.
+
 ## Documentation
 
 Full documentation is available on the [wiki](https://github.com/normalled/apijack/wiki):

@@ -17,6 +17,7 @@ import { buildDispatcher } from './routine/dispatcher';
 import { homedir } from 'os';
 import { resolve, join } from 'path';
 import { registerPluginCommand } from './plugin/register';
+import { registerPluginsCommand } from './commands/plugins/register';
 import { PluginRegistry } from './plugin/registry';
 import { loadPluginPeerInfo, checkPeerRange } from './plugin/peer-version';
 import { PluginPeerMismatchError } from './plugin/errors';
@@ -61,6 +62,7 @@ const CORE_COMMANDS = new Set([
     'upgrade',
     'mcp',
     'plugin',
+    'plugins',
 ]);
 
 function showCustomHelp(
@@ -153,29 +155,35 @@ export function createCli(options: CliOptions): Cli {
         },
 
         async run(): Promise<void> {
-            // 0. Validate plugins (namespace, collisions, peer versions)
-            pluginRegistry.validateAll(consumerResolvers);
+            // 0. Validate plugins (namespace, collisions, peer versions).
+            // Skip throwing when the user invoked `plugins check` so the command
+            // can report all issues non-destructively.
+            const isPluginsCheck = process.argv[2] === 'plugins' && process.argv[3] === 'check';
 
-            for (const plugin of pluginRegistry.getAll()) {
-                if (!plugin.__package) {
-                    process.stderr.write(
-                        `Warning: plugin "${plugin.name}" did not self-report its package; skipping peer-version check.\n`,
-                    );
-                    continue;
-                }
+            if (!isPluginsCheck) {
+                pluginRegistry.validateAll(consumerResolvers);
 
-                const info = loadPluginPeerInfo(plugin.__package.name, [process.cwd(), import.meta.dir]);
-                const mismatchMsg = checkPeerRange({
-                    declaredRange: info.declaredRange,
-                    installedVersion: coreManifest.version,
-                });
+                for (const plugin of pluginRegistry.getAll()) {
+                    if (!plugin.__package) {
+                        process.stderr.write(
+                            `Warning: plugin "${plugin.name}" did not self-report its package; skipping peer-version check.\n`,
+                        );
+                        continue;
+                    }
 
-                if (mismatchMsg) {
-                    throw new PluginPeerMismatchError(
-                        plugin.name,
-                        info.declaredRange ?? '(none)',
-                        coreManifest.version,
-                    );
+                    const info = loadPluginPeerInfo(plugin.__package.name, [process.cwd(), import.meta.dir]);
+                    const mismatchMsg = checkPeerRange({
+                        declaredRange: info.declaredRange,
+                        installedVersion: coreManifest.version,
+                    });
+
+                    if (mismatchMsg) {
+                        throw new PluginPeerMismatchError(
+                            plugin.name,
+                            info.declaredRange ?? '(none)',
+                            coreManifest.version,
+                        );
+                    }
                 }
             }
 
@@ -221,6 +229,7 @@ export function createCli(options: CliOptions): Cli {
                 join(homedir(), '.' + options.name, 'routines'),
             );
             registerPluginCommand(program, cliName, options.version);
+            registerPluginsCommand(program, pluginRegistry, options.version);
 
             // 4. Resolve auth
             let resolved = resolveAuth(cliName, configOpts);
@@ -235,6 +244,7 @@ export function createCli(options: CliOptions): Cli {
                 'upgrade',
                 'mcp',
                 'plugin',
+                'plugins',
             ]);
             const isHelpOrVersion = cmd === '--help' || cmd === '-h'
                 || cmd === '--version' || cmd === '-V'
