@@ -1,0 +1,56 @@
+name: review-issue
+description: Review one open apijack PR (oldest first) — comment only, no merge
+
+schedule: "*/5 * * * *"
+enabled: false  # flip to true once confident; run manually via `claude-cron run apijack/review-issue`
+auth: subscription
+
+preflight:
+  run: |
+    count=$(gh pr list \
+      --repo normalled/apijack \
+      --base dev \
+      --state open \
+      --json number --jq 'length')
+    [ "$count" -gt 0 ]
+  timeout: 30s
+
+claude:
+  prompt_cmd: |
+    pr=$(gh pr list \
+      --repo normalled/apijack \
+      --base dev \
+      --state open \
+      --json number \
+      --jq 'sort_by(.number) | .[0].number')
+    echo "/review-issue $pr"
+
+  append_system_prompt: |
+    You are running non-interactively. Your scope for this run is strictly
+    review-and-comment: read the PR, post review feedback via `gh pr review`,
+    then stop. Do NOT merge, do NOT push, do NOT hand off to other skills.
+    If the skill suggests merging, skip that step and exit.
+
+  allowed_tools:
+    - "Bash(gh pr view*)"
+    - "Bash(gh pr list*)"
+    - "Bash(gh pr diff*)"
+    - "Bash(gh pr checks*)"
+    - "Bash(gh issue view*)"
+    - "Bash(gh pr review*)"
+    - "Bash(gh pr comment*)"
+    - "Bash(gh api*)"
+    - "Bash(git log*)"
+    - "Bash(git show*)"
+    - "Bash(git diff*)"
+    - "Bash(git blame*)"
+    - "Read"
+    - "Grep"
+
+  permission_mode: auto
+
+cwd: "."
+timeout: 10m
+
+logging:
+  retention_days: 30
