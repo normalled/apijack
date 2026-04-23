@@ -10,3 +10,7 @@ bun.lockb
 docs/superpowers/
 docs/icons/
 wiki/
+
+
+.claude/skills/*-issue
+.claude/skills/next*
