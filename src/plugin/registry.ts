@@ -1,7 +1,18 @@
-import type { ApijackPlugin } from '../types';
-import { PluginNamespaceError } from './errors';
+import type { ApijackPlugin, CustomResolver } from '../types';
+import { PluginNamespaceError, PluginCollisionError } from './errors';
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9_]*$/;
+
+const BUILTIN_RESOLVER_NAMES: ReadonlySet<string> = new Set([
+    '_uuid',
+    '_random_int',
+    '_random_from',
+    '_random_distinct_from',
+    '_random_hex_color',
+    '_env',
+    '_find',
+    '_contains',
+]);
 
 export class PluginRegistry {
     private plugins = new Map<string, ApijackPlugin>();
@@ -28,10 +39,12 @@ export class PluginRegistry {
         return this.plugins.get(name);
     }
 
-    validateAll(): void {
+    validateAll(projectResolvers?: Map<string, CustomResolver>): void {
         for (const plugin of this.plugins.values()) {
             this.validateNamespace(plugin);
         }
+
+        this.validateCollisions(projectResolvers);
     }
 
     private validateNamespace(plugin: ApijackPlugin): void {
@@ -56,5 +69,40 @@ export class PluginRegistry {
 
             for (const key of Object.keys(dry)) check(key);
         }
+    }
+
+    private validateCollisions(projectResolvers?: Map<string, CustomResolver>): void {
+        for (const plugin of this.plugins.values()) {
+            const keys = this.collectResolverKeys(plugin);
+
+            for (const key of keys) {
+                if (BUILTIN_RESOLVER_NAMES.has(key)) {
+                    throw new PluginCollisionError(key, `plugin "${plugin.name}"`, 'core built-in');
+                }
+
+                if (projectResolvers?.has(key)) {
+                    throw new PluginCollisionError(
+                        key,
+                        `plugin "${plugin.name}"`,
+                        '.apijack/resolvers/ project resolver',
+                    );
+                }
+            }
+        }
+    }
+
+    private collectResolverKeys(plugin: ApijackPlugin): string[] {
+        const keys: string[] = [];
+        keys.push(...Object.keys(plugin.resolvers ?? {}));
+
+        if (plugin.createRoutineResolvers) {
+            try {
+                keys.push(...Object.keys(plugin.createRoutineResolvers({})));
+            } catch {
+                // ignore if plugin rejects empty opts
+            }
+        }
+
+        return keys;
     }
 }
