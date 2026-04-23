@@ -110,4 +110,20 @@ describe('loadPluginPeerInfo', () => {
         expect(info.declaredRange).toBeUndefined();
         expect(info.packagePath).toBeTruthy();
     });
+
+    test('reads peerDependencies for a scoped package name', () => {
+        // Scoped package: node_modules/@scope/plugin/package.json
+        mkdirSync(join(workDir, 'node_modules', '@scope', 'plugin'), { recursive: true });
+        writeFileSync(
+            join(workDir, 'node_modules', '@scope', 'plugin', 'package.json'),
+            JSON.stringify({
+                name: '@scope/plugin',
+                version: '1.0.0',
+                peerDependencies: { '@apijack/core': '^1.0.0' },
+            }),
+        );
+        const info = loadPluginPeerInfo('@scope/plugin', workDir);
+        expect(info.declaredRange).toBe('^1.0.0');
+        expect(info.packagePath).toContain('@scope/plugin');
+    });
 });
