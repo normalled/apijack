@@ -449,27 +449,28 @@ describe('cli.run() plugin validation', () => {
         const origOutWrite = process.stdout.write.bind(process.stdout);
         const origLog = console.log;
         const origExit = process.exit;
-        process.stderr.write = ((c: string | Uint8Array) => {
-            stderrOut += String(c);
 
-            return true;
-        }) as never;
-        // Suppress stdout/help output and neutralise process.exit so run()'s downstream
-        // help path can't terminate the test runner.
-        process.stdout.write = (() => true) as never;
-        console.log = () => {};
-        (process as unknown as { exit: (code?: number) => never }).exit = ((code?: number) => {
-            throw new Error(`process.exit(${code})`);
-        }) as never;
-        const cli = createCli({
-            name: 'smoke',
-            description: 'smoke',
-            version: '1.9.0',
-            specPath: '',
-            auth: new BasicAuthStrategy(),
-        });
-        cli.use({ name: 'nopkg', resolvers: { _nopkg: () => 'x' } });
         try {
+            process.stderr.write = ((c: string | Uint8Array) => {
+                stderrOut += String(c);
+
+                return true;
+            }) as never;
+            // Suppress stdout/help output and neutralise process.exit so run()'s downstream
+            // help path can't terminate the test runner.
+            process.stdout.write = (() => true) as never;
+            console.log = () => {};
+            (process as unknown as { exit: (code?: number) => never }).exit = ((code?: number) => {
+                throw new Error(`process.exit(${code})`);
+            }) as never;
+            const cli = createCli({
+                name: 'smoke',
+                description: 'smoke',
+                version: '1.9.0',
+                specPath: '',
+                auth: new BasicAuthStrategy(),
+            });
+            cli.use({ name: 'nopkg', resolvers: { _nopkg: () => 'x' } });
             // run() may do more than validation; we just need it to at least reach the peer-check pass.
             // Catch any downstream errors unrelated to plugin validation.
             await cli.run().catch(() => {});
