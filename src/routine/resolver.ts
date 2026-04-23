@@ -188,7 +188,15 @@ export function resolveValue(value: unknown, ctx: RoutineContext): unknown {
     if (!value.includes('$')) return value;
 
     // Exact match: function call with args
-    const exactCall = isExactFunctionCall(value);
+    let exactCall: { name: string; argsStr: string } | null = null;
+
+    try {
+        exactCall = isExactFunctionCall(value);
+    } catch {
+        // Malformed function-call syntax — treat as no exact-match, fall through
+        // to no-arg / $ref / resolveString handling. Preserves the old regex's
+        // silent-passthrough behavior on invalid input.
+    }
 
     if (exactCall) {
         return evalBuiltinFunc(exactCall.name, exactCall.argsStr, ctx);
@@ -215,7 +223,15 @@ export function resolveValue(value: unknown, ctx: RoutineContext): unknown {
 
 export function resolveString(str: string, ctx: RoutineContext): string {
     // First resolve parameterized function calls via the matcher
-    const calls = findFunctionCalls(str);
+    let calls: ReturnType<typeof findFunctionCalls> = [];
+
+    try {
+        calls = findFunctionCalls(str);
+    } catch {
+        // Malformed function-call syntax — skip the parameterized-call splice pass
+        // and leave those substrings intact. No-arg and $ref passes still run below.
+    }
+
     let result = str;
 
     if (calls.length > 0) {

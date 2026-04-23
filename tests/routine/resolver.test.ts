@@ -2,6 +2,7 @@ import { describe, expect, test, beforeEach } from 'bun:test';
 import {
     resolveRef,
     resolveValue,
+    resolveString,
     resolveArgs,
     resolvePositionalArgs,
     resetDistinctPools,
@@ -497,14 +498,13 @@ describe('resolver matcher integration', () => {
     test('resolves nested $_foo(..., $_bar(...))', () => {
         const ctx = makeCtx({
             customResolvers: new Map<string, CustomResolver>([
-                ['_bar', () => 'BAR'],
-                ['_foo', (argsStr, helpers) => {
-                    // Plugin is expected to use helpers.resolve on argsStr
-                    return helpers?.resolve(argsStr ?? '');
-                }],
+                ['_bar', argsStr => `BAR[${argsStr ?? ''}]`],
+                ['_foo', (argsStr, helpers) => helpers?.resolve(argsStr ?? '')],
             ]),
         });
-        expect(resolveValue('$_foo($_bar())', ctx)).toBe('BAR');
+        // Outer args contain a top-level comma AND a nested call whose args also
+        // contain a comma. The old regex would have stopped at the first `)`.
+        expect(resolveValue('$_foo(a, $_bar(b, c))', ctx)).toBe('a, BAR[b, c]');
     });
 
     test('resolves multi-line argument content', () => {
@@ -533,5 +533,23 @@ describe('resolver matcher integration', () => {
             ]),
         });
         expect(resolveValue('$_echo({a: [1, 2]})', ctx)).toBe('{a: [1, 2]}');
+    });
+
+    test('malformed function call syntax passes through unchanged (no throw)', () => {
+        const ctx = makeCtx();
+        // Unclosed paren — must not throw; matcher failure is caught at the resolver level
+        expect(() => resolveValue('$_foo(unclosed', ctx)).not.toThrow();
+        expect(() => resolveValue('before $_bar() and $_foo(unclosed', ctx)).not.toThrow();
+        // Other resolvers still work in a string that also contains an unclosed paren.
+        // Register _foo as a no-arg resolver so the later no-arg pass preserves its literal form.
+        const ctx2 = makeCtx({
+            variables: { tail: 'TAIL' },
+            customResolvers: new Map<string, CustomResolver>([
+                ['_foo', () => 'FOO'],
+            ]),
+        });
+        // $_uuid resolves (built-in), $_foo(unclosed — paren is orphaned, _foo resolves via no-arg pass,
+        // $tail resolves via REF_PATTERN. Matcher failure did not short-circuit the later passes.
+        expect(resolveString('$_uuid $_foo(unclosed $tail', ctx2)).toMatch(/^[0-9a-f-]{36} FOO\(unclosed TAIL$/);
     });
 });
