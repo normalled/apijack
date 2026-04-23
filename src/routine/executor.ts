@@ -12,7 +12,9 @@ import {
     shuffle,
 } from './resolver';
 import { evaluateCondition } from './condition';
+import { buildRoutineResolvers } from './plugin-resolvers';
 import type { CommandDispatcher, CustomResolver } from '../types';
+import type { PluginRegistry } from '../plugin/registry';
 
 export interface RoutineResult {
     success: boolean;
@@ -25,6 +27,7 @@ export interface RoutineResult {
 interface ExecutorOptions {
     dryRun?: boolean;
     customResolvers?: Map<string, CustomResolver>;
+    pluginRegistry?: PluginRegistry;
     onStep?: (step: RoutineStep, index: number, total: number) => void;
     onIteration?: (
         step: RoutineStep,
@@ -72,7 +75,11 @@ class RoutineExecutor {
         const ctx: RoutineContext = {
             variables: rawVars,
             stepOutputs: new Map(),
-            customResolvers: this.options?.customResolvers,
+            customResolvers: buildRoutineResolvers(
+                routine,
+                this.options?.customResolvers,
+                this.options?.pluginRegistry,
+            ),
         };
 
         const ok = await this.runSteps(routine.steps, ctx);
@@ -238,6 +245,7 @@ class RoutineExecutor {
                 step.command!,
                 resolvedArgs,
                 resolvedPositional,
+                ctx,
             );
             const stepResult: StepResult = {
                 name: step.name,

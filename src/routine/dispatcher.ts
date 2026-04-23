@@ -1,4 +1,5 @@
 import type { CliContext, DispatcherHandler, CommandDispatcher, CustomResolver } from '../types';
+import type { PluginRegistry } from '../plugin/registry';
 import { loadRoutineFile, validateRoutine } from './loader';
 import { executeRoutine } from './executor';
 
@@ -13,6 +14,7 @@ export interface DispatcherConfig {
     client?: Record<string, unknown>;
     consumerHandlers?: Map<string, DispatcherHandler>;
     customResolvers?: Map<string, CustomResolver>;
+    pluginRegistry?: PluginRegistry;
     preDispatch?: (command: string, args: Record<string, unknown>, ctx: CliContext) => Promise<void>;
     ctx: CliContext;
     routinesDir: string;
@@ -34,6 +36,7 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
         command: string,
         args: Record<string, unknown>,
         positionalArgs?: unknown[],
+        routineCtx?: { customResolvers?: Map<string, CustomResolver> },
     ): Promise<unknown> => {
     // 1. Pre-dispatch hook
         if (config.preDispatch) {
@@ -176,8 +179,25 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
                 if (k.startsWith('--set-')) subOverrides[k.slice(6)] = v;
             }
 
+            // Sub-routine plugin scoping:
+            // - If sub has its own `plugins:` block, pass the registry so
+            //   createRoutineResolvers is re-invoked with sub's opts (fresh closures
+            //   that shadow the parent's for this subtree).
+            // - If sub has no `plugins:` block, suppress re-invocation by omitting
+            //   the registry; the executor's buildRoutineResolvers returns the
+            //   inherited resolver map unchanged (inherits parent's closures).
+            //
+            // Prefer the parent routine's ctx.customResolvers (threaded in via the
+            // optional 4th dispatch arg) over config.customResolvers. ctx includes
+            // the parent's createRoutineResolvers output (e.g. a seeded `_faker`);
+            // config.customResolvers is the CLI-global map built once at cli.run()
+            // and does not carry factory output.
+            const subHasPlugins = !!subDef.plugins && Object.keys(subDef.plugins).length > 0;
+            const inheritedResolvers = routineCtx?.customResolvers ?? config.customResolvers;
+
             const result = await _execute(subDef, subOverrides, dispatch, {
-                customResolvers: config.customResolvers,
+                customResolvers: inheritedResolvers,
+                pluginRegistry: subHasPlugins ? config.pluginRegistry : undefined,
             });
 
             if (!result.success) throw new Error(`Sub-routine "${routineName}" failed`);

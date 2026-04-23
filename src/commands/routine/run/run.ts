@@ -1,15 +1,17 @@
 import type { CommandDispatcher, CustomResolver } from '../../../types';
+import type { PluginRegistry } from '../../../plugin/registry';
 import type { RoutineDefinition, RoutineStep } from '../../../routine/types';
 import type { RoutineResult } from '../../../routine/executor';
 
 export interface RoutineRunDeps {
     loadRoutine: () => RoutineDefinition;
     validateRoutine: (def: RoutineDefinition) => string[];
-    executeRoutine: (def: RoutineDefinition, overrides: Record<string, unknown>, dispatch: CommandDispatcher, opts: { dryRun?: boolean; customResolvers?: Map<string, CustomResolver>; onStep?: RoutineRunDeps['onStep']; onIteration?: RoutineRunDeps['onIteration'] }) => Promise<RoutineResult>;
+    executeRoutine: (def: RoutineDefinition, overrides: Record<string, unknown>, dispatch: CommandDispatcher, opts: { dryRun?: boolean; customResolvers?: Map<string, CustomResolver>; pluginRegistry?: PluginRegistry; onStep?: RoutineRunDeps['onStep']; onIteration?: RoutineRunDeps['onIteration'] }) => Promise<RoutineResult>;
     dispatch: CommandDispatcher;
     overrides: Record<string, unknown>;
     dryRun?: boolean;
     customResolvers?: Map<string, CustomResolver>;
+    pluginRegistry?: PluginRegistry;
     invalidateSession: () => void;
     onStep?: (step: RoutineStep, i: number, total: number) => void;
     onIteration?: (step: RoutineStep, current: number, total: number, stepIndex: number, stepTotal: number) => void;
@@ -28,6 +30,7 @@ export async function routineRunAction(deps: RoutineRunDeps): Promise<{ success:
     const result = await deps.executeRoutine(def, deps.overrides, deps.dispatch, {
         dryRun: deps.dryRun,
         customResolvers: deps.customResolvers,
+        pluginRegistry: deps.pluginRegistry,
         onStep: deps.onStep,
         onIteration: deps.onIteration,
     });

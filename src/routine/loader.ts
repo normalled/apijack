@@ -16,6 +16,7 @@ export function parseRoutine(content: string): RoutineDefinition {
         name: doc.name,
         description: doc.description as string | undefined,
         variables: (doc.variables as Record<string, unknown>) || {},
+        plugins: doc.plugins as Record<string, unknown> | undefined,
         steps: doc.steps as RoutineStep[],
     };
 }

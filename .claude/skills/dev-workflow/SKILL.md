@@ -67,6 +67,8 @@ git commit -m "<conventional commit message>"
 ./scripts/ship.sh
 ```
 
+> **Cutting a release?** For dev→main release PRs specifically (where the PR body becomes the GitHub release note), use the **ship-release** skill instead — it drafts a curated title/body, opens the PR, then runs `scripts/ship.sh`. The bare script still works but leaves you with a generic `dev → main (N commits)` PR.
+
 The script automates the entire pipeline:
 
 1. **Version bump** — determines bump level from commit messages (feat=minor, fix=patch, BREAKING CHANGE=major), bumps package.json, commits

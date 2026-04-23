@@ -382,3 +382,32 @@ describe('formatRoutineList', () => {
         expect(list).toContain('smoke-test');
     });
 });
+
+describe('RoutineDefinition.plugins field', () => {
+    test('parses top-level plugins block', () => {
+        const yaml = `
+name: r
+plugins:
+  faker:
+    seed: 42
+  dayjs:
+    locale: en
+steps:
+  - name: noop
+    command: noop
+`;
+        const routine = parseRoutine(yaml);
+        expect(routine.plugins).toEqual({ faker: { seed: 42 }, dayjs: { locale: 'en' } });
+    });
+
+    test('plugins field is undefined when absent', () => {
+        const yaml = `
+name: r
+steps:
+  - name: noop
+    command: noop
+`;
+        const routine = parseRoutine(yaml);
+        expect(routine.plugins).toBeUndefined();
+    });
+});

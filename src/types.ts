@@ -52,4 +52,25 @@ export type CommandDispatcher = (
     command: string,
     args: Record<string, unknown>,
     positionalArgs?: unknown[],
+    /** Parent routine context. When set, sub-routine invocations (`routine run`)
+     *  prefer the parent's per-routine resolver map over the CLI-global map,
+     *  so parent `plugins:` factory output (e.g. seeded closures) flows into
+     *  sub-routines that don't declare their own `plugins:` block. */
+    routineCtx?: { customResolvers?: Map<string, CustomResolver> },
 ) => Promise<unknown>;
+
+export interface ApijackPlugin {
+    /** Plugin identifier. Must match /^[a-z][a-z0-9_]*$/. Also the required namespace prefix:
+     *  a plugin named "faker" can register resolvers "_faker" and "_faker_*", and no others. */
+    name: string;
+    /** Semver string shown by `<cli> plugins list`. Not used for resolution logic. */
+    version?: string;
+    /** Stateless resolvers registered process-wide for every routine. */
+    resolvers?: Record<string, CustomResolver>;
+    /** Factory producing per-routine resolvers. Called once per routine with
+     *  `routine.plugins[plugin.name] ?? {}`. Must tolerate `{}` (empty opts). */
+    createRoutineResolvers?: (opts: unknown) => Record<string, CustomResolver>;
+    /** Internal: set by the plugin's default export so core can locate its package.json.
+     *  Typically set as `__package: { name: "@normalled/apijack-plugin-faker" }`. */
+    __package?: { name: string; version?: string };
+}

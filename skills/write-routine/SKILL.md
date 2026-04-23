@@ -311,6 +311,39 @@ The `.apijack/` directory at a project root is auto-loaded when the CLI runs ins
 | `.apijack/dispatchers/*.ts` | `default`: `(args, posArgs, ctx) => Promise<unknown>`, optional `name` | Handle non-API commands invoked from routines |
 | `.apijack/auth.ts` | `default`: `AuthStrategy`, optional `onChallenge` | Project-level auth strategy |
 | `.apijack/routines/*.yaml` | Routine YAML | Available via `routine run <name>` |
+| `.apijack/settings.json` | `{ customCommands: { defaults: { requiresAuth } } }` | Framework defaults for extensions |
+
+### Opting custom commands into auth
+
+Custom commands and dispatchers get `ctx.session = null` by default (only generated OpenAPI commands auto-resolve). To get a non-null session, add `export const requiresAuth = true` alongside the registrar:
+
+```ts
+// .apijack/commands/sync.ts
+import type { CommandRegistrar } from "@apijack/core";
+
+export const name = "sync";
+export const requiresAuth = true;
+
+const register: CommandRegistrar<true> = (program, ctx) => {
+  program.command("sync").action(async () => {
+    // ctx: AuthedCliContext — ctx.session is non-null, no casts needed
+  });
+};
+export default register;
+```
+
+Dispatchers: same export, `DispatcherHandler<true>` for the typed form.
+
+Flip the default for every extension in `.apijack/settings.json`:
+
+```json
+{ "customCommands": { "defaults": { "requiresAuth": true } } }
+```
+
+Module exports override the settings default. Two `ctx` helpers close out the picture:
+
+- `ctx.resolveSession()` — resolve once without setting the module flag
+- `ctx.saveSession()` — persist a mutated `ctx.session` without importing `SessionManager`
 
 ## Common Patterns
 

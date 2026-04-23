@@ -1,13 +1,27 @@
 import type { RoutineContext } from './types';
+import { findFunctionCalls, isExactFunctionCall } from './resolver-matcher';
 
 const REF_PATTERN = /\$([a-zA-Z_][a-zA-Z0-9_\-]*(?:\.[a-zA-Z0-9_][a-zA-Z0-9_\-]*)*)/g;
-// Parameterized built-in / custom functions (require parentheses). Run first in resolveString.
-const PARAM_FUNC_PATTERN = /\$(_[a-zA-Z_][a-zA-Z0-9_]*)\(([^)]*)\)/g;
-// No-arg built-in / custom functions. Run after PARAM_FUNC_PATTERN so only unparenned names remain.
+// No-arg built-in / custom functions. Run after parameterized calls so only unparenned names remain.
 const NOARG_FUNC_PATTERN = /\$(_[a-zA-Z_][a-zA-Z0-9_]*)/g;
-// Exact-match equivalents for single-value resolution (resolveValue)
-const EXACT_PARAM_FUNC_PATTERN = /^\$(_[a-zA-Z_][a-zA-Z0-9_]*)\(([^)]*)\)$/;
+// Exact-match equivalent for single-value resolution (resolveValue)
 const EXACT_NOARG_FUNC_PATTERN = /^\$(_[a-zA-Z_][a-zA-Z0-9_]*)$/;
+
+/**
+ * Names of core built-in resolvers. Single source of truth — mirrors the switch-case
+ * in `evalBuiltinFunc`. Consumed by plugin collision checks and project-resolver loading
+ * to prevent silent overrides.
+ */
+export const BUILTIN_RESOLVER_NAMES: ReadonlySet<string> = new Set([
+    '_uuid',
+    '_random_int',
+    '_random_from',
+    '_random_distinct_from',
+    '_random_hex_color',
+    '_env',
+    '_find',
+    '_contains',
+]);
 
 // ── Built-in functions ─────────────────────────────────────────────
 
@@ -189,15 +203,14 @@ export function resolveValue(value: unknown, ctx: RoutineContext): unknown {
 
     if (!value.includes('$')) return value;
 
-    // Exact match: function call with args (check before no-arg so foo() isn't captured as no-arg)
-    const funcCall = value.match(EXACT_PARAM_FUNC_PATTERN);
+    // Exact match: function call with args
+    const exactCall = isExactFunctionCall(value);
 
-    if (funcCall) {
-        return evalBuiltinFunc(funcCall[1]!, funcCall[2], ctx);
+    if (exactCall) {
+        return evalBuiltinFunc(exactCall.name, exactCall.argsStr, ctx);
     }
 
-    // Exact match: function without args. Only dispatch to evalBuiltinFunc if it actually
-    // resolves — otherwise fall through to ref resolution (so e.g. `$_timestamp` variables work).
+    // Exact match: no-arg function (only dispatch if it resolves; otherwise fall through)
     const funcExact = value.match(EXACT_NOARG_FUNC_PATTERN);
 
     if (funcExact) {
@@ -206,31 +219,44 @@ export function resolveValue(value: unknown, ctx: RoutineContext): unknown {
         if (result !== undefined) return result;
     }
 
-    // Exact match: entire value is a single $ref — resolve to native type
+    // Exact match: entire value is a single $ref
     const match = value.match(/^\$([a-zA-Z_][a-zA-Z0-9_\-]*(?:\.[a-zA-Z0-9_][a-zA-Z0-9_\-]*)*)$/);
 
     if (match) {
         return resolveRef(match[1]!, ctx);
     }
 
-    // Inline interpolation: resolve $refs and functions embedded in the string
     return resolveString(value, ctx);
 }
 
 export function resolveString(str: string, ctx: RoutineContext): string {
-    // First resolve parameterized built-in functions (require parens)
-    let result = str.replace(PARAM_FUNC_PATTERN, (_match, name: string, argsStr: string) => {
-        const resolved = evalBuiltinFunc(name, argsStr, ctx);
+    // First resolve parameterized function calls via the matcher
+    const calls = findFunctionCalls(str);
+    let result = str;
 
-        return resolved !== undefined ? String(resolved) : _match;
-    });
-    // Then no-arg built-in functions
+    if (calls.length > 0) {
+        const pieces: string[] = [];
+        let cursor = 0;
+
+        for (const call of calls) {
+            pieces.push(str.slice(cursor, call.start));
+            const resolved = evalBuiltinFunc(call.name, call.argsStr, ctx);
+            pieces.push(resolved !== undefined ? String(resolved) : str.slice(call.start, call.end));
+            cursor = call.end;
+        }
+
+        pieces.push(str.slice(cursor));
+        result = pieces.join('');
+    }
+
+    // Then no-arg built-in functions (the matcher only picks up parenthesized calls)
     result = result.replace(NOARG_FUNC_PATTERN, (_match, name: string) => {
         const resolved = evalBuiltinFunc(name, undefined, ctx);
 
         return resolved !== undefined ? String(resolved) : _match;
     });
-    // Then resolve variable references
+
+    // Then variable references
     result = result.replace(REF_PATTERN, (_match, ref: string) => {
         const resolved = resolveRef(ref, ctx);
 

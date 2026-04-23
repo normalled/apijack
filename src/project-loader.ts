@@ -1,15 +1,8 @@
 import { existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
 import type { AuthStrategy, SessionAuthConfig } from './auth/types';
+import { BUILTIN_RESOLVER_NAMES } from './routine/resolver';
 import type { CommandRegistrar, DispatcherHandler, CustomResolver } from './types';
-
-const BUILTIN_RESOLVER_NAMES = new Set([
-    '_random_hex_color',
-    '_uuid',
-    '_random_int',
-    '_random_from',
-    '_random_distinct_from',
-]);
 
 export interface ProjectAuth {
     strategy: AuthStrategy | null;

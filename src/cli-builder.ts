@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { Command } from 'commander';
 import type {
     CliOptions,
@@ -6,6 +7,7 @@ import type {
     DispatcherHandler,
     CommandDispatcher,
     CustomResolver,
+    ApijackPlugin,
 } from './types';
 import { resolveAuth, verifyCredentials, saveEnvironment, getActiveEnvConfig } from './config';
 import { SessionManager } from './session';
@@ -15,6 +17,10 @@ import { buildDispatcher } from './routine/dispatcher';
 import { homedir } from 'os';
 import { resolve, join } from 'path';
 import { registerPluginCommand } from './plugin/register';
+import { registerPluginsCommand } from './commands/plugins/register';
+import { PluginRegistry } from './plugin/registry';
+import { loadPluginPeerInfo, checkPeerRange } from './plugin/peer-version';
+import { PluginPeerMismatchError } from './plugin/errors';
 import { registerSetupCommand, setupAction } from './commands/setup/setup';
 import { registerConfigCommand } from './commands/config/register';
 import { registerGenerateCommand } from './commands/generate/generate';
@@ -26,6 +32,10 @@ import { SessionAuthStrategy } from './auth/session-auth';
 import { resolveRequestHeaders } from './auth/resolve-headers';
 import { deepMergeSessionAuth } from './auth/config-merge';
 import { loadPreRequestHook } from './pre-request';
+
+const coreManifest = JSON.parse(
+    readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
+) as { version: string };
 
 export interface CommandOptions {
     requiresAuth?: boolean;
@@ -39,6 +49,7 @@ export interface Cli {
     command(name: string, registrar: CommandRegistrar, options?: CommandOptions): void;
     dispatcher(name: string, handler: DispatcherHandler, options?: DispatcherOptions): void;
     resolver(name: string, handler: CustomResolver): void;
+    use(plugin: ApijackPlugin): void;
     run(): Promise<void>;
 }
 
@@ -51,6 +62,7 @@ const CORE_COMMANDS = new Set([
     'upgrade',
     'mcp',
     'plugin',
+    'plugins',
 ]);
 
 function showCustomHelp(
@@ -113,6 +125,7 @@ export function createCli(options: CliOptions): Cli {
     const consumerCommands: { name: string; registrar: CommandRegistrar; requiresAuth?: boolean }[] = [];
     const consumerDispatchers = new Map<string, { handler: DispatcherHandler; requiresAuth?: boolean }>();
     const consumerResolvers = new Map<string, CustomResolver>();
+    const pluginRegistry = new PluginRegistry();
     const cliName = options.name;
     const configOpts = options.configPath ? { configPath: options.configPath } : undefined;
     const configDir = options.configPath
@@ -137,7 +150,43 @@ export function createCli(options: CliOptions): Cli {
             consumerResolvers.set(name, handler);
         },
 
+        use(plugin: ApijackPlugin): void {
+            pluginRegistry.register(plugin);
+        },
+
         async run(): Promise<void> {
+            // 0. Validate plugins (namespace, collisions, peer versions).
+            // Skip throwing when the user invoked `plugins check` so the command
+            // can report all issues non-destructively.
+            const isPluginsCheck = process.argv[2] === 'plugins' && process.argv[3] === 'check';
+
+            if (!isPluginsCheck) {
+                pluginRegistry.validateAll(consumerResolvers);
+
+                for (const plugin of pluginRegistry.getAll()) {
+                    if (!plugin.__package) {
+                        process.stderr.write(
+                            `Warning: plugin "${plugin.name}" did not self-report its package; skipping peer-version check.\n`,
+                        );
+                        continue;
+                    }
+
+                    const info = loadPluginPeerInfo(plugin.__package.name, [process.cwd(), import.meta.dir]);
+                    const mismatchMsg = checkPeerRange({
+                        declaredRange: info.declaredRange,
+                        installedVersion: coreManifest.version,
+                    });
+
+                    if (mismatchMsg) {
+                        throw new PluginPeerMismatchError(
+                            plugin.name,
+                            info.declaredRange ?? '(none)',
+                            coreManifest.version,
+                        );
+                    }
+                }
+            }
+
             const program = new Command();
 
             // 1. Build Commander program
@@ -180,6 +229,7 @@ export function createCli(options: CliOptions): Cli {
                 join(homedir(), '.' + options.name, 'routines'),
             );
             registerPluginCommand(program, cliName, options.version);
+            registerPluginsCommand(program, pluginRegistry, options.version);
 
             // 4. Resolve auth
             let resolved = resolveAuth(cliName, configOpts);
@@ -194,6 +244,7 @@ export function createCli(options: CliOptions): Cli {
                 'upgrade',
                 'mcp',
                 'plugin',
+                'plugins',
             ]);
             const isHelpOrVersion = cmd === '--help' || cmd === '-h'
                 || cmd === '--version' || cmd === '-V'
@@ -480,7 +531,16 @@ export function createCli(options: CliOptions): Cli {
 
             let dispatch: CommandDispatcher | undefined;
 
-            const customResolvers = consumerResolvers.size > 0 ? consumerResolvers : undefined;
+            // Merge consumer resolvers (from cli.resolver()) + stateless plugin resolvers
+            const mergedResolvers = new Map<string, CustomResolver>(consumerResolvers);
+
+            for (const plugin of pluginRegistry.getAll()) {
+                for (const [key, fn] of Object.entries(plugin.resolvers ?? {})) {
+                    mergedResolvers.set(key, fn);
+                }
+            }
+
+            const customResolvers = mergedResolvers.size > 0 ? mergedResolvers : undefined;
 
             // Unwrap dispatcher entries and wrap requiresAuth handlers with ensureReady
             let dispatcherHandlers: Map<string, DispatcherHandler> | undefined;
@@ -507,6 +567,7 @@ export function createCli(options: CliOptions): Cli {
                     client: ctx.client as Record<string, unknown> | undefined,
                     consumerHandlers: dispatcherHandlers,
                     customResolvers,
+                    pluginRegistry,
                     preDispatch: options.preDispatch,
                     ctx,
                     routinesDir,
@@ -517,7 +578,7 @@ export function createCli(options: CliOptions): Cli {
             }
 
             // 12. Register routine commands
-            registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir, customResolvers);
+            registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir, customResolvers, pluginRegistry);
 
             // 13. Handle -o routine-step
             if (isRoutineStep) {
