@@ -124,6 +124,23 @@ describe('loadPluginPeerInfo', () => {
         );
         const info = loadPluginPeerInfo('@scope/plugin', workDir);
         expect(info.declaredRange).toBe('^1.0.0');
-        expect(info.packagePath).toContain('@scope/plugin');
+        expect(info.packagePath).toMatch(/[\\/]@scope[\\/]plugin[\\/]/);
+    });
+
+    test('accepts an array of search dirs and stops at the first match', () => {
+        writeFileSync(
+            join(workDir, 'node_modules', 'fake-plugin', 'package.json'),
+            JSON.stringify({
+                name: 'fake-plugin',
+                version: '1.0.0',
+                peerDependencies: { '@apijack/core': '^1.2.3' },
+            }),
+        );
+        // First dir doesn't have the plugin; second does
+        const nonexistentDir = join(workDir, 'empty');
+        mkdirSync(nonexistentDir, { recursive: true });
+        const info = loadPluginPeerInfo('fake-plugin', [nonexistentDir, workDir]);
+        expect(info.declaredRange).toBe('^1.2.3');
+        expect(info.packagePath).toBeTruthy();
     });
 });

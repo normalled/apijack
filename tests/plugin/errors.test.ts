@@ -3,6 +3,7 @@ import {
     PluginNamespaceError,
     PluginCollisionError,
     PluginPeerMismatchError,
+    PluginRegistrationError,
 } from '../../src/plugin/errors';
 
 describe('PluginNamespaceError', () => {
@@ -34,5 +35,14 @@ describe('PluginPeerMismatchError', () => {
         expect(err.declaredRange).toBe('^2.0.0');
         expect(err.installedVersion).toBe('1.9.0');
         expect(err.message).toContain('faker');
+    });
+});
+
+describe('PluginRegistrationError', () => {
+    test('captures plugin name and message', () => {
+        const err = new PluginRegistrationError('bad-name', 'Plugin name must be lowercase');
+        expect(err.pluginName).toBe('bad-name');
+        expect(err.message).toBe('Plugin name must be lowercase');
+        expect(err.name).toBe('PluginRegistrationError');
     });
 });

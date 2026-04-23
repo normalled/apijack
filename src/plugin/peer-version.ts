@@ -32,23 +32,36 @@ export interface PluginPeerInfo {
 /**
  * Locate a plugin's package.json on disk (via node_modules walk) and read
  * its @apijack/core peer range. Returns { declaredRange: undefined, packagePath: null }
- * if the package can't be found or has no declared peer range.
+ * if the package cannot be found. Returns { declaredRange: undefined, packagePath: <found> }
+ * if the package exists but has no declared peer range.
+ *
+ * Accepts either a single search root or an array of roots; the first root
+ * whose walk turns up the package wins.
  */
-export function loadPluginPeerInfo(packageName: string, searchFromDir: string): PluginPeerInfo {
-    const pkgPath = findPluginPackageJson(packageName, searchFromDir);
+export function loadPluginPeerInfo(
+    packageName: string,
+    searchFromDir: string | string[],
+): PluginPeerInfo {
+    const roots = Array.isArray(searchFromDir) ? searchFromDir : [searchFromDir];
 
-    if (!pkgPath) return { declaredRange: undefined, packagePath: null };
+    for (const root of roots) {
+        const pkgPath = findPluginPackageJson(packageName, root);
 
-    try {
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
-            peerDependencies?: Record<string, string>;
-        };
-        const range = pkg.peerDependencies?.['@apijack/core'];
+        if (!pkgPath) continue;
 
-        return { declaredRange: range, packagePath: pkgPath };
-    } catch {
-        return { declaredRange: undefined, packagePath: pkgPath };
+        try {
+            const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
+                peerDependencies?: Record<string, string>;
+            };
+            const range = pkg.peerDependencies?.['@apijack/core'];
+
+            return { declaredRange: range, packagePath: pkgPath };
+        } catch {
+            return { declaredRange: undefined, packagePath: pkgPath };
+        }
     }
+
+    return { declaredRange: undefined, packagePath: null };
 }
 
 function findPluginPackageJson(packageName: string, startDir: string): string | null {

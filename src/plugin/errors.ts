@@ -39,3 +39,13 @@ export class PluginPeerMismatchError extends Error {
         this.name = 'PluginPeerMismatchError';
     }
 }
+
+export class PluginRegistrationError extends Error {
+    constructor(
+        public readonly pluginName: string,
+        message: string,
+    ) {
+        super(message);
+        this.name = 'PluginRegistrationError';
+    }
+}

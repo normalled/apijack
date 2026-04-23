@@ -1,6 +1,6 @@
 import type { ApijackPlugin, CustomResolver } from '../types';
 import { BUILTIN_RESOLVER_NAMES } from '../routine/resolver';
-import { PluginNamespaceError, PluginCollisionError } from './errors';
+import { PluginNamespaceError, PluginCollisionError, PluginRegistrationError } from './errors';
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9_]*$/;
 
@@ -14,13 +14,17 @@ export class PluginRegistry {
 
     register(plugin: ApijackPlugin): void {
         if (!PLUGIN_NAME_RE.test(plugin.name)) {
-            throw new Error(
+            throw new PluginRegistrationError(
+                plugin.name,
                 `Invalid plugin name "${plugin.name}". Must match /^[a-z][a-z0-9_]*$/.`,
             );
         }
 
         if (this.plugins.has(plugin.name)) {
-            throw new Error(`Plugin "${plugin.name}" is already registered.`);
+            throw new PluginRegistrationError(
+                plugin.name,
+                `Plugin "${plugin.name}" is already registered.`,
+            );
         }
 
         this.plugins.set(plugin.name, plugin);
@@ -54,8 +58,12 @@ export class PluginRegistry {
                 staticKeys,
                 factoryKeys: Object.keys(plugin.createRoutineResolvers({})),
             };
-        } catch {
-            // Plugin rejected the dry call; skip factory-output checks.
+        } catch (e) {
+            process.stderr.write(
+                `Warning: plugin "${plugin.name}" createRoutineResolvers({}) threw "${(e as Error).message}"; `
+                + 'skipping dynamic resolver validation.\n',
+            );
+
             return { staticKeys, factoryKeys: null };
         }
     }

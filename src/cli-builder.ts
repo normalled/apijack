@@ -159,7 +159,7 @@ export function createCli(options: CliOptions): Cli {
                     continue;
                 }
 
-                const info = loadPluginPeerInfo(plugin.__package.name, process.cwd());
+                const info = loadPluginPeerInfo(plugin.__package.name, [process.cwd(), import.meta.dir]);
                 const mismatchMsg = checkPeerRange({
                     declaredRange: info.declaredRange,
                     installedVersion: options.version,

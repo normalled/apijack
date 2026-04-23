@@ -15,6 +15,7 @@ export {
     PluginNamespaceError,
     PluginCollisionError,
     PluginPeerMismatchError,
+    PluginRegistrationError,
 } from './plugin/errors';
 export { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectResolvers } from './project-loader';
 export type { LoadedCommand, LoadedDispatcher } from './project-loader';
