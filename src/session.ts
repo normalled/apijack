@@ -52,6 +52,14 @@ export class SessionManager {
         }
     }
 
+    save(session: AuthSession): void {
+        mkdirSync(dirname(this.sessionPath), { recursive: true });
+        writeFileSync(
+            this.sessionPath,
+            JSON.stringify(session, null, 2) + '\n',
+        );
+    }
+
     private load(): AuthSession | null {
         try {
             if (!existsSync(this.sessionPath)) return null;
@@ -60,13 +68,5 @@ export class SessionManager {
         } catch {
             return null;
         }
-    }
-
-    private save(session: AuthSession): void {
-        mkdirSync(dirname(this.sessionPath), { recursive: true });
-        writeFileSync(
-            this.sessionPath,
-            JSON.stringify(session, null, 2) + '\n',
-        );
     }
 }
