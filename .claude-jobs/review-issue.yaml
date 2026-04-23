@@ -1,8 +1,8 @@
 name: review-issue
 description: Review one open apijack PR (oldest first) — comment only, no merge
 
-schedule: "*/5 * * * *"
-enabled: false  # flip to true once confident; run manually via `claude-cron run apijack/review-issue`
+schedule: "* * * * *"
+enabled: false  # flip to true when ready; run manually via `claude-cron run apijack/review-issue`
 auth: subscription
 
 preflight:

@@ -3,8 +3,13 @@ dist/
 bun.lockb
 .env
 *.local.*
+.local/
 .apijack/
 
 # Superpowers docs (plans & specs)
 docs/superpowers/
 wiki/
+
+
+.claude/skills/*-issue
+.claude/skills/next*
