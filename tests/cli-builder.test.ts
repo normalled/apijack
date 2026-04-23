@@ -1,8 +1,15 @@
 import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
+import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { Command } from 'commander';
 import { createCli, type Cli } from '../src/cli-builder';
 import type { CliOptions, CliContext, CommandRegistrar, DispatcherHandler, ApijackPlugin } from '../src/types';
 import { BasicAuthStrategy } from '../src/auth/basic';
+
+const coreManifest = JSON.parse(
+    readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
+) as { version: string };
 
 function makeOptions(overrides: Partial<CliOptions> = {}): CliOptions {
     return {
@@ -482,5 +489,109 @@ describe('cli.run() plugin validation', () => {
         }
         expect(stderrOut).toContain('nopkg');
         expect(stderrOut).toMatch(/did not self-report|skipping peer-version/i);
+    });
+
+    test('peer-version check reads core version, not consumer CLI version', async () => {
+        const workDir = join(tmpdir(), `apijack-peer-int-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        mkdirSync(join(workDir, 'node_modules', '@fake', 'plugin'), { recursive: true });
+        const peerRange = `^${coreManifest.version.split('.')[0]}.0.0`;
+        writeFileSync(
+            join(workDir, 'node_modules', '@fake', 'plugin', 'package.json'),
+            JSON.stringify({
+                name: '@fake/plugin',
+                version: '1.0.0',
+                peerDependencies: { '@apijack/core': peerRange },
+            }),
+        );
+
+        const origCwd = process.cwd();
+        const origStderr = process.stderr.write.bind(process.stderr);
+        const origStdout = process.stdout.write.bind(process.stdout);
+        const origLog = console.log;
+        const origExit = process.exit;
+
+        try {
+            process.chdir(workDir);
+            process.stderr.write = (() => true) as never;
+            process.stdout.write = (() => true) as never;
+            console.log = () => {};
+            process.exit = (() => {}) as never;
+
+            const cli = createCli({
+                name: 'consumer-cli',
+                description: 'test',
+                version: '99.0.0',
+                specPath: '',
+                auth: new BasicAuthStrategy(),
+            });
+            cli.use({
+                name: 'fakep',
+                resolvers: { _fakep: () => 'x' },
+                __package: { name: '@fake/plugin' },
+            });
+
+            let thrown: unknown = null;
+
+            try {
+                await cli.run();
+            } catch (e) {
+                thrown = e;
+            }
+            expect(String(thrown)).not.toContain('PluginPeerMismatch');
+        } finally {
+            process.chdir(origCwd);
+            process.stderr.write = origStderr as never;
+            process.stdout.write = origStdout as never;
+            console.log = origLog;
+            process.exit = origExit;
+            rmSync(workDir, { recursive: true, force: true });
+        }
+    });
+
+    test('peer-version check throws when plugin peer range does not include core version', async () => {
+        const workDir = join(tmpdir(), `apijack-peer-mismatch-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        mkdirSync(join(workDir, 'node_modules', '@fake', 'plugin'), { recursive: true });
+        writeFileSync(
+            join(workDir, 'node_modules', '@fake', 'plugin', 'package.json'),
+            JSON.stringify({
+                name: '@fake/plugin',
+                version: '1.0.0',
+                peerDependencies: { '@apijack/core': '^999.0.0' },
+            }),
+        );
+
+        const origCwd = process.cwd();
+        const origStderr = process.stderr.write.bind(process.stderr);
+        const origStdout = process.stdout.write.bind(process.stdout);
+        const origLog = console.log;
+        const origExit = process.exit;
+
+        try {
+            process.chdir(workDir);
+            process.stderr.write = (() => true) as never;
+            process.stdout.write = (() => true) as never;
+            console.log = () => {};
+            process.exit = (() => {}) as never;
+            const cli = createCli({
+                name: 'consumer-cli',
+                description: 'test',
+                version: '0.1.0',
+                specPath: '',
+                auth: new BasicAuthStrategy(),
+            });
+            cli.use({
+                name: 'fakep',
+                resolvers: { _fakep: () => 'x' },
+                __package: { name: '@fake/plugin' },
+            });
+            await expect(cli.run()).rejects.toThrow(/fakep.*\^999\.0\.0/);
+        } finally {
+            process.chdir(origCwd);
+            process.stderr.write = origStderr as never;
+            process.stdout.write = origStdout as never;
+            console.log = origLog;
+            process.exit = origExit;
+            rmSync(workDir, { recursive: true, force: true });
+        }
     });
 });

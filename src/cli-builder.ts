@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { Command } from 'commander';
 import type {
     CliOptions,
@@ -30,6 +31,10 @@ import { SessionAuthStrategy } from './auth/session-auth';
 import { resolveRequestHeaders } from './auth/resolve-headers';
 import { deepMergeSessionAuth } from './auth/config-merge';
 import { loadPreRequestHook } from './pre-request';
+
+const coreManifest = JSON.parse(
+    readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
+) as { version: string };
 
 export interface CommandOptions {
     requiresAuth?: boolean;
@@ -162,14 +167,14 @@ export function createCli(options: CliOptions): Cli {
                 const info = loadPluginPeerInfo(plugin.__package.name, [process.cwd(), import.meta.dir]);
                 const mismatchMsg = checkPeerRange({
                     declaredRange: info.declaredRange,
-                    installedVersion: options.version,
+                    installedVersion: coreManifest.version,
                 });
 
                 if (mismatchMsg) {
                     throw new PluginPeerMismatchError(
                         plugin.name,
                         info.declaredRange ?? '(none)',
-                        options.version,
+                        coreManifest.version,
                     );
                 }
             }

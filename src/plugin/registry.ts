@@ -101,7 +101,7 @@ export class PluginRegistry {
                 throw new PluginCollisionError(
                     key,
                     `plugin "${plugin.name}"`,
-                    '.apijack/resolvers/ project resolver',
+                    'consumer resolver (cli.resolver() or .apijack/resolvers/)',
                 );
             }
         }

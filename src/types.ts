@@ -65,7 +65,7 @@ export interface ApijackPlugin {
     /** Factory producing per-routine resolvers. Called once per routine with
      *  `routine.plugins[plugin.name] ?? {}`. Must tolerate `{}` (empty opts). */
     createRoutineResolvers?: (opts: unknown) => Record<string, CustomResolver>;
-    /** Internal: set by the plugin so core can locate its package.json for peer-version checks.
+    /** Internal: set by the plugin's default export so core can locate its package.json.
      *  Typically set as `__package: { name: "@normalled/apijack-plugin-faker" }`. */
-    __package?: { name: string };
+    __package?: { name: string; version?: string };
 }

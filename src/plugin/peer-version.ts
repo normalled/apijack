@@ -56,7 +56,11 @@ export function loadPluginPeerInfo(
             const range = pkg.peerDependencies?.['@apijack/core'];
 
             return { declaredRange: range, packagePath: pkgPath };
-        } catch {
+        } catch (e) {
+            process.stderr.write(
+                `Warning: failed to read peer info from ${pkgPath}: ${(e as Error).message}\n`,
+            );
+
             return { declaredRange: undefined, packagePath: pkgPath };
         }
     }
