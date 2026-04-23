@@ -557,6 +557,7 @@ export function createCli(options: CliOptions): Cli {
                     client: ctx.client as Record<string, unknown> | undefined,
                     consumerHandlers: dispatcherHandlers,
                     customResolvers,
+                    pluginRegistry,
                     preDispatch: options.preDispatch,
                     ctx,
                     routinesDir,
@@ -567,7 +568,7 @@ export function createCli(options: CliOptions): Cli {
             }
 
             // 12. Register routine commands
-            registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir, customResolvers);
+            registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir, customResolvers, pluginRegistry);
 
             // 13. Handle -o routine-step
             if (isRoutineStep) {

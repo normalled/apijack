@@ -19,6 +19,8 @@ export interface RoutineDefinition {
     name: string;
     description?: string;
     variables?: Record<string, unknown>;
+    /** Optional: per-plugin configuration for this routine, keyed by plugin.name. */
+    plugins?: Record<string, unknown>;
     steps: RoutineStep[];
 }
 
