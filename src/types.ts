@@ -52,6 +52,11 @@ export type CommandDispatcher = (
     command: string,
     args: Record<string, unknown>,
     positionalArgs?: unknown[],
+    /** Parent routine context. When set, sub-routine invocations (`routine run`)
+     *  prefer the parent's per-routine resolver map over the CLI-global map,
+     *  so parent `plugins:` factory output (e.g. seeded closures) flows into
+     *  sub-routines that don't declare their own `plugins:` block. */
+    routineCtx?: { customResolvers?: Map<string, CustomResolver> },
 ) => Promise<unknown>;
 
 export interface ApijackPlugin {

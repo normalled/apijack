@@ -1,5 +1,7 @@
 import { describe, expect, test, mock, beforeEach } from 'bun:test';
 import { buildDispatcher, type DispatcherConfig } from '../../src/routine/dispatcher';
+import { PluginRegistry } from '../../src/plugin/registry';
+import type { RoutineDefinition } from '../../src/routine/types';
 import type { CliContext, DispatcherHandler, CommandDispatcher, CustomResolver } from '../../src/types';
 
 function makeCtx(overrides: Partial<CliContext> = {}): CliContext {
@@ -545,5 +547,132 @@ describe('buildDispatcher', () => {
         // Should be called with no arguments (no empty body object)
         expect(client.createUser).toHaveBeenCalledTimes(1);
         expect(client.createUser.mock.calls[0]!.length).toBe(0);
+    });
+});
+
+describe('sub-routine inheritance via real dispatcher + executor', () => {
+    test('parent plugins.seeder seed flows into sub-routine without its own plugins: block', async () => {
+        // Plugin whose factory closure captures `seed` from per-routine opts
+        const reg = new PluginRegistry();
+        reg.register({
+            name: 'seeder',
+            createRoutineResolvers: (opts) => {
+                const seed = (opts as { seed?: number }).seed ?? 0;
+
+                return { _seeder: () => String(seed) };
+            },
+        });
+
+        // Parent declares plugins.seeder: { seed: 42 }
+        const parent: RoutineDefinition = {
+            name: 'parent',
+            variables: {},
+            plugins: { seeder: { seed: 42 } },
+            steps: [
+                { 'name': 'call-sub', 'command': 'routine run', 'args-positional': ['sub'] },
+                { name: 'parent-seeder', command: 'cmd', args: { v: '$_seeder()' } },
+            ],
+        };
+        // Sub has no plugins: block — should inherit parent's _seeder (seed=42)
+        const sub: RoutineDefinition = {
+            name: 'sub',
+            variables: {},
+            steps: [
+                { name: 'sub-seeder', command: 'cmd', args: { v: '$_seeder()' } },
+            ],
+        };
+
+        const calls: Record<string, unknown>[] = [];
+        const consumerHandlers = new Map<string, DispatcherHandler>();
+        consumerHandlers.set('cmd', async (args) => {
+            calls.push(args);
+
+            return { ok: true };
+        });
+
+        const ctx = makeCtx();
+        const dispatch = buildDispatcher({
+            consumerHandlers,
+            pluginRegistry: reg,
+            ctx,
+            routinesDir: '/tmp/routines',
+            _loadRoutineFile: ((name: string) => {
+                if (name === 'sub') return sub;
+
+                throw new Error(`unexpected routine ${name}`);
+            }) as any,
+            _validateRoutine: (() => []) as any,
+        });
+
+        // Import executeRoutine lazily so we use the real one
+        const { executeRoutine } = await import('../../src/routine/executor');
+        const result = await executeRoutine(parent, {}, dispatch, { pluginRegistry: reg });
+
+        expect(result.success).toBe(true);
+        // Two `cmd` invocations: one inside sub-routine, one after sub returns in parent.
+        // Both should see seed=42 (sub inherits parent's seeded closure).
+        const values = calls.map(c => c.v);
+        expect(values).toEqual(['42', '42']);
+    });
+
+    test('sub-routine with own plugins block overrides parent seed', async () => {
+        const reg = new PluginRegistry();
+        reg.register({
+            name: 'seeder',
+            createRoutineResolvers: (opts) => {
+                const seed = (opts as { seed?: number }).seed ?? 0;
+
+                return { _seeder: () => String(seed) };
+            },
+        });
+
+        const parent: RoutineDefinition = {
+            name: 'parent',
+            variables: {},
+            plugins: { seeder: { seed: 42 } },
+            steps: [
+                { name: 'parent-before', command: 'cmd', args: { v: '$_seeder()' } },
+                { 'name': 'call-sub', 'command': 'routine run', 'args-positional': ['sub'] },
+                { name: 'parent-after', command: 'cmd', args: { v: '$_seeder()' } },
+            ],
+        };
+        const sub: RoutineDefinition = {
+            name: 'sub',
+            variables: {},
+            plugins: { seeder: { seed: 999 } },
+            steps: [
+                { name: 'sub-seeder', command: 'cmd', args: { v: '$_seeder()' } },
+            ],
+        };
+
+        const calls: Record<string, unknown>[] = [];
+        const consumerHandlers = new Map<string, DispatcherHandler>();
+        consumerHandlers.set('cmd', async (args) => {
+            calls.push(args);
+
+            return { ok: true };
+        });
+
+        const ctx = makeCtx();
+        const dispatch = buildDispatcher({
+            consumerHandlers,
+            pluginRegistry: reg,
+            ctx,
+            routinesDir: '/tmp/routines',
+            _loadRoutineFile: ((name: string) => {
+                if (name === 'sub') return sub;
+
+                throw new Error(`unexpected routine ${name}`);
+            }) as any,
+            _validateRoutine: (() => []) as any,
+        });
+
+        const { executeRoutine } = await import('../../src/routine/executor');
+        const result = await executeRoutine(parent, {}, dispatch, { pluginRegistry: reg });
+
+        expect(result.success).toBe(true);
+        // Ordered: parent-before (42), sub-seeder (999), parent-after (42)
+        const values = calls.map(c => c.v);
+        expect(values).toEqual(['42', '999', '42']);
     });
 });

@@ -36,6 +36,7 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
         command: string,
         args: Record<string, unknown>,
         positionalArgs?: unknown[],
+        routineCtx?: { customResolvers?: Map<string, CustomResolver> },
     ): Promise<unknown> => {
     // 1. Pre-dispatch hook
         if (config.preDispatch) {
@@ -184,11 +185,18 @@ export function buildDispatcher(config: DispatcherConfig): CommandDispatcher {
             //   that shadow the parent's for this subtree).
             // - If sub has no `plugins:` block, suppress re-invocation by omitting
             //   the registry; the executor's buildRoutineResolvers returns the
-            //   parent's resolver map unchanged (inherits parent's closures).
+            //   inherited resolver map unchanged (inherits parent's closures).
+            //
+            // Prefer the parent routine's ctx.customResolvers (threaded in via the
+            // optional 4th dispatch arg) over config.customResolvers. ctx includes
+            // the parent's createRoutineResolvers output (e.g. a seeded `_faker`);
+            // config.customResolvers is the CLI-global map built once at cli.run()
+            // and does not carry factory output.
             const subHasPlugins = !!subDef.plugins && Object.keys(subDef.plugins).length > 0;
+            const inheritedResolvers = routineCtx?.customResolvers ?? config.customResolvers;
 
             const result = await _execute(subDef, subOverrides, dispatch, {
-                customResolvers: config.customResolvers,
+                customResolvers: inheritedResolvers,
                 pluginRegistry: subHasPlugins ? config.pluginRegistry : undefined,
             });
 

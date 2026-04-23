@@ -245,6 +245,7 @@ class RoutineExecutor {
                 step.command!,
                 resolvedArgs,
                 resolvedPositional,
+                ctx,
             );
             const stepResult: StepResult = {
                 name: step.name,
