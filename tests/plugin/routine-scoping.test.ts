@@ -125,6 +125,31 @@ describe('buildRoutineResolvers', () => {
         expect(map.size).toBe(0);
     });
 
+    test('factory-throw warning includes routine name', () => {
+        const reg = new PluginRegistry();
+        reg.register({
+            name: 'boom',
+            createRoutineResolvers: () => { throw new Error('no opts given'); },
+        });
+        let stderrOut = '';
+        const orig = process.stderr.write.bind(process.stderr);
+        process.stderr.write = ((c: string | Uint8Array) => {
+            stderrOut += String(c);
+
+            return true;
+        }) as never;
+
+        try {
+            buildRoutineResolvers(mkRoutine({ name: 'myroutine' }), undefined, reg);
+        } finally {
+            process.stderr.write = orig as never;
+        }
+
+        expect(stderrOut).toContain('myroutine');
+        expect(stderrOut).toContain('boom');
+        expect(stderrOut).toContain('no opts given');
+    });
+
     test('stateless plugin resolvers are also merged in', () => {
         const reg = new PluginRegistry();
         reg.register({

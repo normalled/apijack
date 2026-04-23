@@ -56,7 +56,7 @@ export function buildRoutineResolvers(
                 }
             } catch (e) {
                 process.stderr.write(
-                    `Warning: plugin "${plugin.name}" createRoutineResolvers threw: ${(e as Error).message}\n`,
+                    `Warning: routine "${routine.name}" — plugin "${plugin.name}" createRoutineResolvers threw: ${(e as Error).message}\n`,
                 );
             }
         }
