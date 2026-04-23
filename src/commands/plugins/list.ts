@@ -1,7 +1,8 @@
 import type { Command } from 'commander';
 import type { PluginRegistry } from '../../plugin/registry';
+import { loadPluginPeerInfo } from '../../plugin/peer-version';
 
-export function registerList(parent: Command, registry: PluginRegistry, _coreVersion: string): void {
+export function registerList(parent: Command, registry: PluginRegistry): void {
     parent
         .command('list')
         .description('List registered apijack plugins')
@@ -14,20 +15,28 @@ export function registerList(parent: Command, registry: PluginRegistry, _coreVer
                 return;
             }
 
-            const rows = plugins.map(p => ({
-                name: p.name,
-                version: p.version ?? '-',
-                status: 'ok',
-            }));
+            const rows = plugins.map((p) => {
+                const peerInfo = p.__package
+                    ? loadPluginPeerInfo(p.__package.name, [process.cwd(), import.meta.dir])
+                    : null;
+
+                return {
+                    name: p.name,
+                    version: p.version ?? '-',
+                    peer: peerInfo?.declaredRange ?? '-',
+                    status: 'ok',
+                };
+            });
             const nameWidth = Math.max(4, ...rows.map(r => r.name.length));
             const verWidth = Math.max(7, ...rows.map(r => r.version.length));
+            const peerWidth = Math.max(4, ...rows.map(r => r.peer.length));
             process.stdout.write(
-                `${'NAME'.padEnd(nameWidth)}  ${'VERSION'.padEnd(verWidth)}  STATUS\n`,
+                `${'NAME'.padEnd(nameWidth)}  ${'VERSION'.padEnd(verWidth)}  ${'PEER'.padEnd(peerWidth)}  STATUS\n`,
             );
 
             for (const r of rows) {
                 process.stdout.write(
-                    `${r.name.padEnd(nameWidth)}  ${r.version.padEnd(verWidth)}  ${r.status}\n`,
+                    `${r.name.padEnd(nameWidth)}  ${r.version.padEnd(verWidth)}  ${r.peer.padEnd(peerWidth)}  ${r.status}\n`,
                 );
             }
         });

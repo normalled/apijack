@@ -38,12 +38,39 @@ export class PluginRegistry {
         return this.plugins.get(name);
     }
 
-    validateAll(projectResolvers?: Map<string, CustomResolver>): void {
+    /**
+     * Validate all registered plugins. Returns a list of validation errors instead of throwing.
+     * Useful for `plugins check` which needs to report all issues, not just the first.
+     */
+    validateAllCollected(projectResolvers?: Map<string, CustomResolver>): Error[] {
+        const errors: Error[] = [];
+
         for (const plugin of this.plugins.values()) {
             const info = this.collectPluginInfo(plugin);
-            this.validateNamespace(plugin, info);
-            this.validateCollisions(plugin, info, projectResolvers);
+
+            try {
+                this.validateNamespace(plugin, info);
+            } catch (e) {
+                errors.push(e as Error);
+                // Skip collision check for this plugin if namespace failed
+                continue;
+            }
+
+            try {
+                this.validateCollisionsForPlugin(plugin, info, projectResolvers);
+            } catch (e) {
+                errors.push(e as Error);
+            }
         }
+
+        return errors;
+    }
+
+    /** Convenience: throws the first validation error. Preserves original behavior for cli.run() startup. */
+    validateAll(projectResolvers?: Map<string, CustomResolver>): void {
+        const errors = this.validateAllCollected(projectResolvers);
+
+        if (errors.length > 0) throw errors[0];
     }
 
     private collectPluginInfo(plugin: ApijackPlugin): PluginInfo {
@@ -83,7 +110,7 @@ export class PluginRegistry {
         }
     }
 
-    private validateCollisions(
+    private validateCollisionsForPlugin(
         plugin: ApijackPlugin,
         info: PluginInfo,
         projectResolvers?: Map<string, CustomResolver>,

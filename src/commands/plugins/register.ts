@@ -11,6 +11,6 @@ export function registerPluginsCommand(
     const plugins = program
         .command('plugins')
         .description('Inspect registered apijack plugins');
-    registerList(plugins, registry, coreVersion);
+    registerList(plugins, registry);
     registerCheck(plugins, registry, coreVersion);
 }

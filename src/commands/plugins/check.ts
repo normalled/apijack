@@ -1,16 +1,11 @@
 import type { Command } from 'commander';
 import type { PluginRegistry } from '../../plugin/registry';
-import {
-    PluginNamespaceError,
-    PluginCollisionError,
-    PluginPeerMismatchError,
-    PluginRegistrationError,
-} from '../../plugin/errors';
+import { loadPluginPeerInfo, checkPeerRange } from '../../plugin/peer-version';
 
 export function registerCheck(
     parent: Command,
     registry: PluginRegistry,
-    _coreVersion: string,
+    coreVersion: string,
 ): void {
     parent
         .command('check')
@@ -18,18 +13,25 @@ export function registerCheck(
         .action(() => {
             const errors: string[] = [];
 
-            try {
-                registry.validateAll();
-            } catch (e) {
-                if (
-                    e instanceof PluginNamespaceError
-                    || e instanceof PluginCollisionError
-                    || e instanceof PluginPeerMismatchError
-                    || e instanceof PluginRegistrationError
-                ) {
-                    errors.push(e.message);
-                } else {
-                    errors.push((e as Error).message);
+            // Namespace + collision errors
+            const validationErrors = registry.validateAllCollected();
+
+            for (const err of validationErrors) errors.push(err.message);
+
+            // Peer-version errors
+            for (const plugin of registry.getAll()) {
+                if (!plugin.__package) continue;
+
+                const info = loadPluginPeerInfo(plugin.__package.name, [process.cwd(), import.meta.dir]);
+                const msg = checkPeerRange({
+                    declaredRange: info.declaredRange,
+                    installedVersion: coreVersion,
+                });
+
+                if (msg) {
+                    errors.push(
+                        `Plugin "${plugin.name}": peer range "${info.declaredRange ?? '(none)'}" does not include installed core ${coreVersion}`,
+                    );
                 }
             }
 
@@ -37,8 +39,9 @@ export function registerCheck(
                 process.stdout.write('All plugins OK.\n');
                 process.exit(0);
             } else {
-                for (const msg of errors) process.stdout.write(`${msg}\n`);
+                for (const msg of errors) process.stderr.write(`${msg}\n`);
 
+                process.stderr.write(`\nFound ${errors.length} issue(s).\n`);
                 process.exit(1);
             }
         });
