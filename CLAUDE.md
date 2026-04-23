@@ -79,6 +79,15 @@ steps:
 - **Assertions**: `assert:` validates response fields with `equals`, `contains`, `matches`
 - **Sub-routines**: `routine:` field runs another routine inline
 
+### Built-in resolver functions
+
+Usable anywhere a routine value is resolved (args, conditions, variables):
+
+- `$_env(VAR)` / `$_env(VAR, default)` — read an env var (with `.env` auto-loaded at the project root)
+- `$_find($array, field, value)` — first matching element, or `undefined`
+- `$_contains($array, field, value)` — `"true"` / `"false"`, handy in conditions
+- `$_uuid`, `$_random_int(min, max)`, `$_random_from($array)`, `$_random_distinct_from($array, $exclude)`, `$_random_hex_color`
+
 ### Routine Commands
 
 ```bash
@@ -118,7 +127,53 @@ apijack supports pluggable authentication:
 - **BasicAuthStrategy** -- HTTP Basic auth (username + password)
 - **BearerTokenStrategy** -- Bearer token in Authorization header
 - **ApiKeyStrategy** -- API key in a custom header
-- **Custom** -- Implement the `AuthStrategy` interface for session-based or OAuth flows
+- **SessionAuthStrategy** -- cookie / CSRF flows; supports an `onChallenge` hook for mid-session MFA or renewal prompts
+- **Custom** -- Implement the `AuthStrategy` interface for OAuth or other flows
+
+Generated OpenAPI commands resolve the session automatically. Consumer-registered custom commands and dispatchers opt in — see Project Extensions below.
+
+## Project Extensions
+
+The `.apijack/` directory at a project root is auto-loaded when the CLI runs inside that project:
+
+| Path | Purpose |
+|------|---------|
+| `.apijack/commands/<name>.ts` | Extra CLI subcommands (`default: (program, ctx) => void`) |
+| `.apijack/dispatchers/<name>.ts` | Handle non-API commands invoked from routines (`default: (args, posArgs, ctx) => Promise<unknown>`) |
+| `.apijack/resolvers/<name>.ts` | Custom `$_*(...)` routine functions |
+| `.apijack/auth.ts` | Project-level `AuthStrategy` and optional `onChallenge` |
+| `.apijack/routines/*.yaml` | Routines available via `routine run <name>` |
+| `.apijack/settings.json` | Framework defaults (see below) |
+
+### Opt-in auth for custom commands and dispatchers
+
+Commands and dispatchers receive a `CliContext` whose `session` is `null` until something resolves it. To get a non-null session, export `requiresAuth`:
+
+```ts
+// .apijack/commands/foo.ts
+import type { CommandRegistrar } from "@apijack/core";
+
+export const name = "foo";
+export const requiresAuth = true;
+
+const register: CommandRegistrar<true> = (program, ctx) => {
+  program.command("foo").action(async () => {
+    // ctx: AuthedCliContext — ctx.session is non-null
+  });
+};
+export default register;
+```
+
+Apply the default to every custom command/dispatcher via `.apijack/settings.json`:
+
+```json
+{ "customCommands": { "defaults": { "requiresAuth": true } } }
+```
+
+Module-level `requiresAuth` overrides the settings default. On `CliContext`:
+
+- `ctx.resolveSession()` — one-off session resolution without the module flag
+- `ctx.saveSession()` — persist `ctx.session` mutations via the wired `SessionManager`
 
 ## Built-in Commands
 
