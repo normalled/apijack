@@ -105,10 +105,10 @@ describe('loadProjectDispatchers()', () => {
         rmSync(testRoot, { recursive: true, force: true });
     });
 
-    test('returns empty map when no dispatchers/ dir exists', async () => {
+    test('returns empty array when no dispatchers/ dir exists', async () => {
         mkdirSync(testRoot, { recursive: true });
         const result = await loadProjectDispatchers(testRoot);
-        expect(result.size).toBe(0);
+        expect(result).toEqual([]);
     });
 
     test('loads dispatcher handlers from dispatchers/*.ts', async () => {
@@ -122,9 +122,73 @@ describe('loadProjectDispatchers()', () => {
         `);
 
         const result = await loadProjectDispatchers(testRoot);
-        expect(result.size).toBe(1);
-        expect(result.has('notify')).toBe(true);
-        expect(typeof result.get('notify')).toBe('function');
+        expect(result).toHaveLength(1);
+        expect(result[0]!.name).toBe('notify');
+        expect(typeof result[0]!.handler).toBe('function');
+        expect(result[0]!.requiresAuth).toBeUndefined();
+    });
+
+    test('reads requiresAuth export from dispatcher module', async () => {
+        const dispDir = join(testRoot, 'dispatchers');
+        mkdirSync(dispDir, { recursive: true });
+        writeFileSync(join(dispDir, 'notify-auth.ts'), `
+            export const name = 'notify-auth';
+            export const requiresAuth = true;
+            export default async function handle(args, positionalArgs, ctx) {
+                return { sent: true };
+            }
+        `);
+
+        const result = await loadProjectDispatchers(testRoot);
+        expect(result).toHaveLength(1);
+        expect(result[0]!.requiresAuth).toBe(true);
+    });
+});
+
+describe('loadProjectCommands() — requiresAuth', () => {
+    afterEach(() => {
+        rmSync(testRoot, { recursive: true, force: true });
+    });
+
+    test('reads requiresAuth export from command module', async () => {
+        const cmdDir = join(testRoot, 'commands');
+        mkdirSync(cmdDir, { recursive: true });
+        writeFileSync(join(cmdDir, 'deploy-auth.ts'), `
+            export const name = 'deploy-auth';
+            export const requiresAuth = true;
+            export default function register(program, ctx) {
+                program.command('deploy-auth').action(() => {});
+            }
+        `);
+
+        const result = await loadProjectCommands(testRoot);
+        expect(result).toHaveLength(1);
+        expect(result[0]!.requiresAuth).toBe(true);
+    });
+
+    test('leaves requiresAuth undefined when the export is missing', async () => {
+        const cmdDir = join(testRoot, 'commands');
+        mkdirSync(cmdDir, { recursive: true });
+        writeFileSync(join(cmdDir, 'deploy-no-auth.ts'), `
+            export const name = 'deploy-no-auth';
+            export default function register(program, ctx) {}
+        `);
+
+        const result = await loadProjectCommands(testRoot);
+        expect(result[0]!.requiresAuth).toBeUndefined();
+    });
+
+    test('ignores non-boolean requiresAuth values', async () => {
+        const cmdDir = join(testRoot, 'commands');
+        mkdirSync(cmdDir, { recursive: true });
+        writeFileSync(join(cmdDir, 'deploy-bad-auth.ts'), `
+            export const name = 'deploy-bad-auth';
+            export const requiresAuth = 'yes';
+            export default function register(program, ctx) {}
+        `);
+
+        const result = await loadProjectCommands(testRoot);
+        expect(result[0]!.requiresAuth).toBeUndefined();
     });
 });
 
