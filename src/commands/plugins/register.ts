@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import type { PluginRegistry } from '../../plugin/registry';
 import { registerList } from './list';
+import { registerCheck } from './check';
 
 export function registerPluginsCommand(
     program: Command,
@@ -11,4 +12,5 @@ export function registerPluginsCommand(
         .command('plugins')
         .description('Inspect registered apijack plugins');
     registerList(plugins, registry, coreVersion);
+    registerCheck(plugins, registry, coreVersion);
 }

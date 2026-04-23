@@ -53,3 +53,87 @@ describe('plugins list', () => {
         expect(stdoutOut).not.toContain('undefined');
     });
 });
+
+describe('plugins check', () => {
+    let stdoutOut: string;
+    let exitCode: number | null;
+    let origStdoutWrite: typeof process.stdout.write;
+    let origExit: typeof process.exit;
+
+    beforeEach(() => {
+        stdoutOut = '';
+        exitCode = null;
+        origStdoutWrite = process.stdout.write.bind(process.stdout);
+        origExit = process.exit.bind(process);
+        process.stdout.write = ((chunk: string | Uint8Array) => {
+            stdoutOut += String(chunk);
+
+            return true;
+        }) as never;
+        process.exit = ((code?: number) => {
+            exitCode = code ?? 0;
+            throw new Error('__exit__');
+        }) as never;
+    });
+
+    afterEach(() => {
+        process.stdout.write = origStdoutWrite as never;
+        process.exit = origExit;
+    });
+
+    test('exits 0 when all plugins validate', async () => {
+        const program = new Command();
+        const registry = new PluginRegistry();
+        registry.register({ name: 'faker', resolvers: { _faker: () => 'x' } });
+        registerPluginsCommand(program, registry, '1.9.0');
+        try {
+            await program.parseAsync(['plugins', 'check'], { from: 'user' });
+        } catch (e) {
+            // swallow our synthetic exit
+            if ((e as Error).message !== '__exit__') throw e;
+        }
+        expect(exitCode).toBe(0);
+        expect(stdoutOut).toMatch(/all.*ok/i);
+    });
+
+    test('exits 1 and prints failing plugin on namespace violation', async () => {
+        const program = new Command();
+        const registry = new PluginRegistry();
+        registry.register({ name: 'faker', resolvers: { _stranger: () => 'x' } });
+        registerPluginsCommand(program, registry, '1.9.0');
+        try {
+            await program.parseAsync(['plugins', 'check'], { from: 'user' });
+        } catch (e) {
+            if ((e as Error).message !== '__exit__') throw e;
+        }
+        expect(exitCode).toBe(1);
+        expect(stdoutOut).toContain('faker');
+        expect(stdoutOut).toContain('_stranger');
+    });
+
+    test('exits 1 on collision with core built-in', async () => {
+        const program = new Command();
+        const registry = new PluginRegistry();
+        registry.register({ name: 'uuid', resolvers: { _uuid: () => 'collision' } });
+        registerPluginsCommand(program, registry, '1.9.0');
+        try {
+            await program.parseAsync(['plugins', 'check'], { from: 'user' });
+        } catch (e) {
+            if ((e as Error).message !== '__exit__') throw e;
+        }
+        expect(exitCode).toBe(1);
+        expect(stdoutOut).toContain('_uuid');
+    });
+
+    test('exits 0 when registry is empty', async () => {
+        const program = new Command();
+        const registry = new PluginRegistry();
+        registerPluginsCommand(program, registry, '1.9.0');
+        try {
+            await program.parseAsync(['plugins', 'check'], { from: 'user' });
+        } catch (e) {
+            if ((e as Error).message !== '__exit__') throw e;
+        }
+        expect(exitCode).toBe(0);
+    });
+});
