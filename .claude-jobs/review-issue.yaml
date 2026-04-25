@@ -7,10 +7,16 @@ auth: subscription
 
 preflight:
   run: |
+    # Only fire on PRs awaiting first-pass review. PRs already carrying a
+    # terminal review-state label (`first pass reviewed`, `changes requested`,
+    # `approved`) must NOT be picked up here — they belong to the next
+    # pipeline stage (final-review) or are already done. Without this filter
+    # the cron re-reviews the oldest open PR every 15 min forever.
     count=$(gh pr list \
       --repo normalled/apijack \
       --base dev \
       --state open \
+      --label "needs review" \
       --json number --jq 'length')
     [ "$count" -gt 0 ]
   timeout: 30s
@@ -21,6 +27,7 @@ claude:
       --repo normalled/apijack \
       --base dev \
       --state open \
+      --label "needs review" \
       --json number \
       --jq 'sort_by(.number) | .[0].number')
     echo "/review-issue $pr"
