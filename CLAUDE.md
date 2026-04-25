@@ -106,19 +106,37 @@ Usable anywhere a routine value is resolved (args, conditions, variables):
 
 ## Plugin System
 
-apijack supports pre-built plugins as standalone npm packages. Plugins register resolver functions under their own namespace (e.g., `@normalled/apijack-plugin-faker` exposes `$_faker(...)` for routines).
+apijack supports pre-built plugins as standalone npm packages. Plugins register resolver functions under their own namespace (e.g., `@apijack/plugin-faker` exposes `$_faker(...)` for routines).
 
 ### Installing a plugin
 
 ```ts
 import { createCli } from "@apijack/core";
-import faker from "@normalled/apijack-plugin-faker";
+import faker from "@apijack/plugin-faker";
 
 const cli = createCli({ name: "mycli", /* ... */ });
 cli.use(faker());              // zero-config
 cli.use(faker({ seed: 42 }));  // with default opts
 await cli.run();
 ```
+
+### Auto-registration via `.apijack/plugins.ts`
+
+Projects that consume the shared `apijack` binary (no custom `bin/<cli>.ts`) can register plugins by exporting an array from `.apijack/plugins.ts`:
+
+```ts
+// .apijack/plugins.ts
+import faker from '@apijack/plugin-faker';
+import type { ApijackPlugin } from '@apijack/core';
+
+const plugins: ApijackPlugin[] = [
+    faker({ seed: 42 }),
+];
+
+export default plugins;
+```
+
+The binary calls `cli.use(plugin)` for each entry before registering project commands, dispatchers, and resolvers — so a project resolver can wrap a plugin-provided function.
 
 ### Per-routine plugin configuration
 
@@ -184,6 +202,7 @@ The `.apijack/` directory at a project root is auto-loaded when the CLI runs ins
 | `.apijack/dispatchers/<name>.ts` | Handle non-API commands invoked from routines (`default: (args, posArgs, ctx) => Promise<unknown>`) |
 | `.apijack/resolvers/<name>.ts` | Custom `$_*(...)` routine functions |
 | `.apijack/auth.ts` | Project-level `AuthStrategy` and optional `onChallenge` |
+| `.apijack/plugins.ts` | Project-level plugin registrations (`default: ApijackPlugin[]` — each entry passed to `cli.use(...)`) |
 | `.apijack/routines/*.yaml` | Routines available via `routine run <name>` |
 | `.apijack/settings.json` | Framework defaults (see below) |
 
