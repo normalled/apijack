@@ -151,7 +151,7 @@ export async function loadProjectPlugins(
         if (!Array.isArray(plugins)) return [];
 
         return plugins.filter(
-            (p): p is ApijackPlugin => p != null && typeof p === 'object',
+            (p): p is ApijackPlugin => p != null && typeof p === 'object' && !Array.isArray(p),
         );
     } catch {
         return [];

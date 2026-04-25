@@ -332,7 +332,7 @@ describe('loadProjectPlugins()', () => {
         }
     });
 
-    test('filters out null and non-object entries', async () => {
+    test('filters out null, primitives, and array entries', async () => {
         const root = makeRoot('filter');
         mkdirSync(root, { recursive: true });
         writeFileSync(join(root, 'plugins.ts'), `
@@ -342,6 +342,7 @@ describe('loadProjectPlugins()', () => {
                 undefined,
                 'string-entry',
                 42,
+                [{ name: 'nested-array' }],
                 { name: 'also-good' },
             ];
         `);
