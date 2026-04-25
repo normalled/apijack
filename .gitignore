@@ -14,7 +14,15 @@ wiki/
 
 .claude/skills/*-issue/*
 !.claude/skills/*-issue/SKILL.md
-!.claude/skills/review-issue/scripts/
-!.claude/skills/review-issue/scripts/**
+!.claude/skills/*-issue/scripts/
+!.claude/skills/*-issue/scripts/**
 .claude/skills/next*
+
+# Local triage runtime artifacts (snapshots and sandboxed reports)
+.claude-jobs/triage-snapshots/
+.claude-jobs/triage-reports/
+
+# Operator-private threat-model docs (kept locally, never shipped)
+.claude-jobs/*.private.md
+.claude-jobs/triage-public.md
 .claude/scheduled_tasks.lock
