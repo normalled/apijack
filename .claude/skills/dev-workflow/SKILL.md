@@ -82,6 +82,8 @@ EOF
 )"
 ```
 
+When `gh pr create` returns the PR URL, **immediately proceed to Phase 4 and start the wait-for-review script.** Don't pause to summarize the diff to the user, don't ask whether to wait — kick off the wait, then update the user (or end your turn) while the script runs in the background.
+
 ### PR body format
 
 Match the established style on existing PRs into `dev` (see #41, #42, #43, #44 for examples). Sections in order:
@@ -131,18 +133,25 @@ Be concrete. Paste short examples instead of describing them. The automated revi
 >
 > Either review may also include non-blocking feedback in the body.
 
-Run the wait-for-review script with the PR number:
+**As soon as the PR is open (or after pushing fixes in Phase 5), invoke the wait-for-review script and just sit on it.** Don't ask the user whether to wait, don't hand them the command — run it yourself and block on it. The whole point of the script is so you can do this without busy-polling or burning context on intermediate checks.
 
 ```bash
 ./scripts/wait-for-review.sh <pr-number>
 ```
 
-The script:
-- Captures the latest review timestamp at start (so re-runs after a push correctly wait for the *next* review).
+How to invoke it depends on the harness:
+
+- **Claude Code (Bash tool):** run with `run_in_background: true`. The Bash tool's default 2-minute foreground timeout would otherwise kill the script while it's legitimately waiting. Background mode delivers a completion notification when the script exits, with the verdict + review body in the output. Don't poll, don't sleep, don't proactively check on it — the notification is the trigger.
+- **Other harnesses without async-Bash:** invoke the script with whatever long-running-process facility the harness offers, or shell out and accept that the call will block for up to ~15 minutes.
+
+The script itself:
+- Captures the latest review timestamp at start (so re-runs after a Phase 5 push correctly wait for the *next* review, not the previous one).
 - Polls every 60s for a new review carrying one of the two target labels.
 - Prints the verdict label and the review body when it fires, then exits 0.
 
-Don't hand-roll polling — the script handles timestamp tracking and label matching correctly.
+Don't hand-roll polling. Don't fall back to `gh pr view` + sleep loops. The script handles timestamp tracking and label matching correctly; reinventing it leads to subtle bugs (re-firing on stale reviews, missing the new label transition, etc.).
+
+When the script exits, you have the verdict — proceed to Phase 5 immediately.
 
 ## Phase 5: Upon receiving a review
 
@@ -160,7 +169,7 @@ When the script returns, you MUST:
      ```
    - When in doubt, ask the user.
 
-4. **After pushing changes, return to Phase 4.** The reviewer detects the new commit, runs again, and applies a fresh label. Loop until the latest verdict is `first pass reviewed` with no outstanding blocking items.
+4. **After pushing changes, immediately re-invoke the wait-for-review script (return to Phase 4).** The reviewer detects the new commit, runs again, and applies a fresh label. Don't ask whether to wait — just kick off the next wait. Loop until the latest verdict is `first pass reviewed` with no outstanding blocking items.
 
 ## Commit message convention
 
