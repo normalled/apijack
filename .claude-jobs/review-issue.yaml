@@ -6,23 +6,12 @@ enabled: true
 auth: subscription
 
 preflight:
-  run: |
-    count=$(gh pr list \
-      --repo normalled/apijack \
-      --base dev \
-      --state open \
-      --json number --jq 'length')
-    [ "$count" -gt 0 ]
+  run: .claude/skills/review-issue/scripts/find-review-candidate.sh > /dev/null
   timeout: 30s
 
 claude:
   prompt_cmd: |
-    pr=$(gh pr list \
-      --repo normalled/apijack \
-      --base dev \
-      --state open \
-      --json number \
-      --jq 'sort_by(.number) | .[0].number')
+    pr=$(.claude/skills/review-issue/scripts/find-review-candidate.sh)
     echo "/review-issue $pr"
 
   append_system_prompt: |
