@@ -260,6 +260,7 @@ This project follows the CLAUDE.md convention for Claude Code. Key patterns:
 - **Claude Code skills**: Place skill files in `.claude/skills/<name>/SKILL.md` with YAML frontmatter describing triggers and capabilities
 - **Routine authoring**: Use `-o routine-step` to discover command signatures, then compose multi-step YAML routines
 - **MCP integration**: Start the MCP server with `<cli> mcp` to expose commands as Claude Code tools
+- **Posting markdown to GitHub**: when running `gh issue create`, `gh pr create`, `gh pr review`, `gh issue comment`, etc., always pass the body via `--body-file` (write the markdown to a file first using the `Write` tool). Inline `--body "..."` causes backticks to be silently escaped, posting `\`code\`` artifacts to GitHub.
 
 ### Skill File Format
 

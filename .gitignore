@@ -22,6 +22,9 @@ wiki/
 .claude-jobs/triage-snapshots/
 .claude-jobs/triage-reports/
 
+# Review-body files staged for `gh pr review --body-file` — local-only
+.claude-jobs/review-bodies/
+
 # Operator-private threat-model docs (kept locally, never shipped)
 .claude-jobs/*.private.md
 .claude-jobs/triage-public.md
