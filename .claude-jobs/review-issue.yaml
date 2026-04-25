@@ -1,8 +1,8 @@
 name: review-issue
 description: Review one open apijack PR (oldest first) — comment only, no merge
 
-schedule: "* * * * *"
-enabled: false  # flip to true when ready; run manually via `claude-cron run apijack/review-issue`
+schedule: "*/15 * * * *"
+enabled: true
 auth: subscription
 
 preflight:
@@ -39,7 +39,8 @@ claude:
     - "Bash(gh issue view*)"
     - "Bash(gh pr review*)"
     - "Bash(gh pr comment*)"
-    - "Bash(gh api*)"
+    - "Bash(.claude/skills/review-issue/scripts/set-review-label.sh*)"
+    - "Bash(.claude/skills/review-issue/scripts/ensure-review-labels.sh*)"
     - "Bash(git log*)"
     - "Bash(git show*)"
     - "Bash(git diff*)"
