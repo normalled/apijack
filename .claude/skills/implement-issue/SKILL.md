@@ -48,6 +48,8 @@ git push origin dev
 
 Then branch off the synced `dev`.
 
+> **Note:** that `git push origin dev` is the **only** push to `dev` this skill performs — a maintenance sync, not feature work. Everything else operates on the feature branch and PRs into `dev`.
+
 ### 2. Plan or implement
 
 If the issue is clear and small (single obvious change): implement directly.

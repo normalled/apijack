@@ -46,7 +46,10 @@ claude:
 
     # Lock + snapshot before generating the prompt, so the agent reasons
     # about a frozen view. The sanitized payload becomes the "data" the
-    # agent analyzes.
+    # agent analyzes. NOTE: lock-issue.sh / snapshot-issue.sh / sanitize-issue.sh
+    # run in this harness `prompt_cmd` shell — they are NOT gated by
+    # `allowed_tools` below. The `gh api*` and other write capabilities they
+    # use intentionally live outside the agent's tool surface.
     .claude/skills/triage-issue/scripts/lock-issue.sh "$n" >/dev/null
     snap_sha=$(.claude/skills/triage-issue/scripts/snapshot-issue.sh "$n")
     sanitized=$(.claude/skills/triage-issue/scripts/sanitize-issue.sh "$n")

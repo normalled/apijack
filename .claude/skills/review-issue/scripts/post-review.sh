@@ -29,8 +29,12 @@ esac
 
 # Confine the body file to the scoped review-bodies directory. This keeps the
 # Write capability (allowed in the cron yaml so the agent can produce this
-# file) from being abusable into writing arbitrary repo paths via this script.
+# file) from being abusable into reading arbitrary repo paths via this script.
+# Reject `..` first — bash case-pattern `*` matches `/` and `..`, so a path
+# like `.claude-jobs/review-bodies/../README.md` would otherwise pass the
+# prefix check.
 case "$body" in
+    *..*) echo "body file path must not contain '..' (got: $body)" >&2; exit 2 ;;
     .claude-jobs/review-bodies/*) ;;
     *) echo "body file must live under .claude-jobs/review-bodies/ (got: $body)" >&2; exit 2 ;;
 esac
