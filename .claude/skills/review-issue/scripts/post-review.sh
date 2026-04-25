@@ -8,12 +8,12 @@
 # `\`code\`` artifacts. This script takes the body as a file path so the
 # markdown never touches a shell-arg context.
 #
-# Usage: post-review.sh <pr-number> <comment|request-changes> <body-file>
+# Usage: post-review.sh <pr-number> <comment|request-changes|approve> <body-file>
 
 set -euo pipefail
 
 if [ $# -ne 3 ]; then
-    echo "usage: $0 <pr-number> <comment|request-changes> <body-file>" >&2
+    echo "usage: $0 <pr-number> <comment|request-changes|approve> <body-file>" >&2
     exit 2
 fi
 
@@ -24,7 +24,8 @@ body="$3"
 case "$decision" in
     comment)         flag="--comment" ;;
     request-changes) flag="--request-changes" ;;
-    *) echo "decision must be 'comment' or 'request-changes' (got: $decision)" >&2; exit 2 ;;
+    approve)         flag="--approve" ;;
+    *) echo "decision must be 'comment', 'request-changes', or 'approve' (got: $decision)" >&2; exit 2 ;;
 esac
 
 # Confine the body file to the scoped review-bodies directory. This keeps the

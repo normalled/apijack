@@ -6,7 +6,7 @@
 # This bypasses that by using the REST API directly.
 #
 # Usage: set-review-label.sh <pr-number> <label>
-#   <label> must be one of: needs review | review in progress | first pass reviewed | changes requested
+#   <label> must be one of: needs review | review in progress | first pass reviewed | changes requested | approved
 #
 # Other (non-review) labels on the PR are left untouched.
 
@@ -25,6 +25,7 @@ review_labels=(
     "review in progress"
     "first pass reviewed"
     "changes requested"
+    "approved"
 )
 
 valid=0
