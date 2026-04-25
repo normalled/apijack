@@ -11,7 +11,7 @@ The PR that merges `dev` into `main` *is* the release notes on GitHub. `scripts/
 
 - User says "ship", "cut a release", "release to main", or similar
 - There are commits on `dev` that are not yet on `main`
-- **Not** for mid-development PRs targeting `dev` (use `dev-workflow` for those)
+- **Not** for mid-development PRs targeting `dev` (use `triage-issue` → `implement-issue` for those)
 
 ## Preflight
 

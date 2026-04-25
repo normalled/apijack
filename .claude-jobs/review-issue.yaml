@@ -41,6 +41,13 @@ claude:
     - "Bash(gh pr comment*)"
     - "Bash(.claude/skills/review-issue/scripts/set-review-label.sh*)"
     - "Bash(.claude/skills/review-issue/scripts/ensure-review-labels.sh*)"
+    - "Bash(.claude/skills/review-issue/scripts/post-review.sh*)"
+    # Write is allowed so the agent can produce the review-body file that
+    # post-review.sh consumes (avoids the backtick-escaping artifact that
+    # happens when markdown is shoved into `gh pr review --body "..."`).
+    # Defense-in-depth: post-review.sh refuses any body path outside
+    # .claude-jobs/review-bodies/.
+    - "Write"
     - "Bash(git log*)"
     - "Bash(git show*)"
     - "Bash(git diff*)"

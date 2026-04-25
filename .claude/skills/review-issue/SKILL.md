@@ -102,11 +102,16 @@ Build the review body using GitHub-flavored markdown. Blocking items appear at t
 </details>
 ```
 
-Post the review and request changes:
+Post the review and request changes.
+
+> **Important:** do NOT pass the review body inline via `--body "..."`. Putting markdown into a shell-arg context tempts the model to escape backticks (the escapes get posted literally and the rendered review is full of `\`code\`` artifacts — see issue #48 for the symptom). Use the helper script, which takes a body file and uses `gh pr review --body-file`. The `Write` tool stores content literally — no shell context, no escaping.
+>
+> Steps:
+> 1. Use the `Write` tool to write the review body verbatim to `.claude-jobs/review-bodies/<pr-number>.md`. Write backticks as plain backticks. Do not insert `\\` anywhere.
+> 2. Run the helper:
 
 ```bash
-gh pr review <pr-number> --request-changes --body "<body from template above>"
-# plus inline comments via the GitHub UI or gh api if needed
+.claude/skills/review-issue/scripts/post-review.sh <pr-number> request-changes .claude-jobs/review-bodies/<pr-number>.md
 ```
 
 Update labels:
@@ -141,10 +146,10 @@ Build the review body — skip the **Blocking:** section entirely. Only include 
 </details>
 ```
 
-Post a non-blocking comment (does not block merging):
+Post a non-blocking comment (does not block merging). Same procedure as the request-changes path — write the body to a file with the `Write` tool, then call the helper:
 
 ```bash
-gh pr review <pr-number> --comment --body "<body from template above>"
+.claude/skills/review-issue/scripts/post-review.sh <pr-number> comment .claude-jobs/review-bodies/<pr-number>.md
 ```
 
 Update labels:
