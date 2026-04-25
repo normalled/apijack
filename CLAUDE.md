@@ -106,13 +106,13 @@ Usable anywhere a routine value is resolved (args, conditions, variables):
 
 ## Plugin System
 
-apijack supports pre-built plugins as standalone npm packages. Plugins register resolver functions under their own namespace (e.g., `@normalled/apijack-plugin-faker` exposes `$_faker(...)` for routines).
+apijack supports pre-built plugins as standalone npm packages. Plugins register resolver functions under their own namespace (e.g., `@apijack/plugin-faker` exposes `$_faker(...)` for routines).
 
 ### Installing a plugin
 
 ```ts
 import { createCli } from "@apijack/core";
-import faker from "@normalled/apijack-plugin-faker";
+import faker from "@apijack/plugin-faker";
 
 const cli = createCli({ name: "mycli", /* ... */ });
 cli.use(faker());              // zero-config
