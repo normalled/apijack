@@ -17,7 +17,7 @@ export {
     PluginPeerMismatchError,
     PluginRegistrationError,
 } from './plugin/errors';
-export { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectResolvers } from './project-loader';
+export { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectPlugins, loadProjectResolvers } from './project-loader';
 export type { LoadedCommand, LoadedDispatcher } from './project-loader';
 export { loadProjectSettings } from './settings';
 export type { ProjectSettings } from './settings';
