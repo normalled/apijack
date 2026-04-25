@@ -5,6 +5,15 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+    # Skip on PRs that don't touch testable surface area. Pushes to main / dev
+    # always run (above) so the branch heads stay verified.
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'bun.lockb'
+      - 'tsconfig*.json'
+      - '.github/workflows/ci.yml'
 
 jobs:
   lint:
