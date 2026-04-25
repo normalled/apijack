@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test';
-import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectResolvers } from '../src/project-loader';
+import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectPlugins, loadProjectResolvers } from '../src/project-loader';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -263,5 +263,110 @@ describe('loadProjectResolvers()', () => {
 
         const result = await loadProjectResolvers(testRoot);
         expect(result.size).toBe(0);
+    });
+});
+
+describe('loadProjectPlugins()', () => {
+    const makeRoot = (suffix: string) =>
+        join(tmpdir(), `apijack-loader-plugins-${suffix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+    test('returns empty array when no plugins.ts exists', async () => {
+        const root = makeRoot('none');
+        mkdirSync(root, { recursive: true });
+        try {
+            const result = await loadProjectPlugins(root);
+            expect(result).toEqual([]);
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('loads plugin instances from plugins.ts default export', async () => {
+        const root = makeRoot('default');
+        mkdirSync(root, { recursive: true });
+        writeFileSync(join(root, 'plugins.ts'), `
+            export default [
+                { name: 'alpha', version: '1.0.0' },
+                { name: 'beta' },
+            ];
+        `);
+
+        try {
+            const result = await loadProjectPlugins(root);
+            expect(result).toHaveLength(2);
+            expect(result[0]!.name).toBe('alpha');
+            expect(result[0]!.version).toBe('1.0.0');
+            expect(result[1]!.name).toBe('beta');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('returns empty array when default export is not an array', async () => {
+        const root = makeRoot('not-array');
+        mkdirSync(root, { recursive: true });
+        writeFileSync(join(root, 'plugins.ts'), `
+            export default { name: 'not-an-array' };
+        `);
+
+        try {
+            const result = await loadProjectPlugins(root);
+            expect(result).toEqual([]);
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('returns empty array when plugins.ts has no default export', async () => {
+        const root = makeRoot('no-default');
+        mkdirSync(root, { recursive: true });
+        writeFileSync(join(root, 'plugins.ts'), `
+            export const plugins = [{ name: 'named-export-only' }];
+        `);
+
+        try {
+            const result = await loadProjectPlugins(root);
+            expect(result).toEqual([]);
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('filters out null and non-object entries', async () => {
+        const root = makeRoot('filter');
+        mkdirSync(root, { recursive: true });
+        writeFileSync(join(root, 'plugins.ts'), `
+            export default [
+                { name: 'good' },
+                null,
+                undefined,
+                'string-entry',
+                42,
+                { name: 'also-good' },
+            ];
+        `);
+
+        try {
+            const result = await loadProjectPlugins(root);
+            expect(result).toHaveLength(2);
+            expect(result.map(p => p.name)).toEqual(['good', 'also-good']);
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('returns empty array when plugins.ts throws on import', async () => {
+        const root = makeRoot('throws');
+        mkdirSync(root, { recursive: true });
+        writeFileSync(join(root, 'plugins.ts'), `
+            throw new Error('boom');
+        `);
+
+        try {
+            const result = await loadProjectPlugins(root);
+            expect(result).toEqual([]);
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
     });
 });
