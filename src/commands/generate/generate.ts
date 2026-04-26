@@ -1,12 +1,22 @@
 import { Command } from 'commander';
 import { getActiveEnvConfig } from '../../config';
-import { fetchAndGenerate as defaultFetchAndGenerate } from '../../codegen/index';
+import {
+    fetchSpec as defaultFetchSpec,
+    generate as defaultGenerate,
+    type FetchSpecOptions,
+    type GenerateOptions,
+} from '../../codegen/index';
+import type { AuthStrategy } from '../../auth/types';
+import type { SessionManager } from '../../session';
 
 export interface GenerateInput {
     env: { url: string; user: string; password: string } | null;
     specPath: string;
     outDir: string;
-    fetchAndGenerate: (opts: { baseUrl: string; specPath: string; outDir: string; auth: { username: string; password: string } }) => Promise<void>;
+    strategy?: AuthStrategy;
+    sessionManager?: SessionManager;
+    fetchSpec: (opts: FetchSpecOptions) => Promise<unknown>;
+    generate: (opts: GenerateOptions) => Promise<void>;
 }
 
 export async function generateAction(input: GenerateInput): Promise<void> {
@@ -14,11 +24,17 @@ export async function generateAction(input: GenerateInput): Promise<void> {
         throw new Error('No active environment.');
     }
 
-    await input.fetchAndGenerate({
+    const spec = await input.fetchSpec({
         baseUrl: input.env.url,
         specPath: input.specPath,
-        outDir: input.outDir,
         auth: { username: input.env.user, password: input.env.password },
+        strategy: input.strategy,
+        sessionManager: input.sessionManager,
+    });
+
+    await input.generate({
+        spec: spec as GenerateOptions['spec'],
+        outDir: input.outDir,
     });
 }
 
@@ -28,6 +44,8 @@ export function registerGenerateCommand(
     specPath: string,
     generatedDir: string,
     configOpts?: { configPath: string },
+    strategy?: AuthStrategy,
+    sessionManager?: SessionManager | null,
 ): void {
     program
         .command('generate')
@@ -40,7 +58,10 @@ export function registerGenerateCommand(
                     env,
                     specPath,
                     outDir: generatedDir,
-                    fetchAndGenerate: defaultFetchAndGenerate,
+                    strategy,
+                    sessionManager: sessionManager ?? undefined,
+                    fetchSpec: defaultFetchSpec,
+                    generate: defaultGenerate,
                 });
                 console.log(`Generated files written to ${generatedDir}`);
             } catch (err) {
