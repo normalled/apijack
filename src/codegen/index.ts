@@ -4,6 +4,8 @@ import { generateClient } from './client';
 import { generateCommands } from './commands';
 import { generateCommandMap } from './command-map';
 import type { OpenApiOperation, OpenApiSchema } from './openapi-types';
+import type { AuthStrategy } from '../auth/types';
+import type { SessionManager } from '../session';
 
 export interface GenerateOptions {
     spec: {
@@ -11,6 +13,14 @@ export interface GenerateOptions {
         components?: { schemas?: Record<string, OpenApiSchema> };
     };
     outDir: string;
+}
+
+export interface FetchSpecOptions {
+    baseUrl: string;
+    specPath: string;
+    auth?: { username: string; password: string };
+    strategy?: AuthStrategy;
+    sessionManager?: SessionManager;
 }
 
 export interface FetchAndGenerateOptions {
@@ -37,18 +47,33 @@ export async function generate(opts: GenerateOptions): Promise<void> {
     await Bun.write(`${opts.outDir}/command-map.ts`, commandMapContent);
 }
 
-export async function fetchAndGenerate(
-    opts: FetchAndGenerateOptions,
-): Promise<void> {
-    const headers: Record<string, string> = { Accept: 'application/json' };
+export async function fetchSpec(opts: FetchSpecOptions): Promise<unknown> {
+    const buildHeaders = async (): Promise<Record<string, string>> => {
+        const headers: Record<string, string> = { Accept: 'application/json' };
 
-    if (opts.auth) {
-        headers.Authorization
-            = 'Basic ' + btoa(`${opts.auth.username}:${opts.auth.password}`);
-    }
+        if (opts.strategy && opts.sessionManager && opts.auth) {
+            const session = await opts.sessionManager.resolve(opts.strategy, {
+                baseUrl: opts.baseUrl,
+                username: opts.auth.username,
+                password: opts.auth.password,
+            });
+            Object.assign(headers, session.headers);
+        } else if (opts.auth) {
+            headers.Authorization
+                = 'Basic ' + btoa(`${opts.auth.username}:${opts.auth.password}`);
+        }
+
+        return headers;
+    };
 
     const url = `${opts.baseUrl}${opts.specPath}`;
-    const res = await fetch(url, { headers });
+    let res = await fetch(url, { headers: await buildHeaders() });
+
+    // Cached session may be stale — invalidate + retry once on 401
+    if (res.status === 401 && opts.strategy && opts.sessionManager) {
+        opts.sessionManager.invalidate();
+        res = await fetch(url, { headers: await buildHeaders() });
+    }
 
     if (!res.ok) {
         throw new Error(
@@ -56,6 +81,15 @@ export async function fetchAndGenerate(
         );
     }
 
-    const spec = await res.json();
-    await generate({ spec, outDir: opts.outDir });
+    return res.json();
+}
+
+export async function fetchAndGenerate(
+    opts: FetchAndGenerateOptions,
+): Promise<void> {
+    const spec = await fetchSpec(opts);
+    await generate({
+        spec: spec as GenerateOptions['spec'],
+        outDir: opts.outDir,
+    });
 }

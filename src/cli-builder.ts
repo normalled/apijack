@@ -220,7 +220,6 @@ export function createCli(options: CliOptions): Cli {
                 knownSites: options.knownSites,
                 allowedCidrs: options.allowedCidrs,
             });
-            registerGenerateCommand(program, cliName, options.specPath, generatedDir, configOpts);
             registerUpgradeCommand(program, options.version);
             registerMcpCommand(
                 program,
@@ -303,6 +302,17 @@ export function createCli(options: CliOptions): Cli {
                     : options.auth;
                 sessionMgr = new SessionManager(cliName, join(configDir, 'session.json'));
             }
+
+            // 5b. Register generate (depends on strategy + sessionMgr from step 5)
+            registerGenerateCommand(
+                program,
+                cliName,
+                options.specPath,
+                generatedDir,
+                configOpts,
+                strategy,
+                sessionMgr,
+            );
 
             // 6. Import generated commands (ALWAYS — no auth needed)
             let commandsModule: Record<string, unknown> | null = null;
