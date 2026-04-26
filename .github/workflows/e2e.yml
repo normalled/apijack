@@ -5,6 +5,15 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+    # E2E only needs to fire on PRs that touch codegen, fixtures, build / lock,
+    # or this workflow itself. Pushes to main / dev still always run (above).
+    paths:
+      - 'src/**'
+      - 'tests/fixtures/**'
+      - 'package.json'
+      - 'bun.lockb'
+      - 'tsconfig*.json'
+      - '.github/workflows/e2e.yml'
 
 jobs:
   codegen-petstore:

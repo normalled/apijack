@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
 import type { AuthStrategy, SessionAuthConfig } from './auth/types';
 import { BUILTIN_RESOLVER_NAMES } from './routine/resolver';
-import type { CommandRegistrar, DispatcherHandler, CustomResolver } from './types';
+import type { CommandRegistrar, DispatcherHandler, CustomResolver, ApijackPlugin } from './types';
 
 export interface ProjectAuth {
     strategy: AuthStrategy | null;
@@ -135,4 +135,25 @@ export async function loadProjectResolvers(
     }
 
     return resolvers;
+}
+
+export async function loadProjectPlugins(
+    apijackDir: string,
+): Promise<ApijackPlugin[]> {
+    const pluginsPath = join(apijackDir, 'plugins.ts');
+
+    if (!existsSync(pluginsPath)) return [];
+
+    try {
+        const mod = await import(pluginsPath);
+        const plugins = mod.default;
+
+        if (!Array.isArray(plugins)) return [];
+
+        return plugins.filter(
+            (p): p is ApijackPlugin => p != null && typeof p === 'object' && !Array.isArray(p),
+        );
+    } catch {
+        return [];
+    }
 }

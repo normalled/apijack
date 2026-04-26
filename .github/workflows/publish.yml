@@ -47,21 +47,39 @@ jobs:
           git tag -a "v$VERSION" -m "v$VERSION"
           git push --tags
 
-      # Create GitHub release with commit summary
+      # Create GitHub release. Prefer the merged PR's body (the curated release
+      # notes drafted by the ship-release skill — see PRs #36, #40, #45 for the
+      # template). Fall back to a commit summary only if no PR is associated
+      # with the push (e.g., a direct push to main).
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          PREV_TAG=$(git tag --sort=-v:refname | grep -v -- '-' | sed -n '2p')
-          if [ -n "$PREV_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..v$VERSION" | grep -v "chore(release)" | grep -v "^- Merge" || true)
+          BODY_FILE=$(mktemp)
+
+          # The push that triggered this run is the merge commit on main. Its
+          # associated PR is the dev → main release PR.
+          PR_BODY=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+              --jq '.[0].body // empty' 2>/dev/null || true)
+
+          if [ -n "$PR_BODY" ]; then
+              printf '%s' "$PR_BODY" > "$BODY_FILE"
           else
-            COMMITS=$(git log --pretty=format:"- %s" "v$VERSION" | grep -v "chore(release)" | grep -v "^- Merge" || true)
+              PREV_TAG=$(git tag --sort=-v:refname | grep -v -- '-' | sed -n '2p')
+              if [ -n "$PREV_TAG" ]; then
+                COMMITS=$(git log --pretty=format:"- %s" "$PREV_TAG..v$VERSION" | grep -v "chore(release)" | grep -v "^- Merge" || true)
+              else
+                COMMITS=$(git log --pretty=format:"- %s" "v$VERSION" | grep -v "chore(release)" | grep -v "^- Merge" || true)
+              fi
+              printf '## What'\''s Changed\n\n%s\n\n**Full changelog**: https://github.com/${{ github.repository }}/compare/%s...v%s' \
+                  "$COMMITS" "${PREV_TAG:-main}" "$VERSION" > "$BODY_FILE"
           fi
+
           gh release create "v$VERSION" \
-            --title "v$VERSION" \
-            --notes "$(printf '## What'\''s Changed\n\n%s\n\n**Full changelog**: https://github.com/${{ github.repository }}/compare/%s...v%s' "$COMMITS" "$PREV_TAG" "$VERSION")"
+              --title "v$VERSION" \
+              --notes-file "$BODY_FILE"
+          rm -f "$BODY_FILE"
 
       # Publish to npm via trusted publishing (OIDC — no token needed)
       - name: Publish to npm

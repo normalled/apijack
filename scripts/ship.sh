@@ -50,11 +50,18 @@ else
     RANGE="origin/main..HEAD"
 fi
 
-COMMIT_TEXT=$(git log "$RANGE" --pretty=format:"%s%n%b")
+# Bump-level scanner: anchored to conventional-commits markers so commits that
+# *describe* breaking changes in their body (e.g., a doc explaining what a gate
+# refuses) don't trip the scanner. See apijack#59 for the v2.0.0 misship that
+# motivated this.
+#   - `BREAKING CHANGE` only counts as a footer line: `^BREAKING CHANGE:`
+#   - `feat` only counts when it's the start of a commit subject: scan `%s` only
+COMMIT_BODIES=$(git log "$RANGE" --pretty=format:"%b")
+COMMIT_SUBJECTS=$(git log "$RANGE" --pretty=format:"%s")
 
-if echo "$COMMIT_TEXT" | grep -q "BREAKING CHANGE"; then
+if echo "$COMMIT_BODIES" | grep -qE "^BREAKING CHANGE:"; then
     BUMP_LEVEL="major"
-elif echo "$COMMIT_TEXT" | grep -q "^feat"; then
+elif echo "$COMMIT_SUBJECTS" | grep -qE "^feat[(:]"; then
     BUMP_LEVEL="minor"
 else
     BUMP_LEVEL="patch"

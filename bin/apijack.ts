@@ -9,7 +9,7 @@ import { BasicAuthStrategy } from '../src/auth/basic';
 import { BearerTokenStrategy } from '../src/auth/bearer';
 import { ApiKeyStrategy } from '../src/auth/api-key';
 import { findProjectConfig, loadProjectConfig, resolveConfigDir } from '../src/project';
-import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectResolvers } from '../src/project-loader';
+import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectPlugins, loadProjectResolvers } from '../src/project-loader';
 import { loadProjectSettings } from '../src/settings';
 import { checkForUpdate } from '../src/updater';
 import { getActiveEnvConfig } from '../src/config';
@@ -153,6 +153,14 @@ const cli = createCli({
 
 // 10. Register project-level extensions
 if (projectRoot) {
+    // Plugins register first so project resolvers/commands/dispatchers can
+    // depend on plugin-provided resolver functions or registered state.
+    const plugins = await loadProjectPlugins(join(projectRoot, '.apijack'));
+
+    for (const plugin of plugins) {
+        cli.use(plugin);
+    }
+
     const commands = await loadProjectCommands(join(projectRoot, '.apijack'));
 
     for (const cmd of commands) {

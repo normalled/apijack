@@ -1,28 +1,17 @@
 name: review-issue
 description: Review one open apijack PR (oldest first) — comment only, no merge
 
-schedule: "* * * * *"
-enabled: false  # flip to true when ready; run manually via `claude-cron run apijack/review-issue`
+schedule: "*/15 * * * *"
+enabled: true
 auth: subscription
 
 preflight:
-  run: |
-    count=$(gh pr list \
-      --repo normalled/apijack \
-      --base dev \
-      --state open \
-      --json number --jq 'length')
-    [ "$count" -gt 0 ]
+  run: .claude/skills/review-issue/scripts/find-review-candidate.sh > /dev/null
   timeout: 30s
 
 claude:
   prompt_cmd: |
-    pr=$(gh pr list \
-      --repo normalled/apijack \
-      --base dev \
-      --state open \
-      --json number \
-      --jq 'sort_by(.number) | .[0].number')
+    pr=$(.claude/skills/review-issue/scripts/find-review-candidate.sh)
     echo "/review-issue $pr"
 
   append_system_prompt: |
@@ -39,7 +28,15 @@ claude:
     - "Bash(gh issue view*)"
     - "Bash(gh pr review*)"
     - "Bash(gh pr comment*)"
-    - "Bash(gh api*)"
+    - "Bash(.claude/skills/review-issue/scripts/set-review-label.sh*)"
+    - "Bash(.claude/skills/review-issue/scripts/ensure-review-labels.sh*)"
+    - "Bash(.claude/skills/review-issue/scripts/post-review.sh*)"
+    # Write is allowed so the agent can produce the review-body file that
+    # post-review.sh consumes (avoids the backtick-escaping artifact that
+    # happens when markdown is shoved into `gh pr review --body "..."`).
+    # Defense-in-depth: post-review.sh refuses any body path outside
+    # .claude-jobs/review-bodies/.
+    - "Write"
     - "Bash(git log*)"
     - "Bash(git show*)"
     - "Bash(git diff*)"

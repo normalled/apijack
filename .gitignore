@@ -12,6 +12,20 @@ docs/icons/
 wiki/
 
 
-.claude/skills/*-issue
+.claude/skills/*-issue/*
+!.claude/skills/*-issue/SKILL.md
+!.claude/skills/*-issue/scripts/
+!.claude/skills/*-issue/scripts/**
 .claude/skills/next*
+
+# Local triage runtime artifacts (snapshots and sandboxed reports)
+.claude-jobs/triage-snapshots/
+.claude-jobs/triage-reports/
+
+# Review-body files staged for `gh pr review --body-file` — local-only
+.claude-jobs/review-bodies/
+
+# Operator-private threat-model docs (kept locally, never shipped)
+.claude-jobs/*.private.md
+.claude-jobs/triage-public.md
 .claude/scheduled_tasks.lock

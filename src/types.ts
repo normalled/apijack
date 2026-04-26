@@ -71,6 +71,6 @@ export interface ApijackPlugin {
      *  `routine.plugins[plugin.name] ?? {}`. Must tolerate `{}` (empty opts). */
     createRoutineResolvers?: (opts: unknown) => Record<string, CustomResolver>;
     /** Internal: set by the plugin's default export so core can locate its package.json.
-     *  Typically set as `__package: { name: "@normalled/apijack-plugin-faker" }`. */
+     *  Typically set as `__package: { name: "@apijack/plugin-faker" }`. */
     __package?: { name: string; version?: string };
 }
