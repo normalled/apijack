@@ -20,35 +20,21 @@ Do not invoke this skill before triage is complete. If the issue has not been tr
 
 Slugify the issue title: lowercase, hyphenated, drop filler words, aim for 3–5 words. The branch name is `issues/<number>-<short-slug>` (e.g., `issues/37-opt-in-auth` for issue #37 "Make auth opt-in").
 
-Always work off an up-to-date `dev`. Prefer a worktree for full isolation.
-
-**Worktree (preferred):**
+Always work off an up-to-date `dev`. Prefer a worktree for full isolation — pass `--worktree` to also create a sibling worktree at `../apijack-<short-slug>`.
 
 ```bash
-git fetch origin
-git worktree add ../apijack-<short-slug> -b issues/<number>-<short-slug> origin/dev
-cd ../apijack-<short-slug>
+./.claude/skills/implement-issue/scripts/start-issue-branch.sh <issue-number> <short-slug> --worktree
+# or, in-place branch in the current repo:
+./.claude/skills/implement-issue/scripts/start-issue-branch.sh <issue-number> <short-slug>
 ```
 
-**In-place branch (if not using a worktree):**
+If `dev` is behind `main` (e.g., right after a release), sync it first, then re-run the script:
 
 ```bash
-git fetch origin
-git checkout -b issues/<number>-<short-slug> origin/dev
+./.claude/skills/implement-issue/scripts/sync-dev-from-main.sh
 ```
 
-If `dev` is behind `main` (e.g., right after a release), sync it first before branching:
-
-```bash
-git checkout dev
-git pull origin dev
-git merge origin/main   # bring release commits into dev
-git push origin dev
-```
-
-Then branch off the synced `dev`.
-
-> **Note:** that `git push origin dev` is the **only** push to `dev` this skill performs — a maintenance sync, not feature work. Everything else operates on the feature branch and PRs into `dev`.
+> **Note:** the push inside `sync-dev-from-main.sh` is the **only** push to `dev` this skill performs — a maintenance sync, not feature work. Everything else operates on the feature branch and PRs into `dev`.
 
 ### 2. Plan or implement
 
