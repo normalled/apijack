@@ -26,21 +26,16 @@ If the bump is `minor` or `major`, this skill must abort and leave the work for 
 
 Expected: prints the commit count, exits 0. If it exits non-zero, STOP — something changed between preflight and now (e.g., a `feat:` commit landed during the run).
 
-### 2. Verify local working state
+### 2. Verify local working state and gather commits
 
 ```bash
-git branch --show-current      # must be `dev`
-git status --porcelain         # must be empty
-git fetch origin
-git log origin/main..HEAD --oneline
+COMMITS_FILE=$(./scripts/gather-release-commits.sh)
+cat "$COMMITS_FILE"
 ```
 
-If any of:
-- not on `dev`
-- working tree dirty
-- local HEAD ≠ origin/dev
+`gather-release-commits.sh` verifies the branch is `dev` and the working tree is clean, runs `git fetch origin`, and writes `origin/main..HEAD` (default format `%h %s`) to `/tmp/apijack-ship-commits.txt`. The printed path is the canonical commit list for the rest of this skill — step 4 reads from it instead of re-running `git log`.
 
-…STOP. The cron should not silently switch branches or stash user WIP.
+If the script exits non-zero, STOP. Also STOP if local HEAD ≠ origin/dev (the cron should not silently switch branches or stash user WIP).
 
 ### 3. Check for an existing dev → main PR
 
@@ -53,7 +48,7 @@ If a PR already exists with a curated body, skip to step 6 (run ship.sh). If a b
 ### 4. Categorize commits
 
 ```bash
-git log origin/main..HEAD --pretty=format:"%h %s"
+cat "$COMMITS_FILE"   # written by gather-release-commits.sh in step 2
 ```
 
 Group into buckets, **skipping merge commits and any prior `chore(release):` bump**:
