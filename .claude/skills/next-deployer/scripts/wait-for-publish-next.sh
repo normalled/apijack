@@ -20,13 +20,11 @@ while [ -z "$run_id" ] && [ "$attempts" -lt "$max_attempts" ]; do
     run_id=$(gh run list --repo "$repo" \
         --workflow publish.yml \
         --branch next \
-        --limit 20 \
-        --json databaseId,headSha \
-        --jq ".[] | select(.headSha == \"$commit_sha\") | .databaseId" \
-        | head -n1)
-    if [ -n "$run_id" ]; then
-        break
-    fi
+        --commit "$commit_sha" \
+        --limit 1 \
+        --json databaseId \
+        --jq '.[0].databaseId // empty')
+    [ -n "$run_id" ] && break
     attempts=$((attempts + 1))
     sleep 10
 done
