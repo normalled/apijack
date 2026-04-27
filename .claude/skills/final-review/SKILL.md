@@ -37,7 +37,7 @@ Abort and STOP — without writing anything — if any of:
 - `mergeable` is `false` or `mergeStateStatus` indicates conflicts
 - Any active "request changes" review (the count above is non-zero)
 
-If the gate fails, leave a brief comment naming the failed check (`gh pr comment` is allowed for this) and stop.
+If the gate fails, leave a brief comment naming the failed check via `scripts/pr-comment.sh <pr> <body-file>` and stop.
 
 ### 2. Read the prior first-pass-review body
 
