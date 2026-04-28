@@ -56,6 +56,16 @@ For each commit, look up the PR number (often `(#NN)` in the subject, or `gh pr 
 
 **Write for humans, not for git.** A bullet should answer "what does this do for the user?" not restate the commit subject.
 
+### Collect closing references
+
+```bash
+./scripts/collect-closes-refs.sh
+```
+
+Prints `Closes #N` lines for every issue referenced by the issue PRs merged in this range. These MUST go at the top of the release PR body (step 3) — without them, GitHub will not auto-close the issues when dev → main merges, because issue PRs merged into `dev` don't trigger closure on the non-default branch. Forward-porting the closing keywords into the release PR body is the only path that works.
+
+If the output is empty, no issues will be auto-closed by this release — that's fine for chore-only releases that didn't resolve any tracked issues.
+
 ## Step 3: Draft the PR title and body
 
 **Title format:** `v<NEW_VERSION>: <comma-separated highlights>`
@@ -77,6 +87,10 @@ The PR body is pasted verbatim into the GitHub release. Keep it skimmable.
 **Body structure** (omit sections that have no entries):
 
 ```markdown
+Closes #N
+Closes #M
+...
+
 <1–2 sentence thesis describing the release's focus.>
 
 ## ✨ Features
