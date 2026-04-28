@@ -16,6 +16,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 min_age="${1:-240}"
 repo="normalled/apijack"
 threshold=$(( $(date -u +%s) - min_age ))

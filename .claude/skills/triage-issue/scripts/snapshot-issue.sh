@@ -11,6 +11,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 if [ $# -ne 1 ]; then
     echo "usage: $0 <issue-number>" >&2
     exit 2

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 # ship.sh — Automates the dev→main shipping pipeline
 # Usage: ./scripts/ship.sh
 #

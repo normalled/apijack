@@ -9,6 +9,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 commit_sha="${1:?commit sha required}"
 repo="normalled/apijack"
 
