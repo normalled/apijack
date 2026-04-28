@@ -8,6 +8,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 title="${1:?title required}"
 body_file="${2:?body file required}"
 repo="normalled/apijack"
