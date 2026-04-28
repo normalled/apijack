@@ -5,7 +5,7 @@
 #   - it is open and base is `dev`
 #   - it has the `first pass reviewed` label
 #   - the `first pass reviewed` label was applied >= MIN_AGE_SECONDS ago
-#     (default 600 = 10 minutes)
+#     (default 240 = 4 minutes)
 #   - no commits have landed on the head since the label was applied
 #     (otherwise the first-pass review is stale)
 #
@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-min_age="${1:-600}"
+min_age="${1:-240}"
 repo="normalled/apijack"
 threshold=$(( $(date -u +%s) - min_age ))
 

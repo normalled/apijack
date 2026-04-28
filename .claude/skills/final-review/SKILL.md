@@ -1,15 +1,15 @@
 ---
 name: final-review
-description: Use after a PR has been labeled `first pass reviewed` for at least 10 minutes — verifies CI is still green and no new commits landed since the label, aggregates outstanding non-blocking observations, posts an approving review, replaces the label with `approved`, and merges.
+description: Use after a PR has been labeled `first pass reviewed` for at least 4 minutes — verifies CI is still green and no new commits landed since the label, aggregates outstanding non-blocking observations, posts an approving review, replaces the label with `approved`, and merges.
 ---
 
 # Final Review
 
-Phase 4 of the apijack issue workflow. The first-pass reviewer leaves a PR with `first pass reviewed`. After a 10-minute soak window — long enough for a human to intervene, short enough to keep the loop moving — the final reviewer takes the PR across the line.
+Phase 4 of the apijack issue workflow. The first-pass reviewer leaves a PR with `first pass reviewed`. After a 4-minute soak window — long enough for a human to intervene, short enough to keep the loop moving — the final reviewer takes the PR across the line.
 
 ## When to Use
 
-- A PR is labeled `first pass reviewed` and the label has been there for at least 10 minutes
+- A PR is labeled `first pass reviewed` and the label has been there for at least 4 minutes
 - CI is fully green and the PR is mergeable
 - No new commits have landed on the head since the first-pass-reviewed label was applied
 
@@ -19,10 +19,11 @@ This skill is invoked automatically by the `final-review` cron, or manually via 
 
 ### 1. Verify the gate is still satisfied
 
-The cron's `prompt_cmd` already gates on label-applied-time and head-vs-label staleness. Re-verify the rest before any write:
+The cron's `prompt_cmd` already gates on label-applied-time and head-vs-label staleness. Re-verify the rest before any write, **and capture the head SHA** — step 6 will pin the merge to it so a commit landing mid-flow can't be merged in unreviewed:
 
 ```bash
-gh pr view <pr> --json state,mergeable,mergeStateStatus,labels,headRefOid
+HEAD_SHA=$(gh pr view <pr> --json headRefOid --jq '.headRefOid')
+gh pr view <pr> --json state,mergeable,mergeStateStatus,labels
 gh pr checks <pr>
 gh api "repos/normalled/apijack/pulls/<pr>/reviews" \
     --jq 'map(select(.state == "CHANGES_REQUESTED" and .dismissed_at == null)) | length'
@@ -36,7 +37,7 @@ Abort and STOP — without writing anything — if any of:
 - `mergeable` is `false` or `mergeStateStatus` indicates conflicts
 - Any active "request changes" review (the count above is non-zero)
 
-If the gate fails, leave a brief comment naming the failed check (`gh pr comment` is allowed for this) and stop.
+If the gate fails, leave a brief comment naming the failed check via `scripts/pr-comment.sh <pr> <body-file>` and stop.
 
 ### 2. Read the prior first-pass-review body
 
@@ -93,13 +94,13 @@ If the first-pass review had no `Non-blocking observations` block at all, omit t
 
 This atomically removes `first pass reviewed` and adds `approved`. Other PR labels are untouched.
 
-### 6. Merge
+### 6. Merge (SHA-pinned)
 
 ```bash
-gh pr merge <pr> --merge --delete-branch
+.claude/skills/final-review/scripts/merge-pr.sh <pr> "$HEAD_SHA"
 ```
 
-`--merge` (not squash) preserves history on `dev`. `--delete-branch` removes the issue branch.
+The script pins the merge to `$HEAD_SHA`, so a commit landing between step 1 and step 6 causes GitHub to reject the merge with 409. **If the script exits non-zero, STOP** — do not retry. The cron will pick the PR up again next tick after the new commit gets a fresh first-pass review.
 
 ### 7. Stop
 

@@ -26,34 +26,21 @@ If the bump is `minor` or `major`, this skill must abort and leave the work for 
 
 Expected: prints the commit count, exits 0. If it exits non-zero, STOP — something changed between preflight and now (e.g., a `feat:` commit landed during the run).
 
-### 2. Verify local working state
+### 2. Verify local working state and gather commits
 
 ```bash
-git branch --show-current      # must be `dev`
-git status --porcelain         # must be empty
-git fetch origin
-git log origin/main..HEAD --oneline
+COMMITS_FILE=$(./scripts/gather-release-commits.sh)
+cat "$COMMITS_FILE"
 ```
 
-If any of:
-- not on `dev`
-- working tree dirty
-- local HEAD ≠ origin/dev
+`gather-release-commits.sh` verifies the branch is `dev` and the working tree is clean, runs `git fetch origin`, and writes `origin/main..HEAD` (default format `%h %s`) to `/tmp/apijack-ship-commits.txt`. The printed path is the canonical commit list for the rest of this skill — step 4 reads from it instead of re-running `git log`.
 
-…STOP. The cron should not silently switch branches or stash user WIP.
+If the script exits non-zero, STOP. Also STOP if local HEAD ≠ origin/dev (the cron should not silently switch branches or stash user WIP).
 
-### 3. Check for an existing dev → main PR
+### 3. Categorize commits
 
 ```bash
-gh pr list --repo normalled/apijack --head dev --base main --state open --json number,body
-```
-
-If a PR already exists with a curated body, skip to step 6 (run ship.sh). If a bland `dev → main (N commits)` PR exists, edit it with the curated body from step 5.
-
-### 4. Categorize commits
-
-```bash
-git log origin/main..HEAD --pretty=format:"%h %s"
+cat "$COMMITS_FILE"   # written by gather-release-commits.sh in step 2
 ```
 
 Group into buckets, **skipping merge commits and any prior `chore(release):` bump**:
@@ -67,7 +54,7 @@ There must be **zero** entries in a "Features" or "Changed" bucket — the gate 
 
 For each fix commit, look up the PR number (`(#NN)` in the subject, or `gh pr list --state merged --search "<subject>"`).
 
-### 5. Draft the PR body
+### 4. Draft the PR body
 
 Use the `Write` tool — never inline in a heredoc — to avoid backtick-escaping. Write to `.claude-jobs/release-bodies/dev-to-main.md`.
 
@@ -100,26 +87,17 @@ Concision rules from `ship-release`:
 - Internal section is one line — `"misc CI and skill tweaks"` beats listing every chore
 - If the body is longer than ~15 lines, cut
 
-### 6. Create / update the PR
-
-If no PR exists:
+### 5. Create / update the PR
 
 ```bash
-git push -u origin dev
-gh pr create --repo normalled/apijack --base main --head dev \
-    --title "<title>" \
-    --body-file .claude-jobs/release-bodies/dev-to-main.md
+.claude/skills/patch-deployer/scripts/upsert-release-pr.sh \
+    "<title>" \
+    .claude-jobs/release-bodies/dev-to-main.md
 ```
 
-If a bland PR already exists:
+The script edits the open `dev → main` PR if one exists, otherwise pushes `dev` and creates it. PR number is printed on stdout.
 
-```bash
-gh pr edit <num> --repo normalled/apijack \
-    --title "<title>" \
-    --body-file .claude-jobs/release-bodies/dev-to-main.md
-```
-
-### 7. Run ship.sh
+### 6. Run ship.sh
 
 ```bash
 ./scripts/ship.sh
@@ -135,14 +113,14 @@ gh pr edit <num> --repo normalled/apijack \
 
 If ship.sh exits non-zero, leave the PR in place for a human and stop.
 
-### 8. Report
+### 7. Report
 
 When ship.sh succeeds, report:
 - New tag (`vX.Y.Z`)
 - Release URL (`https://github.com/normalled/apijack/releases/tag/vX.Y.Z`)
 - npm package URL
 
-The publish workflow's release-notes pipeline (post-#54) uses the merged PR body verbatim, so the GitHub release will match what was drafted in step 5.
+The publish workflow's release-notes pipeline (post-#54) uses the merged PR body verbatim, so the GitHub release will match what was drafted in step 4.
 
 ## Red Flags — Do Not Ship
 

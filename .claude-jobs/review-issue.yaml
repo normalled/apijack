@@ -1,7 +1,7 @@
 name: review-issue
 description: Review one open apijack PR (oldest first) — comment only, no merge
 
-schedule: "*/15 * * * *"
+schedule: "*/5 * * * *"
 enabled: true
 auth: subscription
 

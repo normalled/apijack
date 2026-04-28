@@ -1,0 +1,23 @@
+name: smoke-test
+description: Create, verify, and delete a pet
+steps:
+  - name: create
+    command: pets create-pet
+    args:
+      --name: "RoutinePet"
+      --species: "rabbit"
+      --age: "1"
+    output: pet
+
+  - name: verify
+    command: pets get
+    args:
+      --id: "$pet.id"
+    assert:
+      - path: "$.name"
+        equals: "RoutinePet"
+
+  - name: cleanup
+    command: pets delete
+    args:
+      --id: "$pet.id"

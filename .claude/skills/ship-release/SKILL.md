@@ -13,27 +13,26 @@ The PR that merges `dev` into `main` *is* the release notes on GitHub. `scripts/
 - There are commits on `dev` that are not yet on `main`
 - **Not** for mid-development PRs targeting `dev` (use `triage-issue` → `implement-issue` for those)
 
-## Preflight
+## Step 1: Preflight + gather commits
 
 ```bash
-git branch --show-current          # must be dev
-git status --porcelain             # must be empty
-git fetch origin
-git log origin/main..HEAD --oneline
+COMMITS_FILE=$(./scripts/gather-release-commits.sh)
+cat "$COMMITS_FILE"
 ```
 
+`gather-release-commits.sh` verifies the branch is `dev` and the working tree is clean, runs `git fetch origin`, writes `origin/main..HEAD` (default format `%h %s`) to `/tmp/apijack-ship-commits.txt`, and prints that path on stdout. It exits non-zero with a clear message on any preflight failure.
+
 Abort and tell the user if:
-- Not on `dev`, or working tree is dirty
-- No commits ahead of main (nothing to ship)
+- The script exits non-zero (not on `dev`, or working tree dirty)
+- The output file is empty (no commits ahead of main, nothing to ship)
 - An open PR already exists from `dev` → `main` with a curated body (check `gh pr list --head dev --base main`). If so, skip to step 5.
 
-## Step 1: Compute the next version
+### Compute the next version
 
-Mirror the logic in `scripts/ship.sh`:
+Mirror the logic in `scripts/ship.sh`. The bump-level scan needs subjects + bodies, so re-run `git log` with that format:
 
 ```bash
-RANGE=origin/main..HEAD
-git log $RANGE --pretty=format:"%s%n%b" > /tmp/ship-commits.txt
+git log origin/main..HEAD --pretty=format:"%s%n%b"
 ```
 
 - Contains `BREAKING CHANGE` → **major**

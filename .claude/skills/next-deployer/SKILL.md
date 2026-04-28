@@ -18,54 +18,49 @@ Phase 4 (terminal) of the apijack issue workflow. Roll `next` forward to `dev` a
 
 ## Steps
 
-### 1. Sync dev locally
+### 1. Check if next is behind dev
 
 ```bash
-git fetch origin
-git checkout dev && git pull origin dev
-```
-
-### 2. Check if next is behind dev
-
-```bash
-git fetch origin next
+git fetch origin dev next
 BEHIND=$(git rev-list --count origin/next..origin/dev)
 echo "next is behind dev by $BEHIND commits"
 ```
 
 If `BEHIND` is `0`: `next` is already up to date — skip to step 4.
 
-### 3. Fast-forward next from dev and push
+### 2. Fast-forward next from dev and push
+
+Run:
 
 ```bash
-git checkout next 2>/dev/null || git checkout -b next origin/next
-git merge --ff-only origin/dev
-git push origin next
+.claude/skills/next-deployer/scripts/ff-next-from-dev.sh
 ```
 
-If fast-forward fails (next has diverged), STOP and ask the user how to proceed — do not force-push.
+The script fetches origin, pulls `dev`, checks out `next` (creating it from `origin/next` if missing), fast-forwards it from `origin/dev`, pushes, and returns to `dev`. It exits non-zero on a non-fast-forward — no force-push.
 
-Return to `dev`:
+If it exits non-zero (next has diverged or push failed), STOP and ask the user how to proceed.
+
+### 3. Capture the published commit SHA
 
 ```bash
-git checkout dev
+NEXT_SHA=$(git rev-parse origin/next)
+echo "next is at $NEXT_SHA"
 ```
 
-### 4. Wait for publish-next workflow
+### 4. Wait for the publish-next workflow
+
+Run:
 
 ```bash
-# Find the run triggered by this push
-RUN_ID=$(gh run list --workflow publish.yml --branch next --limit 1 --json databaseId --jq '.[0].databaseId')
-gh run watch "$RUN_ID" --exit-status
+.claude/skills/next-deployer/scripts/wait-for-publish-next.sh "$NEXT_SHA"
 ```
 
-If the run fails:
+Inputs:
+- `$NEXT_SHA` — the commit SHA on `next` whose `publish.yml` run we want to watch.
 
-```bash
-gh run view "$RUN_ID" --log-failed
-```
+The script polls `gh run list` (handling the race where the workflow hasn't registered yet), then `gh run watch --exit-status`. On failure it dumps `gh run view --log-failed` and propagates the non-zero code.
 
-STOP, report the failure to the user, and do not comment on the issue.
+If the script exits non-zero, STOP, report the failure to the user, and do not comment on the issue.
 
 ### 5. Get the published version
 
@@ -78,24 +73,17 @@ Expect a value like `1.8.0-next.1`.
 
 ### 6. Comment on the issue and label it
 
-```bash
-gh issue comment <issue-number> --repo normalled/apijack --body "$(cat <<EOF
-Fix deployed to \`next\`. Install the exact version:
-
-\`\`\`bash
-bun install -g @apijack/core@$NEXT_VERSION
-\`\`\`
-EOF
-)"
-```
-
-Add the `deployed to next` label so the issue's lifecycle stage is visible at a glance:
+Run:
 
 ```bash
-gh issue edit <issue-number> --repo normalled/apijack --add-label "deployed to next"
+.claude/skills/next-deployer/scripts/comment-deployed.sh <issue-number> "$NEXT_VERSION"
 ```
 
-Substitute `<issue-number>` with the argument passed in from `review-issue`, or parse it from the merge commit body (`Closes #NN`).
+Inputs:
+- `<issue-number>` — passed in from `review-issue`, or parsed from the merge commit body (`Closes #NN`).
+- `$NEXT_VERSION` — the version string from step 5.
+
+The script writes the install-instructions markdown to a tempfile, posts it via `gh issue comment --body-file` (avoiding the inline-`--body` backtick-escape footgun), and applies the `deployed to next` label.
 
 ### 7. STOP
 
