@@ -36,8 +36,9 @@ fi
 
 echo "Watching publish.yml run $run_id for $commit_sha"
 
-if ! gh run watch "$run_id" --repo "$repo" --exit-status; then
-    rc=$?
+rc=0
+gh run watch "$run_id" --repo "$repo" --exit-status || rc=$?
+if [ "$rc" -ne 0 ]; then
     echo "publish.yml run $run_id failed (exit $rc); dumping failed logs:" >&2
     gh run view "$run_id" --repo "$repo" --log-failed >&2 || true
     exit "$rc"
