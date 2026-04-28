@@ -17,6 +17,8 @@ wiki/
 !.claude/skills/*-issue/scripts/
 !.claude/skills/*-issue/scripts/**
 .claude/skills/next*
+!.claude/skills/next-deployer/
+!.claude/skills/next-deployer/**
 
 # Local triage runtime artifacts (snapshots and sandboxed reports)
 .claude-jobs/triage-snapshots/
