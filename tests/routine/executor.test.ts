@@ -485,6 +485,46 @@ describe('executeRoutine', () => {
         expect(result.steps[1]!).toMatchObject({ name: 'broken', status: 'failed', error: 'kaboom' });
     });
 
+    test('output aggregates results from steps with output: alias', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'create-user', command: 'users.create', output: 'user' },
+                { name: 'create-token', command: 'tokens.create', output: 'token' },
+                { name: 'no-alias', command: 'misc.ping' },
+            ],
+        });
+        const dispatcher: CommandDispatcher = async (command) => {
+            if (command === 'users.create') return { id: 'u-1', name: 'Ada' };
+            if (command === 'tokens.create') return { id: 't-1', secret: 'shh' };
+            return { ok: true };
+        };
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.output).toEqual({
+            user: { id: 'u-1', name: 'Ada' },
+            token: { id: 't-1', secret: 'shh' },
+        });
+        // step without output: alias is in steps[] but not in output
+        expect(Object.keys(result.output).sort()).toEqual(['token', 'user']);
+    });
+
+    test('failed step does not populate output[alias]', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'ok-step', command: 'ok', output: 'first' },
+                { name: 'fail-step', command: 'fail', output: 'second' },
+            ],
+        });
+        const dispatcher: CommandDispatcher = async (command) => {
+            if (command === 'fail') throw new Error('nope');
+            return { ok: true };
+        };
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.output).toEqual({ first: { ok: true } });
+        expect(result.output).not.toHaveProperty('second');
+    });
+
     test('result includes status, output, steps, and durationMs fields', async () => {
         const routine = makeRoutine({
             steps: [

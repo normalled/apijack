@@ -55,6 +55,7 @@ class RoutineExecutor {
     private stepsFailed = 0;
     private inIteration = false;
     private steps: RoutineResultStep[] = [];
+    private namedOutput: Record<string, unknown> = {};
 
     constructor(
         private dispatch: CommandDispatcher,
@@ -101,7 +102,7 @@ class RoutineExecutor {
         return {
             status: success ? 'ok' : 'failed',
             success,
-            output: {},
+            output: this.namedOutput,
             steps: this.steps,
             durationMs: Date.now() - startTime,
             stepsRun: this.stepsRun,
@@ -277,6 +278,7 @@ class RoutineExecutor {
 
             this.stepsRun++;
             this.steps.push({ name: step.name, status: 'ok', output: result });
+            if (step.output) this.namedOutput[step.output] = result;
 
             if (step.assert) {
                 const passed = evaluateCondition(step.assert, ctx);
