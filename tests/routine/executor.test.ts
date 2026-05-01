@@ -474,6 +474,7 @@ describe('executeRoutine', () => {
         });
         const dispatcher: CommandDispatcher = async (command) => {
             if (command === 'boom') throw new Error('kaboom');
+
             return { ok: true };
         };
         const result = await executeRoutine(routine, {}, dispatcher);
@@ -495,7 +496,9 @@ describe('executeRoutine', () => {
         });
         const dispatcher: CommandDispatcher = async (command) => {
             if (command === 'users.create') return { id: 'u-1', name: 'Ada' };
+
             if (command === 'tokens.create') return { id: 't-1', secret: 'shh' };
+
             return { ok: true };
         };
         const result = await executeRoutine(routine, {}, dispatcher);
@@ -517,12 +520,67 @@ describe('executeRoutine', () => {
         });
         const dispatcher: CommandDispatcher = async (command) => {
             if (command === 'fail') throw new Error('nope');
+
             return { ok: true };
         };
         const result = await executeRoutine(routine, {}, dispatcher);
 
         expect(result.output).toEqual({ first: { ok: true } });
         expect(result.output).not.toHaveProperty('second');
+    });
+
+    test('silent: true suppresses stderr and console.error writes from executor', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'broken', command: 'fail' },
+            ],
+        });
+        const dispatcher: CommandDispatcher = async () => {
+            throw new Error('boom');
+        };
+
+        const captured: string[] = [];
+        const origConsoleError = console.error;
+        const origStderrWrite = process.stderr.write.bind(process.stderr);
+        console.error = (...args: unknown[]) => {
+            captured.push(args.join(' '));
+        };
+        process.stderr.write = ((chunk: any) => {
+            captured.push(typeof chunk === 'string' ? chunk : chunk.toString());
+
+            return true;
+        }) as typeof process.stderr.write;
+
+        try {
+            const result = await executeRoutine(routine, {}, dispatcher, { silent: true });
+            expect(result.status).toBe('failed');
+            expect(captured.join('')).toBe('');
+        } finally {
+            console.error = origConsoleError;
+            process.stderr.write = origStderrWrite;
+        }
+    });
+
+    test('silent: false (default) writes step failure to stderr/console.error', async () => {
+        const routine = makeRoutine({
+            steps: [{ name: 'broken', command: 'fail' }],
+        });
+        const dispatcher: CommandDispatcher = async () => {
+            throw new Error('boom');
+        };
+
+        const captured: string[] = [];
+        const origConsoleError = console.error;
+        console.error = (...args: unknown[]) => {
+            captured.push(args.join(' '));
+        };
+
+        try {
+            await executeRoutine(routine, {}, dispatcher);
+            expect(captured.join('\n')).toContain('boom');
+        } finally {
+            console.error = origConsoleError;
+        }
     });
 
     test('result includes status, output, steps, and durationMs fields', async () => {

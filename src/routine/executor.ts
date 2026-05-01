@@ -37,6 +37,7 @@ export interface RoutineResult {
 
 interface ExecutorOptions {
     dryRun?: boolean;
+    silent?: boolean;
     customResolvers?: Map<string, CustomResolver>;
     pluginRegistry?: PluginRegistry;
     onStep?: (step: RoutineStep, index: number, total: number) => void;
@@ -175,9 +176,12 @@ class RoutineExecutor {
         const rawItems = resolveValue(step.forEach!, ctx);
 
         if (!Array.isArray(rawItems)) {
-            process.stderr.write(
-                `Warning: forEach on "${step.name}" did not resolve to an array\n`,
-            );
+            if (!this.options?.silent) {
+                process.stderr.write(
+                    `Warning: forEach on "${step.name}" did not resolve to an array\n`,
+                );
+            }
+
             this.stepsSkipped++;
 
             return true;
@@ -278,13 +282,17 @@ class RoutineExecutor {
 
             this.stepsRun++;
             this.steps.push({ name: step.name, status: 'ok', output: result });
+
             if (step.output) this.namedOutput[step.output] = result;
 
             if (step.assert) {
                 const passed = evaluateCondition(step.assert, ctx);
 
                 if (!passed) {
-                    console.error(`Assert failed on "${step.name}": ${step.assert}`);
+                    if (!this.options?.silent) {
+                        console.error(`Assert failed on "${step.name}": ${step.assert}`);
+                    }
+
                     stepResult.success = false;
                     stepResult.error = `Assertion failed: ${step.assert}`;
                     this.stepsFailed++;
@@ -322,7 +330,11 @@ class RoutineExecutor {
 
             this.stepsFailed++;
             this.stepsRun++;
-            console.error(`Step "${step.name}" failed: ${errMsg}`);
+
+            if (!this.options?.silent) {
+                console.error(`Step "${step.name}" failed: ${errMsg}`);
+            }
+
             this.steps.push({ name: step.name, status: 'failed', error: errMsg });
 
             if (!step.continueOnError) return false;
