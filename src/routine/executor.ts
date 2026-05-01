@@ -54,6 +54,7 @@ class RoutineExecutor {
     private stepsSkipped = 0;
     private stepsFailed = 0;
     private inIteration = false;
+    private steps: RoutineResultStep[] = [];
 
     constructor(
         private dispatch: CommandDispatcher,
@@ -101,7 +102,7 @@ class RoutineExecutor {
             status: success ? 'ok' : 'failed',
             success,
             output: {},
-            steps: [],
+            steps: this.steps,
             durationMs: Date.now() - startTime,
             stepsRun: this.stepsRun,
             stepsSkipped: this.stepsSkipped,
@@ -118,6 +119,7 @@ class RoutineExecutor {
 
             if (!evaluateCondition(step.condition, ctx)) {
                 this.stepsSkipped++;
+                this.steps.push({ name: step.name, status: 'skipped' });
 
                 if (this.options?.onStep && !this.inIteration)
                     this.options.onStep(step, i, steps.length);
@@ -274,6 +276,7 @@ class RoutineExecutor {
             if (step.output) ctx.stepOutputs.set(step.output, stepResult);
 
             this.stepsRun++;
+            this.steps.push({ name: step.name, status: 'ok', output: result });
 
             if (step.assert) {
                 const passed = evaluateCondition(step.assert, ctx);
@@ -283,6 +286,12 @@ class RoutineExecutor {
                     stepResult.success = false;
                     stepResult.error = `Assertion failed: ${step.assert}`;
                     this.stepsFailed++;
+                    // overwrite the previously-pushed 'ok' with the failed entry
+                    this.steps[this.steps.length - 1] = {
+                        name: step.name,
+                        status: 'failed',
+                        error: stepResult.error,
+                    };
 
                     if (!step.continueOnError) return false;
                 }
@@ -312,6 +321,7 @@ class RoutineExecutor {
             this.stepsFailed++;
             this.stepsRun++;
             console.error(`Step "${step.name}" failed: ${errMsg}`);
+            this.steps.push({ name: step.name, status: 'failed', error: errMsg });
 
             if (!step.continueOnError) return false;
         }

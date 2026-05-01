@@ -446,6 +446,45 @@ describe('executeRoutine', () => {
         expect(label).toMatch(/^run-\d+$/);
     });
 
+    test('steps[] contains an entry per executed step with correct status', async () => {
+        const routine = makeRoutine({
+            variables: { gate: false },
+            steps: [
+                { name: 'a', command: 'cmd-a' },
+                { name: 'b', command: 'cmd-b', condition: '$gate' },
+                { name: 'c', command: 'cmd-c' },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.steps.length).toBe(3);
+        expect(result.steps[0]!).toMatchObject({ name: 'a', status: 'ok' });
+        expect(result.steps[1]!).toMatchObject({ name: 'b', status: 'skipped' });
+        expect(result.steps[2]!).toMatchObject({ name: 'c', status: 'ok' });
+    });
+
+    test('steps[] records failed step and stops on first failure (no continueOnError)', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'first', command: 'ok' },
+                { name: 'broken', command: 'boom' },
+                { name: 'never', command: 'ok' },
+            ],
+        });
+        const dispatcher: CommandDispatcher = async (command) => {
+            if (command === 'boom') throw new Error('kaboom');
+            return { ok: true };
+        };
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.status).toBe('failed');
+        expect(result.success).toBe(false);
+        expect(result.steps.length).toBe(2);
+        expect(result.steps[0]!).toMatchObject({ name: 'first', status: 'ok' });
+        expect(result.steps[1]!).toMatchObject({ name: 'broken', status: 'failed', error: 'kaboom' });
+    });
+
     test('result includes status, output, steps, and durationMs fields', async () => {
         const routine = makeRoutine({
             steps: [
