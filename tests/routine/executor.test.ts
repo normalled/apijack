@@ -445,6 +445,23 @@ describe('executeRoutine', () => {
         const label = dispatched[0]!.label as string;
         expect(label).toMatch(/^run-\d+$/);
     });
+
+    test('result includes status, output, steps, and durationMs fields', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'step-1', command: 'cmd-a' },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.status).toBe('ok');
+        expect(result.success).toBe(true);
+        expect(typeof result.durationMs).toBe('number');
+        expect(result.durationMs).toBeGreaterThanOrEqual(0);
+        expect(result.output).toEqual({});
+        expect(Array.isArray(result.steps)).toBe(true);
+    });
 });
 
 describe('executeRoutine with plugin registry', () => {

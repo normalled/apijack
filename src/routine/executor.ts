@@ -16,8 +16,19 @@ import { buildRoutineResolvers } from './plugin-resolvers';
 import type { CommandDispatcher, CustomResolver } from '../types';
 import type { PluginRegistry } from '../plugin/registry';
 
+export interface RoutineResultStep {
+    name: string;
+    status: 'ok' | 'failed' | 'skipped';
+    output?: unknown;
+    error?: string;
+}
+
 export interface RoutineResult {
+    status: 'ok' | 'failed';
     success: boolean;
+    output: Record<string, unknown>;
+    steps: RoutineResultStep[];
+    durationMs: number;
     stepsRun: number;
     stepsSkipped: number;
     stepsFailed: number;
@@ -53,6 +64,7 @@ class RoutineExecutor {
         routine: RoutineDefinition,
         overrides: Record<string, unknown>,
     ): Promise<RoutineResult> {
+        const startTime = Date.now();
         const builtins: Record<string, unknown> = {
             _timestamp: Math.floor(Date.now() / 1000),
             _date: new Date().toISOString().slice(0, 10),
@@ -83,9 +95,14 @@ class RoutineExecutor {
         };
 
         const ok = await this.runSteps(routine.steps, ctx);
+        const success = ok && this.stepsFailed === 0;
 
         return {
-            success: ok && this.stepsFailed === 0,
+            status: success ? 'ok' : 'failed',
+            success,
+            output: {},
+            steps: [],
+            durationMs: Date.now() - startTime,
             stepsRun: this.stepsRun,
             stepsSkipped: this.stepsSkipped,
             stepsFailed: this.stepsFailed,
