@@ -652,3 +652,69 @@ describe('cli.run() plugin validation', () => {
         expect(stderrOut).toContain('_other');
     });
 });
+
+describe('cli.runRoutine', () => {
+    let tmpHome: string;
+    let configPath: string;
+    let cli: Cli;
+    let originalHome: string | undefined;
+
+    beforeEach(() => {
+        tmpHome = join(tmpdir(), `runRoutine-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        const cliConfigDir = join(tmpHome, '.testcli');
+        mkdirSync(join(cliConfigDir, 'routines'), { recursive: true });
+        configPath = join(cliConfigDir, 'config.json');
+        // Minimal env config so resolveAuth() returns something.
+        writeFileSync(configPath, JSON.stringify({
+            active: 'default',
+            environments: {
+                default: { url: 'http://localhost:9999', user: 'u', password: 'p' },
+            },
+        }));
+        // Write a minimal routine YAML.
+        writeFileSync(join(cliConfigDir, 'routines', 'echo.yaml'),
+            `name: echo
+steps:
+  - name: ping
+    command: my-dispatch
+    args:
+      msg: hello
+    output: result
+`);
+
+        originalHome = process.env.HOME;
+        process.env.HOME = tmpHome;
+
+        cli = createCli({ ...makeOptions(), configPath });
+        cli.dispatcher('my-dispatch', async args => ({ echoed: args.msg }));
+    });
+
+    afterEach(() => {
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+
+        rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    test('returns full RoutineResult shape on success', async () => {
+        const result = await cli.runRoutine('echo');
+
+        expect(result.status).toBe('ok');
+        expect(result.success).toBe(true);
+        expect(result.output).toEqual({ result: { echoed: 'hello' } });
+        expect(result.steps).toHaveLength(1);
+        expect(result.steps[0]!).toMatchObject({ name: 'ping', status: 'ok' });
+        expect(typeof result.durationMs).toBe('number');
+    });
+
+    test('throws on missing routine', async () => {
+        await expect(cli.runRoutine('does-not-exist')).rejects.toThrow();
+    });
+
+    test('is idempotent across repeated calls (no double-bootstrap)', async () => {
+        const a = await cli.runRoutine('echo');
+        const b = await cli.runRoutine('echo');
+        expect(a.status).toBe('ok');
+        expect(b.status).toBe('ok');
+    });
+});

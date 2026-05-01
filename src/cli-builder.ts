@@ -32,6 +32,9 @@ import { SessionAuthStrategy } from './auth/session-auth';
 import { resolveRequestHeaders } from './auth/resolve-headers';
 import { deepMergeSessionAuth } from './auth/config-merge';
 import { loadPreRequestHook } from './pre-request';
+import type { RoutineResult } from './routine/executor';
+import { executeRoutine } from './routine/executor';
+import { loadRoutineFile, validateRoutine } from './routine/loader';
 
 const coreManifest = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
@@ -51,6 +54,12 @@ export interface Cli {
     resolver(name: string, handler: CustomResolver): void;
     use(plugin: ApijackPlugin): void;
     run(): Promise<void>;
+    runRoutine(name: string, opts?: RunRoutineOptions): Promise<RoutineResult>;
+}
+
+export interface RunRoutineOptions {
+    vars?: Record<string, unknown>;
+    dryRun?: boolean;
 }
 
 const CORE_COMMANDS = new Set([
@@ -354,6 +363,25 @@ export function createCli(options: CliOptions): Cli {
 
         use(plugin: ApijackPlugin): void {
             pluginRegistry.register(plugin);
+        },
+
+        async runRoutine(name: string, opts?: RunRoutineOptions): Promise<RoutineResult> {
+            const runtime = await _buildRoutineRuntime();
+            const def = loadRoutineFile(name, runtime.routinesDir, runtime.builtinsMap);
+            const errors = validateRoutine(def);
+
+            if (errors.length > 0) {
+                throw new Error(`Validation errors:\n${errors.map(e => `  - ${e}`).join('\n')}`);
+            }
+
+            runtime.sessionMgr.invalidate();
+
+            return executeRoutine(def, opts?.vars ?? {}, runtime.dispatch, {
+                dryRun: opts?.dryRun,
+                silent: true,
+                customResolvers: runtime.customResolvers,
+                pluginRegistry,
+            });
         },
 
         async run(): Promise<void> {
