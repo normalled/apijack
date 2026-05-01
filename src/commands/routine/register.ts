@@ -5,7 +5,7 @@ import type { CommandDispatcher, CustomResolver } from '../../types';
 import type { PluginRegistry } from '../../plugin/registry';
 import { SessionManager } from '../../session';
 import { loadRoutineFile, loadSpecFile, listRoutines, validateRoutine, formatRoutineTree, formatRoutineList } from '../../routine/loader';
-import { executeRoutine } from '../../routine/executor';
+import { executeRoutine, type RoutineResult } from '../../routine/executor';
 import { routineListAction } from './list/list';
 import { routineRunAction } from './run/run';
 import { routineValidateAction } from './validate/validate';
@@ -92,7 +92,7 @@ export function registerRoutineCommand(
         .action(async (name: string, opts: { set?: string[]; dryRun?: boolean; json?: boolean }) => {
             if (!dispatch) {
                 if (opts.json) {
-                    process.stdout.write(JSON.stringify({
+                    const failure: RoutineResult = {
                         status: 'failed',
                         success: false,
                         output: {},
@@ -102,7 +102,8 @@ export function registerRoutineCommand(
                         stepsSkipped: 0,
                         stepsFailed: 0,
                         error: `No active session. Run '${cliName} setup' first.`,
-                    }) + '\n');
+                    };
+                    process.stdout.write(JSON.stringify(failure) + '\n');
                     process.exit(2);
                 }
 
@@ -137,12 +138,15 @@ export function registerRoutineCommand(
                         invalidateSession: () => sessionMgr.invalidate(),
                     });
 
-                    process.stdout.write(JSON.stringify(result) + '\n');
+                    // Strip fields routineRunAction appends for the CLI banner — the
+                    // JSON contract is RoutineResult only.
+                    const { name: _name, description: _description, ...routineResult } = result;
+                    process.stdout.write(JSON.stringify(routineResult) + '\n');
 
                     if (result.status !== 'ok') process.exit(1);
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    process.stdout.write(JSON.stringify({
+                    const failure: RoutineResult = {
                         status: 'failed',
                         success: false,
                         output: {},
@@ -152,7 +156,8 @@ export function registerRoutineCommand(
                         stepsSkipped: 0,
                         stepsFailed: 0,
                         error: msg,
-                    }) + '\n');
+                    };
+                    process.stdout.write(JSON.stringify(failure) + '\n');
                     process.exit(1);
                 }
 
