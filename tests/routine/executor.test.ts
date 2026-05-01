@@ -529,6 +529,26 @@ describe('executeRoutine', () => {
         expect(result.output).not.toHaveProperty('second');
     });
 
+    test('assertion failure removes the alias from output', async () => {
+        const routine = makeRoutine({
+            variables: { expected: 'wrong' },
+            steps: [
+                {
+                    name: 'create',
+                    command: 'cmd-a',
+                    output: 'created',
+                    assert: '$created.name == $expected',
+                },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher({ 'cmd-a': { name: 'actual' } });
+        const result = await executeRoutine(routine, {}, dispatcher, { silent: true });
+
+        expect(result.status).toBe('failed');
+        expect(result.steps[0]!).toMatchObject({ name: 'create', status: 'failed' });
+        expect(result.output).not.toHaveProperty('created');
+    });
+
     test('silent: true suppresses stderr and console.error writes from executor', async () => {
         const routine = makeRoutine({
             steps: [

@@ -303,6 +303,8 @@ class RoutineExecutor {
                         error: stepResult.error,
                     };
 
+                    if (step.output) delete this.namedOutput[step.output];
+
                     if (!step.continueOnError) return false;
                 }
             }

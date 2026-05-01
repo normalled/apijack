@@ -153,7 +153,12 @@ export function createCli(options: CliOptions): Cli {
         pluginRegistry.validateAll(consumerResolvers);
 
         for (const plugin of pluginRegistry.getAll()) {
-            if (!plugin.__package) continue;
+            if (!plugin.__package) {
+                process.stderr.write(
+                    `Warning: plugin "${plugin.name}" did not self-report its package; skipping peer-version check.\n`,
+                );
+                continue;
+            }
 
             const info = loadPluginPeerInfo(plugin.__package.name, [process.cwd(), import.meta.dir]);
             const mismatchMsg = checkPeerRange({
@@ -307,6 +312,9 @@ export function createCli(options: CliOptions): Cli {
         }
 
         // 10. Build dispatch.
+        const builtinsMap = options.builtinRoutinesDir
+            ? loadBuiltinRoutines(options.builtinRoutinesDir)
+            : undefined;
         const dispatch = buildDispatcher({
             commandMap,
             client: ctx.client as Record<string, unknown> | undefined,
@@ -316,9 +324,7 @@ export function createCli(options: CliOptions): Cli {
             preDispatch: options.preDispatch,
             ctx,
             routinesDir,
-            builtinsMap: options.builtinRoutinesDir
-                ? loadBuiltinRoutines(options.builtinRoutinesDir)
-                : undefined,
+            builtinsMap,
         });
 
         routineRuntime = {
@@ -327,9 +333,7 @@ export function createCli(options: CliOptions): Cli {
             customResolvers,
             sessionMgr,
             routinesDir,
-            builtinsMap: options.builtinRoutinesDir
-                ? loadBuiltinRoutines(options.builtinRoutinesDir)
-                : undefined,
+            builtinsMap,
         };
 
         return routineRuntime;
