@@ -12,6 +12,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 if [ $# -ne 3 ]; then
     echo "usage: $0 <pr-number> <comment|request-changes|approve> <body-file>" >&2
     exit 2

@@ -13,6 +13,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 if [[ $# -ne 1 ]]; then
     echo "Usage: $0 <pr-number>" >&2
     exit 1

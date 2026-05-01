@@ -10,6 +10,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 issue="${1:?issue number required}"
 next_version="${2:?next version required}"
 repo="normalled/apijack"

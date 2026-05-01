@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 ensure() {
     local name="$1" color="$2" desc="$3"
     if gh label list --json name --jq '.[].name' | grep -qxF "$name"; then

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 # ship.sh — Automates the dev→main shipping pipeline
 # Usage: ./scripts/ship.sh
 #
@@ -65,6 +67,31 @@ elif echo "$COMMIT_SUBJECTS" | grep -qE "^feat[(:]"; then
     BUMP_LEVEL="minor"
 else
     BUMP_LEVEL="patch"
+fi
+
+# Major-bump safeguard. The v2.0.0 misship (apijack#59) shipped a major bump
+# from a commit body that documented a breaking gate without actually
+# introducing one. Major bumps must be confirmed explicitly — refuse to
+# proceed silently.
+if [ "$BUMP_LEVEL" = "major" ]; then
+    fail "Detected a MAJOR version bump."
+    echo ""
+    warn "Commits containing BREAKING CHANGE:"
+    git log "$RANGE" --grep="BREAKING CHANGE" --pretty=format:"  %h %s"
+    echo ""
+    echo ""
+    if [ "${SHIP_ALLOW_MAJOR:-}" = "1" ]; then
+        warn "SHIP_ALLOW_MAJOR=1 set — proceeding."
+    elif [ -t 0 ]; then
+        read -r -p "Type 'major' to confirm, anything else aborts: " CONFIRM
+        if [ "$CONFIRM" != "major" ]; then
+            fail "Aborted."
+            exit 1
+        fi
+    else
+        fail "Non-interactive run. Set SHIP_ALLOW_MAJOR=1 to proceed."
+        exit 1
+    fi
 fi
 
 CURRENT_VERSION=$(node -p "require('./package.json').version")
