@@ -28,6 +28,9 @@ export async function runRoutine(
     opts: StandaloneRunRoutineOptions = {},
 ): Promise<RoutineResult> {
     const cwd = opts.cwd ?? process.cwd();
+    // The spec describes a `settings.json` lookup for cliName, but `ProjectSettings`
+    // has no `cliName` field — defaulting to 'apijack' (the shared binary name)
+    // is the right behavior for the standalone helper's target use case.
     const cliName = opts.cliName ?? 'apijack';
 
     const projectConfigPath = findProjectConfig(cwd);

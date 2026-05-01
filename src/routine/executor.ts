@@ -231,7 +231,7 @@ class RoutineExecutor {
 
         this.inIteration = false;
 
-        if (this.options?.onIteration) process.stderr.write('\n');
+        if (this.options?.onIteration && !this.options.silent) process.stderr.write('\n');
 
         return true;
     }
@@ -252,13 +252,16 @@ class RoutineExecutor {
         );
 
         if (this.options?.dryRun) {
-            const argStr = Object.entries(resolvedArgs)
-                .map(([k, v]) => `${k} ${v}`)
-                .join(' ');
-            const posStr = resolvedPositional.join(' ');
-            console.log(
-                `[${this.stepsRun + 1}] ${step.name}: ${step.command} ${posStr} ${argStr}`.trim(),
-            );
+            if (!this.options.silent) {
+                const argStr = Object.entries(resolvedArgs)
+                    .map(([k, v]) => `${k} ${v}`)
+                    .join(' ');
+                const posStr = resolvedPositional.join(' ');
+                console.log(
+                    `[${this.stepsRun + 1}] ${step.name}: ${step.command} ${posStr} ${argStr}`.trim(),
+                );
+            }
+
             this.stepsRun++;
 
             return true;
