@@ -137,6 +137,204 @@ export function createCli(options: CliOptions): Cli {
     const effectiveRequiresAuth = (explicit: boolean | undefined): boolean =>
         explicit ?? defaultRequiresAuth;
 
+    let routineRuntime: {
+        ctx: CliContext;
+        dispatch: CommandDispatcher;
+        customResolvers: Map<string, CustomResolver> | undefined;
+        sessionMgr: SessionManager;
+        routinesDir: string;
+        builtinsMap: Record<string, string> | undefined;
+    } | null = null;
+
+    async function _buildRoutineRuntime(): Promise<NonNullable<typeof routineRuntime>> {
+        if (routineRuntime) return routineRuntime;
+
+        // 1. Validate plugins (matches cli.run() logic, minus the `plugins check` skip).
+        pluginRegistry.validateAll(consumerResolvers);
+
+        for (const plugin of pluginRegistry.getAll()) {
+            if (!plugin.__package) continue;
+
+            const info = loadPluginPeerInfo(plugin.__package.name, [process.cwd(), import.meta.dir]);
+            const mismatchMsg = checkPeerRange({
+                declaredRange: info.declaredRange,
+                installedVersion: coreManifest.version,
+            });
+
+            if (mismatchMsg) {
+                throw new PluginPeerMismatchError(
+                    plugin.name,
+                    info.declaredRange ?? '(none)',
+                    coreManifest.version,
+                );
+            }
+        }
+
+        // 2. Resolve auth from active env config.
+        const resolved = resolveAuth(cliName, configOpts);
+
+        if (!resolved) {
+            throw new Error(`No active env config. Run '${cliName} setup' to configure credentials.`);
+        }
+
+        // 3. Compute auth strategy + sessionMgr.
+        const envConfig = getActiveEnvConfig(cliName, configOpts);
+        const mergedSessionAuth = options.sessionAuth
+            ? deepMergeSessionAuth(options.sessionAuth, envConfig?.sessionAuth)
+            : undefined;
+        const strategy = mergedSessionAuth
+            ? new SessionAuthStrategy(options.auth, mergedSessionAuth)
+            : options.auth;
+        const sessionMgr = new SessionManager(cliName, join(configDir, 'session.json'));
+
+        // 4. Import generated client (best-effort — same as cli.run()).
+        let ApiClientClass: (new (...args: unknown[]) => Record<string, unknown>) | null = null;
+
+        try {
+            const cmds = await import(resolve(generatedDir, 'commands'));
+
+            if (cmds.registerGeneratedCommands) {
+                const clientMod = await import(resolve(generatedDir, 'client'));
+                ApiClientClass = clientMod.ApiClient;
+            }
+        } catch {
+            // Generated commands not available — routines that don't dispatch to API methods still work.
+        }
+
+        // 5. Build CliContext with lazy session.
+        const ctx: CliContext = {
+            client: null,
+            session: null,
+            auth: resolved,
+            strategy,
+            refreshSession: async () => {
+                sessionMgr.invalidate();
+                ctx.session = await sessionMgr.resolve(strategy, resolved);
+            },
+            resolveSession: async () => {
+                if (ctx.session) return;
+
+                ctx.session = await sessionMgr.resolve(strategy, resolved);
+            },
+            saveSession: async () => {
+                if (ctx.session) {
+                    sessionMgr.save(ctx.session);
+                } else {
+                    sessionMgr.invalidate();
+                }
+            },
+        };
+
+        // 6. Wire client if generated commands are present.
+        if (ApiClientClass) {
+            const getHeaders = (method: string) =>
+                resolveRequestHeaders(ctx.session ?? { headers: {} }, mergedSessionAuth, method);
+
+            const client = new ApiClientClass(
+                resolved.baseUrl ?? '',
+                getHeaders,
+                mergedSessionAuth ? async () => { await ctx.refreshSession(); } : undefined,
+                mergedSessionAuth?.refreshOn,
+            ) as Record<string, unknown>;
+
+            ctx.client = client;
+            client.ensureReady = ctx.resolveSession;
+
+            // Pre-request hook (project-level)
+            const consumerHook = await loadPreRequestHook(configDir);
+
+            if (consumerHook && !consumerHook.beforeDryRun) {
+                const existing = client.interceptRequest as
+                    ((req: { method: string; url: string; body?: unknown }) => unknown | undefined) | undefined;
+                client.interceptRequest = (req: { method: string; url: string; body?: unknown }) => {
+                    if (existing) {
+                        const result = existing(req);
+
+                        if (result !== undefined) return result;
+                    }
+
+                    try {
+                        consumerHook.handler(structuredClone(req));
+                    } catch { /* observer */ }
+
+                    return undefined;
+                };
+            } else if (consumerHook?.beforeDryRun) {
+                client.preRequest = consumerHook.handler;
+            }
+        }
+
+        // 7. Build commandMap import (best-effort).
+        let commandMap:
+            | Record<string, { operationId: string; pathParams: string[]; queryParams: string[]; hasBody: boolean }>
+            | undefined;
+
+        try {
+            const mapModule = await import(resolve(generatedDir, 'command-map'));
+            commandMap = mapModule.commandMap;
+        } catch {
+            // No command-map available
+        }
+
+        // 8. Merge custom resolvers (consumer + plugin stateless).
+        const mergedResolvers = new Map<string, CustomResolver>(consumerResolvers);
+
+        for (const plugin of pluginRegistry.getAll()) {
+            for (const [key, fn] of Object.entries(plugin.resolvers ?? {})) {
+                mergedResolvers.set(key, fn);
+            }
+        }
+
+        const customResolvers = mergedResolvers.size > 0 ? mergedResolvers : undefined;
+
+        // 9. Wrap dispatcher handlers with ensureReady where required.
+        let dispatcherHandlers: Map<string, DispatcherHandler> | undefined;
+
+        if (consumerDispatchers.size > 0) {
+            dispatcherHandlers = new Map();
+
+            for (const [name, entry] of consumerDispatchers) {
+                if (effectiveRequiresAuth(entry.requiresAuth)) {
+                    dispatcherHandlers.set(name, async (args, positional, dctx) => {
+                        await ctx.resolveSession();
+
+                        return entry.handler(args, positional, dctx);
+                    });
+                } else {
+                    dispatcherHandlers.set(name, entry.handler);
+                }
+            }
+        }
+
+        // 10. Build dispatch.
+        const dispatch = buildDispatcher({
+            commandMap,
+            client: ctx.client as Record<string, unknown> | undefined,
+            consumerHandlers: dispatcherHandlers,
+            customResolvers,
+            pluginRegistry,
+            preDispatch: options.preDispatch,
+            ctx,
+            routinesDir,
+            builtinsMap: options.builtinRoutinesDir
+                ? loadBuiltinRoutines(options.builtinRoutinesDir)
+                : undefined,
+        });
+
+        routineRuntime = {
+            ctx,
+            dispatch,
+            customResolvers,
+            sessionMgr,
+            routinesDir,
+            builtinsMap: options.builtinRoutinesDir
+                ? loadBuiltinRoutines(options.builtinRoutinesDir)
+                : undefined,
+        };
+
+        return routineRuntime;
+    }
+
     const cli: Cli = {
         command(name: string, registrar: CommandRegistrar, cmdOpts?: CommandOptions): void {
             consumerCommands.push({ name, registrar, requiresAuth: cmdOpts?.requiresAuth });
