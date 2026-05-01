@@ -5,7 +5,7 @@ import type { CommandDispatcher, CustomResolver } from '../../types';
 import type { PluginRegistry } from '../../plugin/registry';
 import { SessionManager } from '../../session';
 import { loadRoutineFile, loadSpecFile, listRoutines, validateRoutine, formatRoutineTree, formatRoutineList } from '../../routine/loader';
-import { executeRoutine } from '../../routine/executor';
+import { executeRoutine, type RoutineResult } from '../../routine/executor';
 import { routineListAction } from './list/list';
 import { routineRunAction } from './run/run';
 import { routineValidateAction } from './validate/validate';
@@ -88,8 +88,25 @@ export function registerRoutineCommand(
         .description('Execute a routine')
         .option('--set <pairs...>', 'Override variables (key=value)')
         .option('--dry-run', 'Print resolved commands without executing')
-        .action(async (name: string, opts: { set?: string[]; dryRun?: boolean }) => {
+        .option('--json', 'Emit RoutineResult as JSON to stdout (silences progress output)')
+        .action(async (name: string, opts: { set?: string[]; dryRun?: boolean; json?: boolean }) => {
             if (!dispatch) {
+                if (opts.json) {
+                    const failure: RoutineResult = {
+                        status: 'failed',
+                        success: false,
+                        output: {},
+                        steps: [],
+                        durationMs: 0,
+                        stepsRun: 0,
+                        stepsSkipped: 0,
+                        stepsFailed: 0,
+                        error: `No active session. Run '${cliName} setup' first.`,
+                    };
+                    process.stdout.write(JSON.stringify(failure) + '\n');
+                    process.exit(2);
+                }
+
                 console.error(`No active session. Run '${cliName} setup' first.`);
                 process.exit(2);
             }
@@ -104,6 +121,50 @@ export function registerRoutineCommand(
 
             const sessionMgr = new SessionManager(cliName);
 
+            if (opts.json) {
+                // JSON mode — silent, structured output.
+                try {
+                    const def = loadRoutineFile(name, routinesDir, builtinsMap);
+                    const result = await routineRunAction({
+                        loadRoutine: () => def,
+                        validateRoutine,
+                        executeRoutine,
+                        dispatch,
+                        overrides,
+                        dryRun: opts.dryRun,
+                        silent: true,
+                        customResolvers,
+                        pluginRegistry,
+                        invalidateSession: () => sessionMgr.invalidate(),
+                    });
+
+                    // Strip fields routineRunAction appends for the CLI banner — the
+                    // JSON contract is RoutineResult only.
+                    const { name: _name, description: _description, ...routineResult } = result;
+                    process.stdout.write(JSON.stringify(routineResult) + '\n');
+
+                    if (result.status !== 'ok') process.exit(1);
+                } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    const failure: RoutineResult = {
+                        status: 'failed',
+                        success: false,
+                        output: {},
+                        steps: [],
+                        durationMs: 0,
+                        stepsRun: 0,
+                        stepsSkipped: 0,
+                        stepsFailed: 0,
+                        error: msg,
+                    };
+                    process.stdout.write(JSON.stringify(failure) + '\n');
+                    process.exit(1);
+                }
+
+                return;
+            }
+
+            // Default mode — colored progress output (unchanged from before).
             try {
                 const def = loadRoutineFile(name, routinesDir, builtinsMap);
                 console.log(

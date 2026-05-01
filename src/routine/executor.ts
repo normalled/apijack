@@ -16,8 +16,19 @@ import { buildRoutineResolvers } from './plugin-resolvers';
 import type { CommandDispatcher, CustomResolver } from '../types';
 import type { PluginRegistry } from '../plugin/registry';
 
+export interface RoutineResultStep {
+    name: string;
+    status: 'ok' | 'failed' | 'skipped';
+    output?: unknown;
+    error?: string;
+}
+
 export interface RoutineResult {
+    status: 'ok' | 'failed';
     success: boolean;
+    output: Record<string, unknown>;
+    steps: RoutineResultStep[];
+    durationMs: number;
     stepsRun: number;
     stepsSkipped: number;
     stepsFailed: number;
@@ -26,6 +37,7 @@ export interface RoutineResult {
 
 interface ExecutorOptions {
     dryRun?: boolean;
+    silent?: boolean;
     customResolvers?: Map<string, CustomResolver>;
     pluginRegistry?: PluginRegistry;
     onStep?: (step: RoutineStep, index: number, total: number) => void;
@@ -43,6 +55,8 @@ class RoutineExecutor {
     private stepsSkipped = 0;
     private stepsFailed = 0;
     private inIteration = false;
+    private steps: RoutineResultStep[] = [];
+    private namedOutput: Record<string, unknown> = {};
 
     constructor(
         private dispatch: CommandDispatcher,
@@ -53,6 +67,7 @@ class RoutineExecutor {
         routine: RoutineDefinition,
         overrides: Record<string, unknown>,
     ): Promise<RoutineResult> {
+        const startTime = Date.now();
         const builtins: Record<string, unknown> = {
             _timestamp: Math.floor(Date.now() / 1000),
             _date: new Date().toISOString().slice(0, 10),
@@ -83,9 +98,14 @@ class RoutineExecutor {
         };
 
         const ok = await this.runSteps(routine.steps, ctx);
+        const success = ok && this.stepsFailed === 0;
 
         return {
-            success: ok && this.stepsFailed === 0,
+            status: success ? 'ok' : 'failed',
+            success,
+            output: this.namedOutput,
+            steps: this.steps,
+            durationMs: Date.now() - startTime,
             stepsRun: this.stepsRun,
             stepsSkipped: this.stepsSkipped,
             stepsFailed: this.stepsFailed,
@@ -101,6 +121,7 @@ class RoutineExecutor {
 
             if (!evaluateCondition(step.condition, ctx)) {
                 this.stepsSkipped++;
+                this.steps.push({ name: step.name, status: 'skipped' });
 
                 if (this.options?.onStep && !this.inIteration)
                     this.options.onStep(step, i, steps.length);
@@ -155,9 +176,12 @@ class RoutineExecutor {
         const rawItems = resolveValue(step.forEach!, ctx);
 
         if (!Array.isArray(rawItems)) {
-            process.stderr.write(
-                `Warning: forEach on "${step.name}" did not resolve to an array\n`,
-            );
+            if (!this.options?.silent) {
+                process.stderr.write(
+                    `Warning: forEach on "${step.name}" did not resolve to an array\n`,
+                );
+            }
+
             this.stepsSkipped++;
 
             return true;
@@ -207,7 +231,7 @@ class RoutineExecutor {
 
         this.inIteration = false;
 
-        if (this.options?.onIteration) process.stderr.write('\n');
+        if (this.options?.onIteration && !this.options.silent) process.stderr.write('\n');
 
         return true;
     }
@@ -228,13 +252,16 @@ class RoutineExecutor {
         );
 
         if (this.options?.dryRun) {
-            const argStr = Object.entries(resolvedArgs)
-                .map(([k, v]) => `${k} ${v}`)
-                .join(' ');
-            const posStr = resolvedPositional.join(' ');
-            console.log(
-                `[${this.stepsRun + 1}] ${step.name}: ${step.command} ${posStr} ${argStr}`.trim(),
-            );
+            if (!this.options.silent) {
+                const argStr = Object.entries(resolvedArgs)
+                    .map(([k, v]) => `${k} ${v}`)
+                    .join(' ');
+                const posStr = resolvedPositional.join(' ');
+                console.log(
+                    `[${this.stepsRun + 1}] ${step.name}: ${step.command} ${posStr} ${argStr}`.trim(),
+                );
+            }
+
             this.stepsRun++;
 
             return true;
@@ -257,15 +284,29 @@ class RoutineExecutor {
             if (step.output) ctx.stepOutputs.set(step.output, stepResult);
 
             this.stepsRun++;
+            this.steps.push({ name: step.name, status: 'ok', output: result });
+
+            if (step.output) this.namedOutput[step.output] = result;
 
             if (step.assert) {
                 const passed = evaluateCondition(step.assert, ctx);
 
                 if (!passed) {
-                    console.error(`Assert failed on "${step.name}": ${step.assert}`);
+                    if (!this.options?.silent) {
+                        console.error(`Assert failed on "${step.name}": ${step.assert}`);
+                    }
+
                     stepResult.success = false;
                     stepResult.error = `Assertion failed: ${step.assert}`;
                     this.stepsFailed++;
+                    // overwrite the previously-pushed 'ok' with the failed entry
+                    this.steps[this.steps.length - 1] = {
+                        name: step.name,
+                        status: 'failed',
+                        error: stepResult.error,
+                    };
+
+                    if (step.output) delete this.namedOutput[step.output];
 
                     if (!step.continueOnError) return false;
                 }
@@ -294,7 +335,12 @@ class RoutineExecutor {
 
             this.stepsFailed++;
             this.stepsRun++;
-            console.error(`Step "${step.name}" failed: ${errMsg}`);
+
+            if (!this.options?.silent) {
+                console.error(`Step "${step.name}" failed: ${errMsg}`);
+            }
+
+            this.steps.push({ name: step.name, status: 'failed', error: errMsg });
 
             if (!step.continueOnError) return false;
         }

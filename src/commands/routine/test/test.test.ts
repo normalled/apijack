@@ -6,7 +6,7 @@ describe('routineTestAction', () => {
         const result = await routineTestAction({
             loadSpec: () => ({ name: 'test-spec', description: 'A test', steps: [] }),
             validateRoutine: () => [],
-            executeRoutine: mock(() => Promise.resolve({ success: true, stepsRun: 3, stepsSkipped: 0, stepsFailed: 0 })),
+            executeRoutine: mock(() => Promise.resolve({ status: 'ok' as const, success: true, output: {}, steps: [], durationMs: 0, stepsRun: 3, stepsSkipped: 0, stepsFailed: 0 })),
             dispatch: mock(() => Promise.resolve({})),
             overrides: {},
         });
@@ -18,7 +18,7 @@ describe('routineTestAction', () => {
         expect(routineTestAction({
             loadSpec: () => null,
             validateRoutine: () => [],
-            executeRoutine: mock(() => Promise.resolve({ success: true, stepsRun: 0, stepsSkipped: 0, stepsFailed: 0 })),
+            executeRoutine: mock(() => Promise.resolve({ status: 'ok' as const, success: true, output: {}, steps: [], durationMs: 0, stepsRun: 0, stepsSkipped: 0, stepsFailed: 0 })),
             dispatch: mock(() => Promise.resolve({})),
             overrides: {},
         })).rejects.toThrow('No spec.yaml found');

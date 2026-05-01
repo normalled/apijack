@@ -97,12 +97,22 @@ Usable anywhere a routine value is resolved (args, conditions, variables):
 <cli> routine run <name>        # Execute a routine
 <cli> routine run <name> --set key=value  # Override variables
 <cli> routine run <name> --dry-run        # Preview without executing
+<cli> routine run <name> --json           # Emit RoutineResult as JSON to stdout
 <cli> routine validate <name>   # Validate YAML structure
 <cli> routine test <name>       # Run spec (test) file
 <cli> routine init              # Install built-in routines
 <cli> plugins list              # List registered apijack plugins
 <cli> plugins check             # Validate plugins (namespace, collisions, peer versions)
 ```
+
+### Programmatic Routine Invocation
+
+Two surfaces, one engine:
+
+- **`cli.runRoutine(name, opts?)`** — method on the `Cli` returned by `createCli`. Use from a project that already has a `bin/<cli>.ts`.
+- **`runRoutine(name, opts?)`** — top-level export from `@apijack/core` for projects on the shared `apijack` binary (no bin file).
+
+Both resolve with a `RoutineResult` (status, output, steps, durationMs, ...) on success and on step failure. Engine errors (routine not found, YAML invalid, no active env config) throw. Useful for Playwright/Vitest fixtures that seed via routines.
 
 ## Plugin System
 
