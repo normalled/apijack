@@ -25,4 +25,32 @@ describe('routineRunAction', () => {
             invalidateSession: mock(() => {}),
         })).rejects.toThrow('Validation errors');
     });
+
+    test('passes silent: true through to executor when caller sets it', async () => {
+        let capturedOpts: any = null;
+        const result = await routineRunAction({
+            loadRoutine: () => ({ name: 'r', steps: [{ name: 's', command: 'c' }] }),
+            validateRoutine: () => [],
+            executeRoutine: async (def, overrides, dispatch, opts) => {
+                capturedOpts = opts;
+
+                return {
+                    status: 'ok',
+                    success: true,
+                    output: {},
+                    steps: [],
+                    durationMs: 0,
+                    stepsRun: 1,
+                    stepsSkipped: 0,
+                    stepsFailed: 0,
+                };
+            },
+            dispatch: async () => ({}),
+            overrides: {},
+            silent: true,
+            invalidateSession: () => {},
+        });
+        expect(capturedOpts.silent).toBe(true);
+        expect(result.success).toBe(true);
+    });
 });

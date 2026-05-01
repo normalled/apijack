@@ -6,10 +6,11 @@ import type { RoutineResult } from '../../../routine/executor';
 export interface RoutineRunDeps {
     loadRoutine: () => RoutineDefinition;
     validateRoutine: (def: RoutineDefinition) => string[];
-    executeRoutine: (def: RoutineDefinition, overrides: Record<string, unknown>, dispatch: CommandDispatcher, opts: { dryRun?: boolean; customResolvers?: Map<string, CustomResolver>; pluginRegistry?: PluginRegistry; onStep?: RoutineRunDeps['onStep']; onIteration?: RoutineRunDeps['onIteration'] }) => Promise<RoutineResult>;
+    executeRoutine: (def: RoutineDefinition, overrides: Record<string, unknown>, dispatch: CommandDispatcher, opts: { dryRun?: boolean; silent?: boolean; customResolvers?: Map<string, CustomResolver>; pluginRegistry?: PluginRegistry; onStep?: RoutineRunDeps['onStep']; onIteration?: RoutineRunDeps['onIteration'] }) => Promise<RoutineResult>;
     dispatch: CommandDispatcher;
     overrides: Record<string, unknown>;
     dryRun?: boolean;
+    silent?: boolean;
     customResolvers?: Map<string, CustomResolver>;
     pluginRegistry?: PluginRegistry;
     invalidateSession: () => void;
@@ -17,7 +18,7 @@ export interface RoutineRunDeps {
     onIteration?: (step: RoutineStep, current: number, total: number, stepIndex: number, stepTotal: number) => void;
 }
 
-export async function routineRunAction(deps: RoutineRunDeps): Promise<{ success: boolean; stepsRun: number; stepsSkipped: number; stepsFailed: number; name: string; description?: string }> {
+export async function routineRunAction(deps: RoutineRunDeps): Promise<RoutineResult & { name: string; description?: string }> {
     const def = deps.loadRoutine();
     const errors = deps.validateRoutine(def);
 
@@ -29,6 +30,7 @@ export async function routineRunAction(deps: RoutineRunDeps): Promise<{ success:
 
     const result = await deps.executeRoutine(def, deps.overrides, deps.dispatch, {
         dryRun: deps.dryRun,
+        silent: deps.silent,
         customResolvers: deps.customResolvers,
         pluginRegistry: deps.pluginRegistry,
         onStep: deps.onStep,

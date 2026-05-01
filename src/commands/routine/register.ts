@@ -88,8 +88,24 @@ export function registerRoutineCommand(
         .description('Execute a routine')
         .option('--set <pairs...>', 'Override variables (key=value)')
         .option('--dry-run', 'Print resolved commands without executing')
-        .action(async (name: string, opts: { set?: string[]; dryRun?: boolean }) => {
+        .option('--json', 'Emit RoutineResult as JSON to stdout (silences progress output)')
+        .action(async (name: string, opts: { set?: string[]; dryRun?: boolean; json?: boolean }) => {
             if (!dispatch) {
+                if (opts.json) {
+                    process.stdout.write(JSON.stringify({
+                        status: 'failed',
+                        success: false,
+                        output: {},
+                        steps: [],
+                        durationMs: 0,
+                        stepsRun: 0,
+                        stepsSkipped: 0,
+                        stepsFailed: 0,
+                        error: `No active session. Run '${cliName} setup' first.`,
+                    }) + '\n');
+                    process.exit(2);
+                }
+
                 console.error(`No active session. Run '${cliName} setup' first.`);
                 process.exit(2);
             }
@@ -104,6 +120,46 @@ export function registerRoutineCommand(
 
             const sessionMgr = new SessionManager(cliName);
 
+            if (opts.json) {
+                // JSON mode — silent, structured output.
+                try {
+                    const def = loadRoutineFile(name, routinesDir, builtinsMap);
+                    const result = await routineRunAction({
+                        loadRoutine: () => def,
+                        validateRoutine,
+                        executeRoutine,
+                        dispatch,
+                        overrides,
+                        dryRun: opts.dryRun,
+                        silent: true,
+                        customResolvers,
+                        pluginRegistry,
+                        invalidateSession: () => sessionMgr.invalidate(),
+                    });
+
+                    process.stdout.write(JSON.stringify(result) + '\n');
+
+                    if (result.status !== 'ok') process.exit(1);
+                } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    process.stdout.write(JSON.stringify({
+                        status: 'failed',
+                        success: false,
+                        output: {},
+                        steps: [],
+                        durationMs: 0,
+                        stepsRun: 0,
+                        stepsSkipped: 0,
+                        stepsFailed: 0,
+                        error: msg,
+                    }) + '\n');
+                    process.exit(1);
+                }
+
+                return;
+            }
+
+            // Default mode — colored progress output (unchanged from before).
             try {
                 const def = loadRoutineFile(name, routinesDir, builtinsMap);
                 console.log(
