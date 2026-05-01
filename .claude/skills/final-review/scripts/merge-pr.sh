@@ -10,6 +10,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 pr="${1:?pr number required}"
 head_sha="${2:?head sha required}"
 merge_method="${3:-merge}"

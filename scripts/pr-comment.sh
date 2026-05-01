@@ -20,6 +20,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 if [ $# -lt 2 ] || [ $# -gt 3 ]; then
     echo "usage: $0 <pr-or-issue-number> <body-string-or-path> [--target=pr|issue]" >&2
     exit 2

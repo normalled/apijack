@@ -15,6 +15,8 @@
 
 set -euo pipefail
 
+source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+
 repo="normalled/apijack"
 
 # One API call: list candidate PRs with labels + head SHA.
