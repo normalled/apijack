@@ -1,5 +1,8 @@
 export { createCli } from './cli-builder';
-export type { Cli, CommandOptions, DispatcherOptions } from './cli-builder';
+export type { Cli, CommandOptions, DispatcherOptions, RunRoutineOptions } from './cli-builder';
+export { runRoutine } from './run-routine';
+export type { StandaloneRunRoutineOptions } from './run-routine';
+export type { RoutineResult, RoutineResultStep } from './routine/executor';
 export type {
     CliOptions,
     CliContext,
