@@ -79,3 +79,63 @@ export default async (args) => ({ echoed: args.msg });
         expect(result.status).toBe('ok');
     });
 });
+
+describe('runRoutine (standalone, no project marker — global config path)', () => {
+    let tmpHome: string;
+    let cwdDir: string;
+    let originalHome: string | undefined;
+    let originalCwd: string;
+
+    beforeEach(() => {
+        const id = `run-routine-global-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        tmpHome = join(tmpdir(), `${id}-home`);
+        cwdDir = join(tmpdir(), `${id}-cwd`);
+        mkdirSync(cwdDir, { recursive: true });
+        // No .apijack.json marker — exercises the `else` branch in run-routine.ts where
+        // configDir = ${HOME}/.<cliName>/.
+        mkdirSync(join(tmpHome, '.apijack', 'routines'), { recursive: true });
+        writeFileSync(join(tmpHome, '.apijack', 'config.json'), JSON.stringify({
+            active: 'default',
+            environments: {
+                default: { url: 'http://localhost:9999', user: 'u', password: 'p' },
+            },
+        }));
+        writeFileSync(join(tmpHome, '.apijack', 'routines', 'echo.yaml'),
+            `name: echo
+variables:
+  msg: "global-hello"
+steps:
+  - name: noop
+    command: noop-dispatch
+    args:
+      msg: "$msg"
+    output: ping
+`);
+
+        // Without a project marker, project-loader doesn't load dispatchers, so we register
+        // a no-op consumer dispatcher would normally not be available. Instead, the routine
+        // engine's "command not found" path will throw — which is what we exercise.
+        originalHome = process.env.HOME;
+        process.env.HOME = tmpHome;
+        originalCwd = process.cwd();
+        process.chdir(cwdDir);
+    });
+
+    afterEach(() => {
+        process.chdir(originalCwd);
+
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+
+        rmSync(tmpHome, { recursive: true, force: true });
+        rmSync(cwdDir, { recursive: true, force: true });
+    });
+
+    test('finds routine in $HOME/.apijack/routines/ when no project marker is present', async () => {
+        const result = await runRoutine('echo');
+        // The routine itself fails (no dispatcher for `noop-dispatch`), but the bootstrap
+        // succeeded — the routine was located in the global config dir, not project-local.
+        expect(result.status).toBe('failed');
+        expect(result.steps[0]!).toMatchObject({ name: 'noop', status: 'failed' });
+    });
+});

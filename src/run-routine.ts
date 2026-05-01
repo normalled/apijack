@@ -73,13 +73,18 @@ export async function runRoutine(
     const globalDir = join(effectiveHome, `.${cliName}`);
     let generatedDir: string;
 
+    // Cache the active env once — three call sites consumed it before, each re-reading config.json.
+    // NOTE: opts.env (per spec) for selecting a specific named env is intentionally not yet wired —
+    // would require plumbing through createCli/resolveAuth. Tracked as future work; consumers can
+    // pre-switch via `apijack config switch <env>` for now.
+    const envConfig = getActiveEnvConfig(cliName, { configPath: join(configDir, 'config.json') });
+
     if (projectConfig?.generatedDir && projectRoot) {
         generatedDir = resolve(projectRoot, projectConfig.generatedDir);
     } else if (projectRoot) {
         generatedDir = resolve(projectRoot, '.apijack', 'generated');
     } else {
-        const env = getActiveEnvConfig(cliName, { configPath: join(configDir, 'config.json') });
-        const hostname = env?.url ? new URL(env.url).hostname : 'default';
+        const hostname = envConfig?.url ? new URL(envConfig.url).hostname : 'default';
 
         generatedDir = join(globalDir, 'apis', hostname, 'generated');
     }
@@ -111,30 +116,23 @@ export async function runRoutine(
         projectOnChallenge = projectAuth.onChallenge ?? null;
     }
 
-    if (!authResolved) {
-        const env = getActiveEnvConfig(cliName, { configPath: join(configDir, 'config.json') });
+    if (!authResolved && envConfig) {
+        const authType = (envConfig as Record<string, unknown>).authType as string | undefined;
 
-        if (env) {
-            const authType = (env as Record<string, unknown>).authType as string | undefined;
+        if (authType === 'bearer') {
+            authStrategy = new BearerTokenStrategy(async config => config.password);
+        } else if (authType === 'apiKey') {
+            const headerName = (envConfig as Record<string, unknown>).authHeader as string ?? 'X-API-Key';
+            const apiKey = (envConfig as Record<string, unknown>).apiKey as string ?? '';
 
-            if (authType === 'bearer') {
-                authStrategy = new BearerTokenStrategy(async config => config.password);
-            } else if (authType === 'apiKey') {
-                const headerName = (env as Record<string, unknown>).authHeader as string ?? 'X-API-Key';
-                const apiKey = (env as Record<string, unknown>).apiKey as string ?? '';
-
-                authStrategy = new ApiKeyStrategy(headerName, apiKey);
-            }
+            authStrategy = new ApiKeyStrategy(headerName, apiKey);
         }
     }
 
     let sessionAuth: SessionAuthConfig | undefined;
-    {
-        const env = getActiveEnvConfig(cliName, { configPath: join(configDir, 'config.json') });
 
-        if (env) {
-            sessionAuth = (env as Record<string, unknown>).sessionAuth as SessionAuthConfig | undefined;
-        }
+    if (envConfig) {
+        sessionAuth = (envConfig as Record<string, unknown>).sessionAuth as SessionAuthConfig | undefined;
 
         if (sessionAuth && projectOnChallenge) {
             sessionAuth.onChallenge = projectOnChallenge;
