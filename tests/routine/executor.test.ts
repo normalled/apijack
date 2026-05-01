@@ -445,6 +445,160 @@ describe('executeRoutine', () => {
         const label = dispatched[0]!.label as string;
         expect(label).toMatch(/^run-\d+$/);
     });
+
+    test('steps[] contains an entry per executed step with correct status', async () => {
+        const routine = makeRoutine({
+            variables: { gate: false },
+            steps: [
+                { name: 'a', command: 'cmd-a' },
+                { name: 'b', command: 'cmd-b', condition: '$gate' },
+                { name: 'c', command: 'cmd-c' },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.steps.length).toBe(3);
+        expect(result.steps[0]!).toMatchObject({ name: 'a', status: 'ok' });
+        expect(result.steps[1]!).toMatchObject({ name: 'b', status: 'skipped' });
+        expect(result.steps[2]!).toMatchObject({ name: 'c', status: 'ok' });
+    });
+
+    test('steps[] records failed step and stops on first failure (no continueOnError)', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'first', command: 'ok' },
+                { name: 'broken', command: 'boom' },
+                { name: 'never', command: 'ok' },
+            ],
+        });
+        const dispatcher: CommandDispatcher = async (command) => {
+            if (command === 'boom') throw new Error('kaboom');
+
+            return { ok: true };
+        };
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.status).toBe('failed');
+        expect(result.success).toBe(false);
+        expect(result.steps.length).toBe(2);
+        expect(result.steps[0]!).toMatchObject({ name: 'first', status: 'ok' });
+        expect(result.steps[1]!).toMatchObject({ name: 'broken', status: 'failed', error: 'kaboom' });
+    });
+
+    test('output aggregates results from steps with output: alias', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'create-user', command: 'users.create', output: 'user' },
+                { name: 'create-token', command: 'tokens.create', output: 'token' },
+                { name: 'no-alias', command: 'misc.ping' },
+            ],
+        });
+        const dispatcher: CommandDispatcher = async (command) => {
+            if (command === 'users.create') return { id: 'u-1', name: 'Ada' };
+
+            if (command === 'tokens.create') return { id: 't-1', secret: 'shh' };
+
+            return { ok: true };
+        };
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.output).toEqual({
+            user: { id: 'u-1', name: 'Ada' },
+            token: { id: 't-1', secret: 'shh' },
+        });
+        // step without output: alias is in steps[] but not in output
+        expect(Object.keys(result.output).sort()).toEqual(['token', 'user']);
+    });
+
+    test('failed step does not populate output[alias]', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'ok-step', command: 'ok', output: 'first' },
+                { name: 'fail-step', command: 'fail', output: 'second' },
+            ],
+        });
+        const dispatcher: CommandDispatcher = async (command) => {
+            if (command === 'fail') throw new Error('nope');
+
+            return { ok: true };
+        };
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.output).toEqual({ first: { ok: true } });
+        expect(result.output).not.toHaveProperty('second');
+    });
+
+    test('silent: true suppresses stderr and console.error writes from executor', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'broken', command: 'fail' },
+            ],
+        });
+        const dispatcher: CommandDispatcher = async () => {
+            throw new Error('boom');
+        };
+
+        const captured: string[] = [];
+        const origConsoleError = console.error;
+        const origStderrWrite = process.stderr.write.bind(process.stderr);
+        console.error = (...args: unknown[]) => {
+            captured.push(args.join(' '));
+        };
+        process.stderr.write = ((chunk: any) => {
+            captured.push(typeof chunk === 'string' ? chunk : chunk.toString());
+
+            return true;
+        }) as typeof process.stderr.write;
+
+        try {
+            const result = await executeRoutine(routine, {}, dispatcher, { silent: true });
+            expect(result.status).toBe('failed');
+            expect(captured.join('')).toBe('');
+        } finally {
+            console.error = origConsoleError;
+            process.stderr.write = origStderrWrite;
+        }
+    });
+
+    test('silent: false (default) writes step failure to stderr/console.error', async () => {
+        const routine = makeRoutine({
+            steps: [{ name: 'broken', command: 'fail' }],
+        });
+        const dispatcher: CommandDispatcher = async () => {
+            throw new Error('boom');
+        };
+
+        const captured: string[] = [];
+        const origConsoleError = console.error;
+        console.error = (...args: unknown[]) => {
+            captured.push(args.join(' '));
+        };
+
+        try {
+            await executeRoutine(routine, {}, dispatcher);
+            expect(captured.join('\n')).toContain('boom');
+        } finally {
+            console.error = origConsoleError;
+        }
+    });
+
+    test('result includes status, output, steps, and durationMs fields', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'step-1', command: 'cmd-a' },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.status).toBe('ok');
+        expect(result.success).toBe(true);
+        expect(typeof result.durationMs).toBe('number');
+        expect(result.durationMs).toBeGreaterThanOrEqual(0);
+        expect(result.output).toEqual({});
+        expect(Array.isArray(result.steps)).toBe(true);
+    });
 });
 
 describe('executeRoutine with plugin registry', () => {
