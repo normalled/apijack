@@ -7,6 +7,8 @@
 set -euo pipefail
 
 source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+# shellcheck source=_canonical-fields.sh
+source "$(dirname "$0")/_canonical-fields.sh"
 
 if [ $# -ne 2 ]; then
     echo "usage: $0 <issue-number> <expected-sha256>" >&2
@@ -18,22 +20,10 @@ expected="$2"
 repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 
 issue_json=$(gh api "repos/$repo/issues/$issue")
-comments_json=$(gh api --paginate "repos/$repo/issues/$issue/comments" \
-    | jq -s 'add // [] | map({id, user: .user.login, body, updated_at})')
+comments_json=$(gh api --paginate "repos/$repo/issues/$issue/comments" | jq -s 'add // []')
 
-actual=$(jq -nSc \
-    --argjson issue "$issue_json" \
-    --argjson comments "$comments_json" \
-    '{
-        number:     $issue.number,
-        title:      $issue.title,
-        body:       $issue.body,
-        author:     $issue.user.login,
-        created_at: $issue.created_at,
-        updated_at: $issue.updated_at,
-        locked:     $issue.locked,
-        comments:   $comments
-    }' | sha256sum | awk '{print $1}')
+actual=$(build_canonical_snapshot "$issue_json" "$comments_json" \
+    | jq -Sc . | sha256sum | awk '{print $1}')
 
 if [ "$actual" = "$expected" ]; then
     echo "snapshot verified for issue #$issue"

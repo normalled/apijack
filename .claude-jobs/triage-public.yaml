@@ -21,7 +21,8 @@ preflight:
   run: |
     set -euo pipefail
     # Find one open `needs triage` issue NOT authored by an internal user.
-    INTERNAL_AUTHORS_RE='^(garretpremo)$'
+    # shellcheck source=_internal-authors.sh
+    source ".claude-jobs/_internal-authors.sh"
     repo="normalled/apijack"
     n=$(gh issue list --repo "$repo" \
           --state open \
@@ -34,7 +35,8 @@ preflight:
 claude:
   prompt_cmd: |
     set -euo pipefail
-    INTERNAL_AUTHORS_RE='^(garretpremo)$'
+    # shellcheck source=_internal-authors.sh
+    source ".claude-jobs/_internal-authors.sh"
     repo="normalled/apijack"
     n=$(gh issue list --repo "$repo" \
           --state open \

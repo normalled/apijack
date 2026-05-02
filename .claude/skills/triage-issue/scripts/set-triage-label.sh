@@ -54,8 +54,11 @@ for l in "${state_labels[@]}"; do
     gh api -X DELETE "repos/$repo/issues/$issue/labels/$encoded" >/dev/null
 done
 
-if ! grep -qxF "$target" <<<"$current"; then
+if grep -qxF "$target" <<<"$current"; then
+    echo "'$target' already set on issue #$issue"
+else
     gh api -X POST "repos/$repo/issues/$issue/labels" -f "labels[]=$target" >/dev/null
+    echo "added '$target' to issue #$issue"
 fi
 
 echo "issue #$issue labels:"

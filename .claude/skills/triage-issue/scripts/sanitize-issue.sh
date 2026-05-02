@@ -36,34 +36,32 @@ fi
 issue="$1"
 repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 
+# Pre-fetch and flatten paginated comments via jq (mirrors snapshot-issue.sh).
+# Avoids brittle bracket-pair regex parsing of `gh api --paginate`'s
+# concatenated JSON arrays — that regex mishandles bracket-bearing comment
+# bodies (e.g. comments containing `[link](url)` text).
+issue_json=$(gh api "repos/$repo/issues/$issue")
+comments_json=$(gh api --paginate "repos/$repo/issues/$issue/comments" | jq -s 'add // []')
+
+# Combine into a single JSON object passed via a temp file — sidesteps both
+# ARG_MAX (argv/env limit) and the heredoc-vs-stdin conflict.
+payload_file=$(mktemp)
+trap 'rm -f "$payload_file"' EXIT
+jq -n \
+    --argjson issue "$issue_json" \
+    --argjson comments "$comments_json" \
+    '{issue: $issue, comments: $comments}' > "$payload_file"
+
 # Strip zero-width / tag / bidi chars and HTML comments and markdown images.
 # Implemented in a small python because sed's unicode handling is uneven.
-python3 - "$repo" "$issue" <<'PY'
-import json, re, subprocess, sys
+ISSUE_NUMBER="$issue" PAYLOAD_FILE="$payload_file" python3 - <<'PY'
+import json, os, re
 
-repo, issue = sys.argv[1], sys.argv[2]
-
-def gh_api(path, paginate=False):
-    cmd = ["gh", "api"]
-    if paginate:
-        cmd.append("--paginate")
-    cmd.append(path)
-    return subprocess.check_output(cmd, text=True)
-
-issue_obj = json.loads(gh_api(f"repos/{repo}/issues/{issue}"))
-comments_raw = gh_api(f"repos/{repo}/issues/{issue}/comments", paginate=True)
-# --paginate concatenates JSON arrays; merge them.
-comments = []
-for chunk in re.findall(r'\[.*?\](?=\s*\[|\s*$)', comments_raw, re.DOTALL):
-    try:
-        comments.extend(json.loads(chunk))
-    except json.JSONDecodeError:
-        pass
-if not comments:
-    try:
-        comments = json.loads(comments_raw)
-    except json.JSONDecodeError:
-        comments = []
+issue     = os.environ["ISSUE_NUMBER"]
+with open(os.environ["PAYLOAD_FILE"]) as f:
+    payload = json.load(f)
+issue_obj = payload["issue"]
+comments  = payload["comments"]
 
 ZW = "".join(chr(c) for c in (0x200B, 0x200C, 0x200D, 0xFEFF))
 TAG_RE = re.compile(r"[\U000E0000-\U000E007F]")
