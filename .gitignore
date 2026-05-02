@@ -6,9 +6,8 @@ bun.lockb
 .local
 .apijack/
 
-# Superpowers docs (plans & specs)
-docs/superpowers/
-docs/icons/
+# Local docs (plans, specs, audits — never shipped)
+docs/
 wiki/
 
 
