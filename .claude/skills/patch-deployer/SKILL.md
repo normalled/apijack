@@ -54,6 +54,14 @@ There must be **zero** entries in a "Features" or "Changed" bucket — the gate 
 
 For each fix commit, look up the PR number (`(#NN)` in the subject, or `gh pr list --state merged --search "<subject>"`).
 
+### 3a. Collect closing references
+
+```bash
+./scripts/collect-closes-refs.sh
+```
+
+Prints `Closes #N` lines for every issue closed by the issue PRs in this range. These MUST be placed at the top of the release PR body (step 4) — without them, GitHub will not auto-close the issues when dev → main merges, because the originating PRs landed on `dev` (a non-default branch). Empty output is fine if no tracked issues were resolved.
+
 ### 4. Draft the PR body
 
 Use the `Write` tool — never inline in a heredoc — to avoid backtick-escaping. Write to `.claude-jobs/release-bodies/dev-to-main.md`.
@@ -65,6 +73,10 @@ Use the `Write` tool — never inline in a heredoc — to avoid backtick-escapin
 #### Body template
 
 ```markdown
+Closes #N
+Closes #M
+...
+
 <1-sentence thesis describing the focus of the patch — usually "Bug fixes and internal cleanup since vX.Y.Z-1." or similar.>
 
 ## 🐛 Fixes
