@@ -20,10 +20,16 @@ existing=$(gh pr list --repo "$repo" --head dev --base main --state open --json 
 
 if [ -n "$existing" ]; then
     gh pr edit "$existing" --repo "$repo" --title "$title" --body-file "$body_file" >/dev/null
-    echo "$existing"
+    pr="$existing"
 else
     git push -u origin dev
     url=$(gh pr create --repo "$repo" --base main --head dev \
         --title "$title" --body-file "$body_file")
-    echo "${url##*/}"
+    pr="${url##*/}"
 fi
+
+# Add `release` label via the REST API. `gh pr edit --add-label` is currently
+# broken by the projects-classic deprecation (exits 1 with a GraphQL warning).
+gh api -X POST "repos/$repo/issues/$pr/labels" -f 'labels[]=release' >/dev/null
+
+echo "$pr"
