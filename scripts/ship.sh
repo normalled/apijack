@@ -153,6 +153,11 @@ fi
 
 PR_NUM=$(echo "$PR_URL" | grep -oE '[0-9]+$')
 
+# Apply `release` label idempotently. `gh pr edit --add-label` is currently
+# broken by the projects-classic deprecation (exits 1), so use the REST API.
+gh api -X POST "repos/normalled/apijack/issues/$PR_NUM/labels" \
+    -f 'labels[]=release' >/dev/null
+
 # ── Step 5: Wait for CI checks ─────────────────────────────────────
 
 info "Waiting for CI checks..."

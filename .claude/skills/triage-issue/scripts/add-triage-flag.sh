@@ -35,5 +35,12 @@ if [ "$valid" -ne 1 ]; then
 fi
 
 repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+
+current=$(gh api "repos/$repo/issues/$issue/labels" --jq '.[].name')
+if grep -qxF "$flag" <<<"$current"; then
+    echo "'$flag' already set on issue #$issue"
+    exit 0
+fi
+
 gh api -X POST "repos/$repo/issues/$issue/labels" -f "labels[]=$flag" >/dev/null
 echo "added '$flag' to issue #$issue"

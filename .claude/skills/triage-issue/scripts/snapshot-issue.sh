@@ -12,6 +12,8 @@
 set -euo pipefail
 
 source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
+# shellcheck source=_canonical-fields.sh
+source "$(dirname "$0")/_canonical-fields.sh"
 
 if [ $# -ne 1 ]; then
     echo "usage: $0 <issue-number>" >&2
@@ -26,22 +28,9 @@ mkdir -p "$(dirname "$out")"
 
 # Pull canonical fields. Comments are paginated, so use --paginate.
 issue_json=$(gh api "repos/$repo/issues/$issue")
-comments_json=$(gh api --paginate "repos/$repo/issues/$issue/comments" \
-    | jq -s 'add // [] | map({id, user: .user.login, body, updated_at})')
+comments_json=$(gh api --paginate "repos/$repo/issues/$issue/comments" | jq -s 'add // []')
 
-snapshot=$(jq -n \
-    --argjson issue "$issue_json" \
-    --argjson comments "$comments_json" \
-    '{
-        number:     $issue.number,
-        title:      $issue.title,
-        body:       $issue.body,
-        author:     $issue.user.login,
-        created_at: $issue.created_at,
-        updated_at: $issue.updated_at,
-        locked:     $issue.locked,
-        comments:   $comments
-    }')
+snapshot=$(build_canonical_snapshot "$issue_json" "$comments_json")
 
 printf '%s\n' "$snapshot" > "$out"
 

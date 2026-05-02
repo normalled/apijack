@@ -23,11 +23,16 @@ wiki/
 .claude-jobs/triage-snapshots/
 .claude-jobs/triage-reports/
 
-# Review-body files staged for `gh pr review --body-file` — local-only
+# Body files staged for `--body-file` (PR/issue/release) — local-only
 .claude-jobs/review-bodies/
 .claude-jobs/release-bodies/
+.claude-jobs/pr-bodies/
+.claude-jobs/issue-bodies/
 
 # Operator-private threat-model docs (kept locally, never shipped)
 .claude-jobs/*.private.md
 .claude-jobs/triage-public.md
 .claude/scheduled_tasks.lock
+
+# Subagent worktrees (created by Agent isolation: worktree)
+.claude/worktrees/

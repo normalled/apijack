@@ -25,7 +25,8 @@ auth: subscription
 preflight:
   run: |
     set -euo pipefail
-    INTERNAL_AUTHORS=("garretpremo")
+    # shellcheck source=_internal-authors.sh
+    source ".claude-jobs/_internal-authors.sh"
     repo="normalled/apijack"
     found=""
     for author in "${INTERNAL_AUTHORS[@]}"; do
@@ -46,7 +47,8 @@ preflight:
 claude:
   prompt_cmd: |
     set -euo pipefail
-    INTERNAL_AUTHORS=("garretpremo")
+    # shellcheck source=_internal-authors.sh
+    source ".claude-jobs/_internal-authors.sh"
     repo="normalled/apijack"
     for author in "${INTERNAL_AUTHORS[@]}"; do
       n=$(gh issue list --repo "$repo" \
