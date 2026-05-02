@@ -1,5 +1,5 @@
 name: final-review
-description: Approve and merge a PR that has been labeled `first pass reviewed` for at least 4 minutes, with no commits landed since the label.
+description: Mark approved (label) and merge a PR that has been labeled `first pass reviewed` for at least 4 minutes, with no commits landed since the label.
 
 schedule: "*/5 * * * *"
 enabled: true
@@ -44,7 +44,7 @@ claude:
 
       Writes (in order, after gates pass):
         Write → .claude-jobs/review-bodies/final-<pr>.md     (approval body)
-        .claude/skills/review-issue/scripts/post-review.sh <pr> approve <body-file>
+        .claude/skills/review-issue/scripts/post-review.sh <pr> comment <body-file>
         .claude/skills/review-issue/scripts/set-review-label.sh <pr> "approved"
         .claude/skills/final-review/scripts/merge-pr.sh <pr> "$HEAD_SHA"
 
@@ -54,11 +54,15 @@ claude:
 
     Write is path-scoped to .claude-jobs/review-bodies/**; do not try to
     write anywhere else. Do NOT call `gh pr review` directly (the script
-    handles approve), `gh pr edit --add-label` / `--remove-label` (broken
+    handles posting), `gh pr edit --add-label` / `--remove-label` (broken
     by projects-classic deprecation; use set-review-label.sh), `gh pr diff`,
     `gh issue view`, `gh repo view`, or any Skill invocation. If you find
     yourself wanting a tool you don't have, STOP — that's a signal you've
     drifted out of scope.
+
+    You don't need to **literally** approve the PR. Just a comment that
+    _says you approve_. The `approved` label moved in the writes block
+    above is the workflow signal.
 
     1. Re-verify every gate condition listed in skill step 1 BEFORE any write.
        The preflight already filtered by label age and head-vs-label staleness;
@@ -78,7 +82,7 @@ claude:
 
     3. The approval body must be written to `.claude-jobs/review-bodies/final-<pr>.md`
        via the Write tool. Do NOT pass markdown to gh inline. Then call:
-         .claude/skills/review-issue/scripts/post-review.sh <pr> approve <body-file>
+         .claude/skills/review-issue/scripts/post-review.sh <pr> comment <body-file>
 
     4. Label transition is atomic via:
          .claude/skills/review-issue/scripts/set-review-label.sh <pr> "approved"
