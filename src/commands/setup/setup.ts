@@ -42,10 +42,13 @@ export function registerSetupCommand(
     opts?: {
         allowedCidrs?: string[];
         configPath?: string;
+        /** Display name for user-facing output. Defaults to cliName. */
+        displayName?: string;
     },
 ): void {
+    const displayName = opts?.displayName ?? cliName;
     const action = async (cmdOpts: { allowInsecureStorage?: boolean }) => {
-        console.log(`${cliName} Setup\n`);
+        console.log(`${displayName} Setup\n`);
 
         const envName = await prompt('Environment name [default]: ', 'default');
         const url = await prompt('URL [http://localhost:8080]: ', 'http://localhost:8080');
@@ -81,7 +84,7 @@ export function registerSetupCommand(
             console.log('Credentials verified.');
         }
 
-        console.log(`Saved environment '${envName}' to ~/.${cliName}/config.json`);
+        console.log(`Saved environment '${envName}' to ~/.${displayName}/config.json`);
         console.log(`Switched to '${envName}'\n`);
     };
 

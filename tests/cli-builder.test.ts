@@ -334,6 +334,67 @@ describe('built-in commands', () => {
         expect(output).toContain('My custom CLI tool');
     });
 
+    test('without programName, help and hints show storage name (cliName)', async () => {
+        const cli = createCli(
+            makeOptions({
+                name: 'apijack',
+                description: 'Default branding',
+            }),
+        );
+        cli.command('extra', (program) => {
+            program.command('extra').description('extra command');
+        });
+
+        // No --help flag triggers showCustomHelp's compact path that emits the
+        // "run '<cliName> --help'" hint.
+        process.argv = ['node', 'apijack'];
+
+        const output = await captureOutput(() => cli.run());
+
+        expect(output).toContain('Usage: apijack');
+        expect(output).toContain("Run 'apijack <command> --help'");
+    });
+
+    test('programName overrides display name in help and hints, leaves cliName for storage', async () => {
+        const cli = createCli(
+            makeOptions({
+                name: 'apijack',           // storage identity (unchanged)
+                programName: 'rrc',        // display-only branding
+                description: 'RRCloud CLI',
+            }),
+        );
+        cli.command('extra', (program) => {
+            program.command('extra').description('extra command');
+        });
+
+        process.argv = ['node', 'rrc'];
+
+        const output = await captureOutput(() => cli.run());
+
+        // Display strings show the override.
+        expect(output).toContain('Usage: rrc');
+        expect(output).toContain('RRCloud CLI');
+        expect(output).toContain("Run 'rrc <command> --help'");
+        // The bare "apijack" identity should NOT appear in user-facing branding.
+        expect(output).not.toMatch(/Usage: apijack/);
+        expect(output).not.toMatch(/Run 'apijack /);
+    });
+
+    test('programName defaults to name when omitted', async () => {
+        const cli = createCli(
+            makeOptions({
+                name: 'foo',
+                description: 'Foo CLI',
+            }),
+        );
+
+        process.argv = ['node', 'foo', '--help'];
+
+        const output = await captureOutput(() => cli.run());
+
+        expect(output).toContain('Usage: foo');
+    });
+
     test('--dry-run flag is registered', async () => {
         const cli = createCli(makeOptions());
 

@@ -138,10 +138,15 @@ const projectSettings = projectRoot
     : {};
 
 // 9. Create CLI
+//    `name` stays apijack so storage paths (~/.apijack/) and env-var prefix
+//    (APIJACK_*) are unaffected. `programName`, `description`, and `version`
+//    pull from .apijack.json when present so a delegating consumer brands its
+//    own --help / setup output.
 const cli = createCli({
     name: CLI_NAME,
-    description: 'Jack into any OpenAPI spec and rip a full-featured CLI',
-    version: VERSION,
+    programName: projectConfig?.name ?? CLI_NAME,
+    description: projectConfig?.description ?? 'Jack into any OpenAPI spec and rip a full-featured CLI',
+    version: projectConfig?.version ?? VERSION,
     specPath,
     auth: authStrategy,
     sessionAuth,
