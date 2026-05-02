@@ -6,9 +6,8 @@ bun.lockb
 .local
 .apijack/
 
-# Superpowers docs (plans & specs)
-docs/superpowers/
-docs/icons/
+# Local docs (plans, specs, audits — never shipped)
+docs/
 wiki/
 
 
@@ -26,6 +25,7 @@ wiki/
 
 # Review-body files staged for `gh pr review --body-file` — local-only
 .claude-jobs/review-bodies/
+.claude-jobs/release-bodies/
 
 # Operator-private threat-model docs (kept locally, never shipped)
 .claude-jobs/*.private.md
