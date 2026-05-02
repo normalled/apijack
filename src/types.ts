@@ -16,7 +16,14 @@ export interface AuthedCliContext extends CliContext {
 }
 
 export interface CliOptions {
+    /** Storage / session / env-var-prefix identity. Determines on-disk paths
+     *  (~/.<name>/), the env-var prefix (NAME_URL/NAME_USER/NAME_PASS), and
+     *  config namespacing. Should not change once a CLI ships. */
     name: string;
+    /** Display-only name used in --help, the setup banner, and "Run '<cli> setup'"
+     *  hints. Defaults to `name`. Lets a downstream CLI delegating to the shared
+     *  `apijack` binary brand its own user-facing output without altering storage. */
+    programName?: string;
     description: string;
     version: string;
     specPath: string;

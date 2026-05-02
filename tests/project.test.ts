@@ -81,6 +81,20 @@ describe('loadProjectConfig()', () => {
         expect(result!.auth).toBe('basic');
         expect(result!.allowedCidrs).toEqual(['192.168.1.0/24']);
     });
+
+    test('loads display branding fields (description, version)', () => {
+        mkdirSync(testRoot, { recursive: true });
+        writeFileSync(join(testRoot, '.apijack.json'), JSON.stringify({
+            name: 'rrc',
+            description: 'RRCloud CLI',
+            version: '2.5.0',
+        }));
+
+        const result = loadProjectConfig(join(testRoot, '.apijack.json'));
+        expect(result!.name).toBe('rrc');
+        expect(result!.description).toBe('RRCloud CLI');
+        expect(result!.version).toBe('2.5.0');
+    });
 });
 
 describe('resolveConfigDir()', () => {

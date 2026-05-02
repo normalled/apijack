@@ -4,6 +4,8 @@ import { homedir } from 'os';
 
 export interface ProjectConfig {
     name?: string;
+    description?: string;
+    version?: string;
     specUrl?: string;
     generatedDir?: string;
     auth?: string;

@@ -76,7 +76,7 @@ const CORE_COMMANDS = new Set([
 
 function showCustomHelp(
     program: Command,
-    cliName: string,
+    displayName: string,
     showAll: boolean,
     customCommandNames: Set<string>,
 ): void {
@@ -123,11 +123,11 @@ function showCustomHelp(
         }
     } else if (api.length > 0) {
         console.log(
-            `\n  ${api.length} API command groups available — run '${cliName} --help' to list all`,
+            `\n  ${api.length} API command groups available — run '${displayName} --help' to list all`,
         );
     }
 
-    console.log(`\nRun '${cliName} <command> --help' for details on any command.`);
+    console.log(`\nRun '${displayName} <command> --help' for details on any command.`);
 }
 
 export function createCli(options: CliOptions): Cli {
@@ -136,6 +136,7 @@ export function createCli(options: CliOptions): Cli {
     const consumerResolvers = new Map<string, CustomResolver>();
     const pluginRegistry = new PluginRegistry();
     const cliName = options.name;
+    const displayName = options.programName ?? options.name;
     const configOpts = options.configPath ? { configPath: options.configPath } : undefined;
     const configDir = options.configPath
         ? resolve(options.configPath, '..')
@@ -188,7 +189,7 @@ export function createCli(options: CliOptions): Cli {
         const resolved = resolveAuth(cliName, configOpts);
 
         if (!resolved) {
-            throw new Error(`No active env config. Run '${cliName} setup' to configure credentials.`);
+            throw new Error(`No active env config. Run '${displayName} setup' to configure credentials.`);
         }
 
         // 3. Compute auth strategy + sessionMgr.
@@ -421,7 +422,7 @@ export function createCli(options: CliOptions): Cli {
 
             // 1. Build Commander program
             program
-                .name(cliName)
+                .name(displayName)
                 .description(options.description)
                 .version(options.version);
 
@@ -444,6 +445,7 @@ export function createCli(options: CliOptions): Cli {
             registerSetupCommand(program, cliName, {
                 allowedCidrs: options.allowedCidrs,
                 configPath: options.configPath,
+                displayName,
             });
             registerConfigCommand(program, cliName, {
                 configPath: options.configPath,
@@ -486,7 +488,7 @@ export function createCli(options: CliOptions): Cli {
                 && !skipAuthCommands.has(cmd)
                 && !isHelpOrVersion
             ) {
-                console.log(`${cliName} Setup\n`);
+                console.log(`${displayName} Setup\n`);
                 const envName = await prompt('Environment name [default]: ', 'default');
                 const url = await prompt('URL [http://localhost:8080]: ', 'http://localhost:8080');
                 const user = await prompt('Username/Email: ');
@@ -574,7 +576,7 @@ export function createCli(options: CliOptions): Cli {
             // Shared session resolver — lazy, runs on first API request or explicit consumer call
             const resolveSession = async (): Promise<void> => {
                 if (!resolved || !sessionMgr) {
-                    throw new Error(`Not authenticated. Run '${cliName} setup' to configure credentials.`);
+                    throw new Error(`Not authenticated. Run '${displayName} setup' to configure credentials.`);
                 }
 
                 if (ctx && ctx.session) return;
@@ -600,7 +602,7 @@ export function createCli(options: CliOptions): Cli {
                     resolveSession,
                     saveSession: async () => {
                         if (!sessionMgr) {
-                            throw new Error(`Not authenticated. Run '${cliName} setup' to configure credentials.`);
+                            throw new Error(`Not authenticated. Run '${displayName} setup' to configure credentials.`);
                         }
 
                         if (ctx!.session) {
@@ -913,7 +915,7 @@ export function createCli(options: CliOptions): Cli {
                 const showAll
                     = userArgs[0] === '--help' || userArgs[0] === '-h';
                 const customCommandNames = new Set(consumerCommands.map(c => c.name));
-                showCustomHelp(program, cliName, showAll, customCommandNames);
+                showCustomHelp(program, displayName, showAll, customCommandNames);
                 process.exit(0);
             }
 
