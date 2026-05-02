@@ -47,6 +47,7 @@ claude:
         .claude/skills/review-issue/scripts/post-review.sh <pr> comment <body-file>
         .claude/skills/review-issue/scripts/set-review-label.sh <pr> "approved"
         .claude/skills/final-review/scripts/merge-pr.sh <pr> "$HEAD_SHA"
+        .claude/skills/final-review/scripts/label-merged-issues.sh <pr>
 
       Gate-failure path:
         Write → .claude-jobs/review-bodies/final-<pr>-gate-fail.md
@@ -95,7 +96,13 @@ claude:
        causes GitHub to reject with 409. If the script exits non-zero, STOP
        — do not retry; the next cron tick will re-run gates.
 
-    6. Do NOT invoke any Skill, including next-deployer. After the merge,
+    6. Label every issue referenced by `Closes #N` / `Fixes #N` /
+       `Resolves #N` in the PR body with `merged to dev`:
+         .claude/skills/final-review/scripts/label-merged-issues.sh <pr>
+       Idempotent and best-effort — per-issue failures are logged but do
+       not fail the run.
+
+    7. Do NOT invoke any Skill, including next-deployer. After the merge,
        stop.
 
   allowed_tools:
@@ -107,6 +114,7 @@ claude:
     - "Bash(gh api -X GET repos/*/commits/*)"                 # head commit metadata
     - "Bash(.claude/skills/final-review/scripts/find-final-review-candidate.sh*)"
     - "Bash(.claude/skills/final-review/scripts/merge-pr.sh*)"
+    - "Bash(.claude/skills/final-review/scripts/label-merged-issues.sh*)"
     - "Bash(.claude/skills/review-issue/scripts/post-review.sh*)"
     - "Bash(.claude/skills/review-issue/scripts/set-review-label.sh*)"
     - "Bash(git log*)"

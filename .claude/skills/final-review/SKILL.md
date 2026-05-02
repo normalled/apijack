@@ -1,6 +1,6 @@
 ---
 name: final-review
-description: Use after a PR has been labeled `first pass reviewed` for at least 4 minutes — verifies CI is still green and no new commits landed since the label, aggregates outstanding non-blocking observations, posts an approval comment, replaces the label with `approved`, and merges.
+description: Use after a PR has been labeled `first pass reviewed` for at least 4 minutes — verifies CI is still green and no new commits landed since the label, aggregates outstanding non-blocking observations, posts an approval comment, replaces the label with `approved`, merges, and labels every issue referenced by `Closes #N` with `merged to dev`.
 ---
 
 # Final Review
@@ -102,7 +102,15 @@ This atomically removes `first pass reviewed` and adds `approved`. Other PR labe
 
 The script pins the merge to `$HEAD_SHA`, so a commit landing between step 1 and step 6 causes GitHub to reject the merge with 409. **If the script exits non-zero, STOP** — do not retry. The cron will pick the PR up again next tick after the new commit gets a fresh first-pass review.
 
-### 7. Stop
+### 7. Label referenced issues with `merged to dev`
+
+```bash
+.claude/skills/final-review/scripts/label-merged-issues.sh <pr>
+```
+
+Parses the PR body for `Closes #N` / `Fixes #N` / `Resolves #N` and adds the `merged to dev` label to each referenced issue. The label marks the issue as shipped to dev, pending release to main. Idempotent and best-effort — per-issue failures are logged but do not fail the run.
+
+### 8. Stop
 
 This skill does NOT invoke `next-deployer`. Publishing to the rolling `next` channel is a separate concern; if you want it automated, that belongs in its own cron.
 
