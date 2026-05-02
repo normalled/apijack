@@ -509,7 +509,7 @@ export function createCli(options: CliOptions): Cli {
                         console.log('Credentials verified.');
                     }
 
-                    console.log(`Saved environment '${envName}' to ~/.${displayName}/config.json`);
+                    console.log(`Saved environment '${envName}' to ~/.${cliName}/config.json`);
                     console.log(`Switched to '${envName}'\n`);
                 } else {
                     console.error('Setup cancelled.');

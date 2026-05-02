@@ -84,7 +84,7 @@ export function registerSetupCommand(
             console.log('Credentials verified.');
         }
 
-        console.log(`Saved environment '${envName}' to ~/.${displayName}/config.json`);
+        console.log(`Saved environment '${envName}' to ~/.${cliName}/config.json`);
         console.log(`Switched to '${envName}'\n`);
     };
 
