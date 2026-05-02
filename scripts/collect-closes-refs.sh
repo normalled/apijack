@@ -25,7 +25,10 @@ fi
 # Extract every #NN reference from commit subjects. This catches both merge
 # commits ('Merge pull request #74 ...') and squash subjects ('chore: foo (#74)').
 # Issue numbers that show up will fail `gh pr view` and be skipped silently.
-PR_NUMS=$(grep -oE '#[0-9]+' "$COMMITS_FILE" | sed 's/#//' | sort -un)
+# `|| true` on the pipeline: grep exits 1 when nothing matches, which would
+# abort the script under `set -eo pipefail` — but a chore-only release with
+# no referenced PRs is a legitimate empty-output case, not a failure.
+PR_NUMS=$(grep -oE '#[0-9]+' "$COMMITS_FILE" | sed 's/#//' | sort -un || true)
 
 declare -A SEEN
 for pr in $PR_NUMS; do
