@@ -14,9 +14,12 @@ export function registerConfigCommand(
         configPath?: string;
         knownSites?: Record<string, { url: string; description: string; group?: string }>;
         allowedCidrs?: string[];
+        /** Display name for user-facing hints. Defaults to cliName. */
+        displayName?: string;
     },
 ): void {
     const configOpts = opts?.configPath ? { configPath: opts.configPath } : undefined;
+    const displayName = opts?.displayName ?? cliName;
     const config = program
         .command('config')
         .description('Manage environment configurations');
@@ -30,7 +33,7 @@ export function registerConfigCommand(
             });
 
             if (envs.length === 0) {
-                console.log(`No environments configured. Run '${cliName} setup' to add one.`);
+                console.log(`No environments configured. Run '${displayName} setup' to add one.`);
 
                 return;
             }
@@ -143,7 +146,7 @@ export function registerConfigCommand(
                 const cfg = await loadConfig(cliName, configOpts);
 
                 if (!cfg || Object.keys(cfg.environments).length === 0) {
-                    console.error(`No environments configured. Run '${cliName} config import' first.`);
+                    console.error(`No environments configured. Run '${displayName} config import' first.`);
                     process.exit(1);
                 }
 
@@ -170,6 +173,7 @@ export function registerConfigCommand(
                         loadConfig: async () => cfg,
                         save: saveEnvironment,
                         cliName,
+                        displayName,
                         saveOpts: configOpts ?? {},
                     });
                     console.log('Password updated.');
