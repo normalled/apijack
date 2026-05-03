@@ -202,6 +202,20 @@ apijack supports pluggable authentication:
 
 Generated OpenAPI commands resolve the session automatically. Consumer-registered custom commands and dispatchers opt in — see Project Extensions below.
 
+### Stale-session refresh and retry (opt-in)
+
+`SessionAuthStrategy`'s cached cookies can go stale on the server side (idle timeout) without the client knowing — the next call ships the dead cookie and the server returns 401 (or 403 in some Spring configs). To recover transparently, opt in by setting `refreshOn` on the session config:
+
+```ts
+new SessionAuthStrategy(new BasicAuthStrategy(), {
+  session: { endpoint: '/session' },
+  cookies: { extract: ['SESSION'], applyTo: ['POST', 'PUT', 'DELETE'] },
+  refreshOn: [401],   // or [401, 403]
+});
+```
+
+When the generated client receives a status in `refreshOn`, it calls the wired refresh callback — which invalidates the cached session and re-bootstraps `/session` — then retries the original request once. Capped at one retry. Strategies that don't use `/session` are unaffected (the field is ignored).
+
 ## Project Extensions
 
 The `.apijack/` directory at a project root is auto-loaded when the CLI runs inside that project:
