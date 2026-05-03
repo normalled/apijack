@@ -451,6 +451,7 @@ export function createCli(options: CliOptions): Cli {
                 configPath: options.configPath,
                 knownSites: options.knownSites,
                 allowedCidrs: options.allowedCidrs,
+                displayName,
             });
             registerUpgradeCommand(program, options.version);
             registerMcpCommand(
@@ -820,7 +821,7 @@ export function createCli(options: CliOptions): Cli {
             }
 
             // 12. Register routine commands
-            registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir, customResolvers, pluginRegistry);
+            registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir, customResolvers, pluginRegistry, displayName);
 
             // 13. Handle -o routine-step
             if (isRoutineStep) {

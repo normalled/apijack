@@ -6,6 +6,8 @@ export interface ConfigUpdatePasswordDeps {
     loadConfig: (cliName: string) => Promise<CliConfig | null>;
     save: (cliName: string, name: string, env: EnvironmentConfig, setActive?: boolean, opts?: Record<string, unknown>) => Promise<void>;
     cliName: string;
+    /** Display name for user-facing hints. Defaults to cliName. */
+    displayName?: string;
     saveOpts: Record<string, unknown>;
 }
 
@@ -18,7 +20,8 @@ export async function configUpdatePasswordAction(deps: ConfigUpdatePasswordDeps)
     const cfg = await deps.loadConfig(deps.cliName);
 
     if (!cfg || Object.keys(cfg.environments).length === 0) {
-        throw new Error(`No environments configured. Run '${deps.cliName} config import' first.`);
+        const displayName = deps.displayName ?? deps.cliName;
+        throw new Error(`No environments configured. Run '${displayName} config import' first.`);
     }
 
     const envName = deps.envName ?? cfg.active;
