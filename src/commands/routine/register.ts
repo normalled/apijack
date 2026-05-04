@@ -46,10 +46,13 @@ export function registerRoutineCommand(
     builtinRoutinesDir?: string,
     customResolvers?: Map<string, CustomResolver>,
     pluginRegistry?: PluginRegistry,
+    /** Display name for user-facing hints. Defaults to cliName. */
+    displayName?: string,
 ): void {
     const builtinsMap = builtinRoutinesDir
         ? loadBuiltinRoutines(builtinRoutinesDir)
         : undefined;
+    const display = displayName ?? cliName;
 
     const routine = program
         .command('routine')
@@ -70,7 +73,7 @@ export function registerRoutineCommand(
                     console.log(`No routines found under '${path.replace(/\/+$/, '')}/'`);
                 } else {
                     console.log(`No routines found in ~/.${cliName}/routines/`);
-                    console.log(`Run '${cliName} routine init' to install built-in routines.`);
+                    console.log(`Run '${display} routine init' to install built-in routines.`);
                 }
 
                 return;
@@ -101,13 +104,13 @@ export function registerRoutineCommand(
                         stepsRun: 0,
                         stepsSkipped: 0,
                         stepsFailed: 0,
-                        error: `No active session. Run '${cliName} setup' first.`,
+                        error: `No active session. Run '${display} setup' first.`,
                     };
                     process.stdout.write(JSON.stringify(failure) + '\n');
                     process.exit(2);
                 }
 
-                console.error(`No active session. Run '${cliName} setup' first.`);
+                console.error(`No active session. Run '${display} setup' first.`);
                 process.exit(2);
             }
 
@@ -230,7 +233,7 @@ export function registerRoutineCommand(
         .option('--set <pairs...>', 'Override variables (key=value)')
         .action(async (name: string, opts: { set?: string[] }) => {
             if (!dispatch) {
-                console.error(`No active session. Run '${cliName} setup' first.`);
+                console.error(`No active session. Run '${display} setup' first.`);
                 process.exit(2);
             }
 

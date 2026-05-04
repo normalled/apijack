@@ -6,6 +6,7 @@ import { Command } from 'commander';
 import { createCli, type Cli } from '../src/cli-builder';
 import type { CliOptions, CliContext, CommandRegistrar, DispatcherHandler, ApijackPlugin } from '../src/types';
 import { BasicAuthStrategy } from '../src/auth/basic';
+import { configUpdatePasswordAction } from '../src/commands/config/update-password/update-password';
 
 const coreManifest = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
@@ -436,6 +437,97 @@ describe('built-in commands', () => {
 
         expect(output).toContain('curl');
         expect(output).toContain('curl-with-creds');
+    });
+});
+
+describe('displayName threaded through subcommand registrar hints (#91)', () => {
+    let originalArgv: string[];
+    let originalExit: typeof process.exit;
+    let testConfigDir: string;
+    let configPath: string;
+
+    beforeEach(() => {
+        originalArgv = process.argv;
+        originalExit = process.exit;
+
+        (process as unknown as { exit: (code?: number) => void }).exit = (code?: number) => {
+            throw new Error(`process.exit(${code ?? 0})`);
+        };
+
+        testConfigDir = join(tmpdir(), 'apijack-displayname-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+        mkdirSync(testConfigDir, { recursive: true });
+        configPath = join(testConfigDir, 'config.json');
+        // Empty-environments config — triggers the "no envs configured" hint paths.
+        writeFileSync(configPath, JSON.stringify({ active: '', environments: {} }));
+    });
+
+    afterEach(() => {
+        process.argv = originalArgv;
+        (process as unknown as { exit: typeof process.exit }).exit = originalExit;
+        rmSync(testConfigDir, { recursive: true, force: true });
+    });
+
+    test('config list: hint uses programName when set', async () => {
+        const cli = createCli(makeOptions({ name: 'apijack', programName: 'mycli', configPath }));
+
+        process.argv = ['node', 'mycli', 'config', 'list'];
+
+        const output = await captureOutput(() => cli.run());
+
+        expect(output).toContain("Run 'mycli setup'");
+        expect(output).not.toContain("Run 'apijack setup'");
+    });
+
+    test('config list: hint falls back to cliName when programName omitted', async () => {
+        const cli = createCli(makeOptions({ name: 'apijack', configPath }));
+
+        process.argv = ['node', 'apijack', 'config', 'list'];
+
+        const output = await captureOutput(() => cli.run());
+
+        expect(output).toContain("Run 'apijack setup'");
+    });
+
+    test('routine list: hint uses programName when set', async () => {
+        const cli = createCli(makeOptions({ name: 'apijack', programName: 'mycli', configPath }));
+
+        process.argv = ['node', 'mycli', 'routine', 'list'];
+
+        const output = await captureOutput(() => cli.run());
+
+        expect(output).toContain("Run 'mycli routine init'");
+        expect(output).not.toContain("Run 'apijack routine init'");
+    });
+
+    test('routine list: hint falls back to cliName when programName omitted', async () => {
+        const cli = createCli(makeOptions({ name: 'apijack', configPath }));
+
+        process.argv = ['node', 'apijack', 'routine', 'list'];
+
+        const output = await captureOutput(() => cli.run());
+
+        expect(output).toContain("Run 'apijack routine init'");
+    });
+
+    test('configUpdatePasswordAction: throws with displayName when set', async () => {
+        await expect(configUpdatePasswordAction({
+            password: 'new',
+            loadConfig: async () => ({ active: '', environments: {} }),
+            save: async () => {},
+            cliName: 'apijack',
+            displayName: 'mycli',
+            saveOpts: {},
+        })).rejects.toThrow("Run 'mycli config import' first");
+    });
+
+    test('configUpdatePasswordAction: throws with cliName when displayName omitted', async () => {
+        await expect(configUpdatePasswordAction({
+            password: 'new',
+            loadConfig: async () => ({ active: '', environments: {} }),
+            save: async () => {},
+            cliName: 'apijack',
+            saveOpts: {},
+        })).rejects.toThrow("Run 'apijack config import' first");
     });
 });
 
