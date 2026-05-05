@@ -603,6 +603,201 @@ describe('executeRoutine', () => {
         }
     });
 
+    test('forEach on non-array emits a skipped steps[] entry (invariant: stepsSkipped == steps.filter(skipped))', async () => {
+        const routine = makeRoutine({
+            steps: [
+                {
+                    name: 'loop',
+                    forEach: '$not-an-array',
+                    as: 'item',
+                    steps: [
+                        { name: 'inner', command: 'process', args: { value: '$item' } },
+                    ],
+                },
+            ],
+        });
+        const { dispatcher, calls } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher, { silent: true });
+
+        expect(result.success).toBe(true);
+        expect(result.stepsSkipped).toBe(1);
+        expect(calls.length).toBe(0);
+        expect(result.steps.length).toBe(1);
+        expect(result.steps[0]!).toMatchObject({ name: 'loop', status: 'skipped' });
+        // Invariant from issue #100
+        expect(result.stepsSkipped).toBe(
+            result.steps.filter(s => s.status === 'skipped').length,
+        );
+    });
+
+    test('forEach iteration entries are tagged with iteration index and total', async () => {
+        const routine = makeRoutine({
+            variables: { items: ['a', 'b', 'c'] },
+            steps: [
+                {
+                    name: 'loop',
+                    forEach: '$items',
+                    as: 'item',
+                    steps: [
+                        { name: 'inner', command: 'process', args: { value: '$item' } },
+                    ],
+                },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.steps.length).toBe(3);
+        expect(result.steps[0]!).toMatchObject({
+            name: 'inner',
+            status: 'ok',
+            iteration: { index: 0, total: 3 },
+        });
+        expect(result.steps[1]!).toMatchObject({
+            name: 'inner',
+            status: 'ok',
+            iteration: { index: 1, total: 3 },
+        });
+        expect(result.steps[2]!).toMatchObject({
+            name: 'inner',
+            status: 'ok',
+            iteration: { index: 2, total: 3 },
+        });
+        // Iteration entries are distinguishable
+        const iterations = result.steps.map(s => s.iteration?.index);
+        expect(iterations).toEqual([0, 1, 2]);
+    });
+
+    test('range iteration entries are tagged with iteration index and total', async () => {
+        const routine = makeRoutine({
+            steps: [
+                {
+                    name: 'loop',
+                    range: [1, 3] as [number, number],
+                    as: 'n',
+                    steps: [
+                        { name: 'inner', command: 'process', args: { num: '$n' } },
+                    ],
+                },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.steps.length).toBe(3);
+        expect(result.steps[0]!.iteration).toEqual({ index: 0, total: 3 });
+        expect(result.steps[1]!.iteration).toEqual({ index: 1, total: 3 });
+        expect(result.steps[2]!.iteration).toEqual({ index: 2, total: 3 });
+    });
+
+    test('skipped step inside forEach iteration carries the iteration tag', async () => {
+        const routine = makeRoutine({
+            variables: { items: ['a', 'b'], gate: false },
+            steps: [
+                {
+                    name: 'loop',
+                    forEach: '$items',
+                    as: 'item',
+                    steps: [
+                        { name: 'inner', command: 'process', condition: '$gate' },
+                    ],
+                },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.stepsSkipped).toBe(2);
+        expect(result.steps.length).toBe(2);
+        expect(result.steps[0]!).toMatchObject({
+            name: 'inner',
+            status: 'skipped',
+            iteration: { index: 0, total: 2 },
+        });
+        expect(result.steps[1]!).toMatchObject({
+            name: 'inner',
+            status: 'skipped',
+            iteration: { index: 1, total: 2 },
+        });
+        // Invariant
+        expect(result.stepsSkipped).toBe(
+            result.steps.filter(s => s.status === 'skipped').length,
+        );
+    });
+
+    test('assertion failure inside forEach iteration preserves the iteration tag', async () => {
+        const routine = makeRoutine({
+            variables: { items: ['a', 'b'] },
+            steps: [
+                {
+                    name: 'loop',
+                    forEach: '$items',
+                    as: 'item',
+                    continueOnError: true,
+                    steps: [
+                        {
+                            name: 'inner',
+                            command: 'cmd',
+                            output: 'r',
+                            assert: '$r.value == "never"',
+                        },
+                    ],
+                },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher({ cmd: { value: 'actual' } });
+        const result = await executeRoutine(routine, {}, dispatcher, { silent: true });
+
+        expect(result.steps.length).toBe(2);
+        expect(result.steps[0]!).toMatchObject({
+            name: 'inner',
+            status: 'failed',
+            iteration: { index: 0, total: 2 },
+        });
+        expect(result.steps[1]!).toMatchObject({
+            name: 'inner',
+            status: 'failed',
+            iteration: { index: 1, total: 2 },
+        });
+    });
+
+    test('non-iteration steps do not carry an iteration tag', async () => {
+        const routine = makeRoutine({
+            steps: [
+                { name: 'a', command: 'cmd-a' },
+                { name: 'b', command: 'cmd-b' },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.steps[0]!.iteration).toBeUndefined();
+        expect(result.steps[1]!.iteration).toBeUndefined();
+    });
+
+    test('steps after a forEach do not carry an iteration tag', async () => {
+        const routine = makeRoutine({
+            variables: { items: ['a', 'b'] },
+            steps: [
+                {
+                    name: 'loop',
+                    forEach: '$items',
+                    as: 'item',
+                    steps: [{ name: 'inner', command: 'cmd-inner' }],
+                },
+                { name: 'after', command: 'cmd-after' },
+            ],
+        });
+        const { dispatcher } = makeMockDispatcher();
+        const result = await executeRoutine(routine, {}, dispatcher);
+
+        expect(result.steps.length).toBe(3);
+        expect(result.steps[0]!.iteration).toEqual({ index: 0, total: 2 });
+        expect(result.steps[1]!.iteration).toEqual({ index: 1, total: 2 });
+        expect(result.steps[2]!).toMatchObject({ name: 'after', status: 'ok' });
+        expect(result.steps[2]!.iteration).toBeUndefined();
+    });
+
     test('result includes status, output, steps, and durationMs fields', async () => {
         const routine = makeRoutine({
             steps: [
