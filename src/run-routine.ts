@@ -21,6 +21,7 @@ import { getActiveEnvConfig } from './config';
 export interface StandaloneRunRoutineOptions extends RunRoutineOptions {
     cwd?: string;
     cliName?: string;
+    programName?: string;
 }
 
 export async function runRoutine(
@@ -146,6 +147,10 @@ export async function runRoutine(
 
     const cli = createCli({
         name: cliName,
+        // Mirror bin/apijack.ts: prefer explicit override, then project config, then cliName.
+        // Surfaces the project's brand in user-visible hints (e.g., the "No active env config.
+        // Run '<programName> setup' ..." error) emitted by createCli().
+        programName: opts.programName ?? projectConfig?.name ?? cliName,
         description: 'apijack',
         version: '0.0.0', // not relevant in programmatic mode
         specPath,
