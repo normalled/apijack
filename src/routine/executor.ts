@@ -21,6 +21,7 @@ export interface RoutineResultStep {
     status: 'ok' | 'failed' | 'skipped';
     output?: unknown;
     error?: string;
+    iteration?: { index: number; total: number };
 }
 
 export interface RoutineResult {
@@ -55,8 +56,17 @@ class RoutineExecutor {
     private stepsSkipped = 0;
     private stepsFailed = 0;
     private inIteration = false;
+    private currentIteration: { index: number; total: number } | null = null;
     private steps: RoutineResultStep[] = [];
     private namedOutput: Record<string, unknown> = {};
+
+    private pushStep(entry: RoutineResultStep): void {
+        if (this.currentIteration) {
+            entry.iteration = { ...this.currentIteration };
+        }
+
+        this.steps.push(entry);
+    }
 
     constructor(
         private dispatch: CommandDispatcher,
@@ -121,7 +131,7 @@ class RoutineExecutor {
 
             if (!evaluateCondition(step.condition, ctx)) {
                 this.stepsSkipped++;
-                this.steps.push({ name: step.name, status: 'skipped' });
+                this.pushStep({ name: step.name, status: 'skipped' });
 
                 if (this.options?.onStep && !this.inIteration)
                     this.options.onStep(step, i, steps.length);
@@ -183,6 +193,7 @@ class RoutineExecutor {
             }
 
             this.stepsSkipped++;
+            this.pushStep({ name: step.name, status: 'skipped' });
 
             return true;
         }
@@ -205,6 +216,7 @@ class RoutineExecutor {
 
         const asName = step.as || 'item';
         this.inIteration = true;
+        const previousIteration = this.currentIteration;
 
         for (let i = 0; i < items.length; i++) {
             if (this.options?.onIteration)
@@ -216,6 +228,8 @@ class RoutineExecutor {
                     totalSteps,
                 );
 
+            this.currentIteration = { index: i, total: items.length };
+
             const iterCtx: RoutineContext = {
                 ...ctx,
                 forEachItem: { name: asName, value: items[i] },
@@ -224,12 +238,14 @@ class RoutineExecutor {
 
             if (!ok && !step.continueOnError) {
                 this.inIteration = false;
+                this.currentIteration = previousIteration;
 
                 return false;
             }
         }
 
         this.inIteration = false;
+        this.currentIteration = previousIteration;
 
         if (this.options?.onIteration && !this.options.silent) process.stderr.write('\n');
 
@@ -284,7 +300,7 @@ class RoutineExecutor {
             if (step.output) ctx.stepOutputs.set(step.output, stepResult);
 
             this.stepsRun++;
-            this.steps.push({ name: step.name, status: 'ok', output: result });
+            this.pushStep({ name: step.name, status: 'ok', output: result });
 
             if (step.output) this.namedOutput[step.output] = result;
 
@@ -299,12 +315,19 @@ class RoutineExecutor {
                     stepResult.success = false;
                     stepResult.error = `Assertion failed: ${step.assert}`;
                     this.stepsFailed++;
-                    // overwrite the previously-pushed 'ok' with the failed entry
-                    this.steps[this.steps.length - 1] = {
+                    // overwrite the previously-pushed 'ok' with the failed entry,
+                    // preserving the iteration tag if any
+                    const overwrite: RoutineResultStep = {
                         name: step.name,
                         status: 'failed',
                         error: stepResult.error,
                     };
+
+                    if (this.currentIteration) {
+                        overwrite.iteration = { ...this.currentIteration };
+                    }
+
+                    this.steps[this.steps.length - 1] = overwrite;
 
                     if (step.output) delete this.namedOutput[step.output];
 
@@ -340,7 +363,7 @@ class RoutineExecutor {
                 console.error(`Step "${step.name}" failed: ${errMsg}`);
             }
 
-            this.steps.push({ name: step.name, status: 'failed', error: errMsg });
+            this.pushStep({ name: step.name, status: 'failed', error: errMsg });
 
             if (!step.continueOnError) return false;
         }

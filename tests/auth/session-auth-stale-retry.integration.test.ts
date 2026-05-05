@@ -121,9 +121,6 @@ describe('SessionAuthStrategy stale-session refresh + retry (integration)', () =
         const getHeaders = (method: string) =>
             resolveRequestHeaders(session ?? { headers: {} }, sessionConfig, method);
         const refreshSession = async () => {
-            // Refresh-callback failure path (refresh itself throws) is intentionally
-            // not covered here — the original-error-with-cause behavior is a deferred
-            // follow-up to #77.
             sessionMgr.invalidate();
             session = await sessionMgr.resolve(strategy, resolved);
         };
@@ -220,6 +217,87 @@ describe('SessionAuthStrategy stale-session refresh + retry (integration)', () =
 
         // No refresh attempted, no retry made.
         expect(sessionCount).toBe(0);
+        expect(deleteCount).toBe(1);
+    });
+
+    test('when refresh callback throws, original 401 is preserved with refresh error as cause (#98)', async () => {
+        // Pre-populate session.json with a cached (server-side stale) session.
+        writeFileSync(sessionPath, JSON.stringify({
+            headers: { Authorization: 'Basic dXNlcjpwYXNz' },
+            cookies: { SESSION: 'stale-sess' },
+        }));
+
+        const paths: Record<string, Record<string, OpenApiOperation>> = {
+            '/admin/matters/{id}': {
+                delete: {
+                    operationId: 'deleteMatter',
+                    parameters: [
+                        { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+                    ],
+                },
+            },
+        };
+        const clientPath = join(tmpDir, 'client.ts');
+        writeFileSync(clientPath, generateClient(paths));
+        const { ApiClient } = await import(clientPath) as { ApiClient: new (
+            baseUrl: string,
+            getHeaders: (method: string) => Record<string, string>,
+            onRefreshNeeded?: () => Promise<void>,
+            refreshOn?: number[],
+        ) => { deleteMatter(id: number): Promise<unknown> }; };
+
+        // Mock fetch:
+        //  - DELETE -> 401 with a structured error body
+        //  - /session would normally be hit by the refresh, but our refresh callback
+        //    throws before getting that far.
+        const originalErrorBody = JSON.stringify({ status: 401, error: 'Unauthorized', path: '/admin/matters/5' });
+        let deleteCount = 0;
+
+        globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+            const urlStr = typeof url === 'string'
+                ? url
+                : url instanceof URL ? url.toString() : url.url;
+            const method = (init?.method ?? 'GET').toUpperCase();
+
+            if (urlStr.includes('/admin/matters/5') && method === 'DELETE') {
+                deleteCount++;
+
+                return new Response(originalErrorBody, { status: 401 });
+            }
+
+            return new Response('not found', { status: 404 });
+        }) as typeof fetch;
+
+        // Refresh callback that always fails — simulates creds being rotated /
+        // /session returning 5xx, etc.
+        const refreshFailure = new Error('refresh failed: credentials no longer valid');
+        const refreshSession = async () => {
+            throw refreshFailure;
+        };
+
+        const sessionMgr = new SessionManager('test', sessionPath);
+        const strategy = new SessionAuthStrategy(new BasicAuthStrategy(), sessionConfig);
+        const session: AuthSession = await sessionMgr.resolve(strategy, resolved);
+        const getHeaders = (method: string) =>
+            resolveRequestHeaders(session, sessionConfig, method);
+
+        const client = new ApiClient(baseUrl, getHeaders, refreshSession, sessionConfig.refreshOn);
+
+        // Capture the thrown error and assert original {status, body} survived.
+        let thrown: unknown;
+        try {
+            await client.deleteMatter(5);
+        } catch (err) {
+            thrown = err;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        const err = thrown as Error & { status?: number; body?: string; cause?: unknown };
+        expect(err.status).toBe(401);
+        expect(err.body).toBe(originalErrorBody);
+        expect(err.cause).toBe(refreshFailure);
+
+        // Original request was made once; no retry attempted because refresh failed.
         expect(deleteCount).toBe(1);
     });
 });
