@@ -78,6 +78,30 @@ export default async (args) => ({ echoed: args.msg });
         const result = await runRoutine('echo', { cwd: projectDir });
         expect(result.status).toBe('ok');
     });
+
+    test('uses projectConfig.name as programName in surfaced errors', async () => {
+        // Re-write project marker with a name; remove env config so the bootstrap surfaces
+        // the "No active env config. Run '<programName> setup' ..." error from createCli().
+        writeFileSync(join(projectDir, '.apijack.json'), JSON.stringify({ name: 'mybrand' }));
+        rmSync(join(projectDir, '.apijack', 'config.json'));
+
+        await expect(runRoutine('echo')).rejects.toThrow(/Run 'mybrand setup'/);
+    });
+
+    test('opts.programName overrides projectConfig.name in surfaced errors', async () => {
+        writeFileSync(join(projectDir, '.apijack.json'), JSON.stringify({ name: 'mybrand' }));
+        rmSync(join(projectDir, '.apijack', 'config.json'));
+
+        await expect(runRoutine('echo', { programName: 'override' }))
+            .rejects.toThrow(/Run 'override setup'/);
+    });
+
+    test('falls back to cliName when neither opts.programName nor projectConfig.name set', async () => {
+        // Project marker has no `name` field (default beforeEach state); remove env config.
+        rmSync(join(projectDir, '.apijack', 'config.json'));
+
+        await expect(runRoutine('echo')).rejects.toThrow(/Run 'apijack setup'/);
+    });
 });
 
 describe('runRoutine (standalone, no project marker — global config path)', () => {
