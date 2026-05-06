@@ -38,6 +38,19 @@ export interface SessionAuthConfig {
      * which re-bootstraps `/session`, then retries the original request once.
      */
     refreshOn?: number[];
+    /**
+     * When true, drops the base strategy's headers (e.g. `Authorization: Basic …`) from the
+     * returned `AuthSession` after the `/session` handshake completes. The base headers are
+     * still sent to the session endpoint itself; only post-handshake API calls carry just
+     * cookies + `headerMirror` headers. Required for stateful backends (e.g. Spring Security
+     * with 2FA) where re-presenting the base credentials on every call re-triggers auth filters
+     * and invalidates the active session.
+     *
+     * Drops *all* headers contributed by the base strategy, not just `Authorization`. If a
+     * custom base strategy contributes non-auth headers you need to keep, write a custom
+     * `AuthStrategy` instead of using this flag.
+     */
+    dropBaseHeaders?: boolean;
     /** Called when the session endpoint returns a non-OK response. Return query params to retry, or null to give up. */
     onChallenge?: (status: number, body: string) => Promise<Record<string, string> | null>;
 }

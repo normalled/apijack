@@ -69,7 +69,7 @@ export class SessionAuthStrategy implements AuthStrategy {
         const cookies = { ...challengeCookies, ...this.extractCookies(res) };
 
         return {
-            headers: baseSession.headers,
+            headers: this.config.dropBaseHeaders ? {} : baseSession.headers,
             cookies,
             expiresAt: baseSession.expiresAt,
             data: baseSession.data,
@@ -86,7 +86,7 @@ export class SessionAuthStrategy implements AuthStrategy {
         if (!baseRestored) return null;
 
         return {
-            headers: baseRestored.headers,
+            headers: this.config.dropBaseHeaders ? {} : baseRestored.headers,
             cookies: cached.cookies,
             expiresAt: baseRestored.expiresAt,
             data: baseRestored.data,
