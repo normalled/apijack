@@ -1,5 +1,6 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
 import { SessionAuthStrategy } from '../../src/auth/session-auth';
+import { resolveRequestHeaders } from '../../src/auth/resolve-headers';
 import type { AuthStrategy, AuthSession, ResolvedAuth, SessionAuthConfig } from '../../src/auth/types';
 
 const resolvedAuth: ResolvedAuth = {
@@ -196,5 +197,101 @@ describe('SessionAuthStrategy', () => {
         const refreshed = await strategy.refresh!(oldSession, resolvedAuth);
         expect(refreshed.cookies!.SESSION).toBe('sess123');
         expect(fetchMock.mockFn).toHaveBeenCalledTimes(1);
+    });
+
+    describe('dropBaseHeaders', () => {
+        const dropConfig: SessionAuthConfig = { ...sessionConfig, dropBaseHeaders: true };
+
+        test('authenticate() omits base headers from returned session when enabled', async () => {
+            const base = makeBaseStrategy();
+            const session = await new SessionAuthStrategy(base, dropConfig).authenticate(resolvedAuth);
+            expect(session.headers).toEqual({});
+            expect(session.headers.Authorization).toBeUndefined();
+        });
+
+        test('authenticate() still sends base headers to the session endpoint when enabled', async () => {
+            const base = makeBaseStrategy();
+            await new SessionAuthStrategy(base, dropConfig).authenticate(resolvedAuth);
+            const fetchInit = (fetchMock.mockFn as any).mock.calls[0][1] as RequestInit;
+            expect(fetchInit.headers).toEqual({ Authorization: 'Basic YWRtaW46c2VjcmV0' });
+        });
+
+        test('authenticate() preserves cookies when base headers are dropped', async () => {
+            const base = makeBaseStrategy();
+            const session = await new SessionAuthStrategy(base, dropConfig).authenticate(resolvedAuth);
+            expect(session.cookies!.SESSION).toBe('sess123');
+            expect(session.cookies!['XSRF-TOKEN']).toBe('xsrf456');
+        });
+
+        test('restore() omits base headers from returned session when enabled', async () => {
+            const base = makeBaseStrategy();
+            const cached: AuthSession = {
+                headers: { Authorization: 'Basic cached' },
+                cookies: { 'SESSION': 'cached_sess', 'XSRF-TOKEN': 'cached_xsrf' },
+            };
+            const result = await new SessionAuthStrategy(base, dropConfig).restore(cached, resolvedAuth);
+            expect(result).not.toBeNull();
+            expect(result!.headers).toEqual({});
+            expect(result!.cookies!.SESSION).toBe('cached_sess');
+        });
+
+        test('flag is opt-in: default config keeps base headers', async () => {
+            const base = makeBaseStrategy();
+            const session = await new SessionAuthStrategy(base, sessionConfig).authenticate(resolvedAuth);
+            expect(session.headers.Authorization).toBe('Basic YWRtaW46c2VjcmV0');
+        });
+
+        test('onChallenge retry sends base headers but returned session drops them', async () => {
+            // First /session returns 401; onChallenge supplies a 2FA token; retry succeeds.
+            // With dropBaseHeaders: true, the retry must still send Authorization (handshake auth),
+            // but the AuthSession returned to the caller must not contain it.
+            const originalFetch = globalThis.fetch;
+            let callCount = 0;
+            const fetchMock = mock(async (_url: string | URL | Request, _init?: RequestInit) => {
+                callCount++;
+
+                if (callCount === 1) {
+                    return new Response('2FA required', { status: 401 });
+                }
+
+                return new Response('{}', {
+                    status: 200,
+                    headers: [
+                        ['Set-Cookie', 'SESSION=sess123; Path=/'],
+                        ['Set-Cookie', 'XSRF-TOKEN=xsrf456; Path=/'],
+                    ],
+                });
+            });
+            globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+            try {
+                const base = makeBaseStrategy();
+                const cfg: SessionAuthConfig = {
+                    ...dropConfig,
+                    onChallenge: async () => ({ otp: '123456' }),
+                };
+                const session = await new SessionAuthStrategy(base, cfg).authenticate(resolvedAuth);
+
+                expect(callCount).toBe(2);
+                const retryInit = (fetchMock as any).mock.calls[1][1] as RequestInit;
+                expect((retryInit.headers as Record<string, string>).Authorization).toBe('Basic YWRtaW46c2VjcmV0');
+                expect(session.headers).toEqual({});
+                expect(session.cookies!.SESSION).toBe('sess123');
+            } finally {
+                globalThis.fetch = originalFetch;
+            }
+        });
+
+        test('downstream resolveRequestHeaders produces clean request headers', async () => {
+            // End-to-end: from /session handshake through resolveRequestHeaders, the actual
+            // headers shipped on a POST request should be Cookie + headerMirror only.
+            const base = makeBaseStrategy();
+            const session = await new SessionAuthStrategy(base, dropConfig).authenticate(resolvedAuth);
+            const requestHeaders = resolveRequestHeaders(session, dropConfig, 'POST');
+
+            expect(requestHeaders.Authorization).toBeUndefined();
+            expect(requestHeaders.Cookie).toBe('SESSION=sess123; XSRF-TOKEN=xsrf456');
+            expect(requestHeaders['X-XSRF-TOKEN']).toBe('xsrf456');
+        });
     });
 });

@@ -216,6 +216,20 @@ new SessionAuthStrategy(new BasicAuthStrategy(), {
 
 When the generated client receives a status in `refreshOn`, it calls the wired refresh callback — which invalidates the cached session and re-bootstraps `/session` — then retries the original request once. Capped at one retry. Strategies that don't use `/session` are unaffected (the field is ignored).
 
+### Dropping base-strategy headers post-handshake (opt-in)
+
+By default, `SessionAuthStrategy` mirrors the wrapped base strategy's headers (e.g. `Authorization: Basic …` from `BasicAuthStrategy`) onto every post-handshake API request. For stateful backends — Spring Security with 2FA, for instance — re-presenting the base credentials on every call re-triggers the auth filter and either re-prompts, 401s, or invalidates the active session. Opt in to `dropBaseHeaders` to strip them:
+
+```ts
+new SessionAuthStrategy(new BasicAuthStrategy(), {
+  session: { endpoint: '/session' },
+  cookies: { extract: ['SESSION'], applyTo: ['POST', 'PUT', 'DELETE'] },
+  dropBaseHeaders: true,
+});
+```
+
+Base headers are still sent to the `/session` endpoint itself (handshake works as before); only post-handshake API calls carry just cookies + any `headerMirror` headers. Default is `false` for backwards compatibility.
+
 ## Project Extensions
 
 The `.apijack/` directory at a project root is auto-loaded when the CLI runs inside that project:
