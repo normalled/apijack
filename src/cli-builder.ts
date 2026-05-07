@@ -35,6 +35,7 @@ import { loadPreRequestHook } from './pre-request';
 import type { RoutineResult } from './routine/executor';
 import { executeRoutine } from './routine/executor';
 import { loadRoutineFile, validateRoutine } from './routine/loader';
+import { loadAliases, collectCommandPaths, rewriteArgv, resolveLeadingTokens } from './aliases';
 
 const coreManifest = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
@@ -386,10 +387,23 @@ export function createCli(options: CliOptions): Cli {
         },
 
         async run(): Promise<void> {
+            // Load aliases once; reused both for early best-effort token resolution
+            // (so pre-build argv reads see through aliases) and for the late
+            // validated argv rewrite that runs just before parseAsync.
+            const { map: aliasMap, errors: aliasLoadErrors } = loadAliases(configDir, cliName);
+
+            for (const err of aliasLoadErrors) {
+                process.stderr.write(`${displayName}: aliases: ${err}\n`);
+            }
+
+            const effectiveArgs = resolveLeadingTokens(process.argv.slice(2), aliasMap);
+            const effectiveArgv2 = effectiveArgs[0];
+            const effectiveArgv3 = effectiveArgs[1];
+
             // 0. Validate plugins (namespace, collisions, peer versions).
             // Skip throwing when the user invoked `plugins check` so the command
             // can report all issues non-destructively.
-            const isPluginsCheck = process.argv[2] === 'plugins' && process.argv[3] === 'check';
+            const isPluginsCheck = effectiveArgv2 === 'plugins' && effectiveArgv3 === 'check';
 
             if (!isPluginsCheck) {
                 pluginRegistry.validateAll(consumerResolvers);
@@ -466,7 +480,7 @@ export function createCli(options: CliOptions): Cli {
             // 4. Resolve auth
             let resolved = resolveAuth(cliName, configOpts);
 
-            const cmd = process.argv[2];
+            const cmd = effectiveArgv2;
             const skipAuthCommands = new Set([
                 'login',
                 'setup',
@@ -566,7 +580,7 @@ export function createCli(options: CliOptions): Cli {
             // 7. Detect request-preview output modes
             const oIdx = process.argv.indexOf('-o');
             const oVal = oIdx >= 0 ? process.argv[oIdx + 1] : undefined;
-            const isDryRun = process.argv.includes('--dry-run') && process.argv[2] !== 'routine';
+            const isDryRun = process.argv.includes('--dry-run') && effectiveArgv2 !== 'routine';
             const isCurl = oVal === 'curl';
             const isCurlWithCreds = oVal === 'curl-with-creds';
             const isRoutineStep = oVal === 'routine-step';
@@ -920,7 +934,32 @@ export function createCli(options: CliOptions): Cli {
                 process.exit(0);
             }
 
-            // 13. Parse and execute
+            // 13. Apply project-local aliases (.apijack/aliases.json) by rewriting argv
+            // before Commander parses. Real command paths always win over aliases;
+            // expansions that don't resolve to a known command are skipped with an error.
+            // The map was already loaded at the top of run() for early best-effort
+            // resolution of pre-build argv reads — we reuse it here for the validated
+            // rewrite now that the full Commander tree exists.
+            if (Object.keys(aliasMap).length > 0) {
+                const realPaths = collectCommandPaths(program);
+                const { rewrittenArgs, warnings, errors } = rewriteArgv(
+                    process.argv.slice(2),
+                    aliasMap,
+                    realPaths,
+                );
+
+                for (const w of warnings) {
+                    process.stderr.write(`${displayName}: aliases: ${w}\n`);
+                }
+
+                for (const e of errors) {
+                    process.stderr.write(`${displayName}: aliases: ${e}\n`);
+                }
+
+                process.argv = [...process.argv.slice(0, 2), ...rewrittenArgs];
+            }
+
+            // 14. Parse and execute
             await program.parseAsync();
         },
     };
