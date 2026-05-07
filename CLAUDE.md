@@ -243,6 +243,30 @@ The `.apijack/` directory at a project root is auto-loaded when the CLI runs ins
 | `.apijack/plugins.ts` | Project-level plugin registrations (`default: ApijackPlugin[]` — each entry passed to `cli.use(...)`) |
 | `.apijack/routines/*.yaml` | Routines available via `routine run <name>` |
 | `.apijack/settings.json` | Framework defaults (see below) |
+| `.apijack/aliases.json` | Project-local command aliases (see below) |
+
+### Command aliases
+
+Generated leaf-command names come from the OpenAPI `operationId` and can be verbose (e.g. `customers get-customer-order-summary`). `.apijack/aliases.json` is a flat map from a typed alias to the canonical command path:
+
+```json
+{
+  "customers list":     "customers get-all-customers",
+  "customers summary":  "customers get-customer-order-summary",
+  "cs":                 "customers get-customer-order-summary"
+}
+```
+
+Resolution rules:
+
+- Argv is rewritten at CLI bootstrap, before Commander parses. `mycli cs 42 --foo bar` becomes `mycli customers get-customer-order-summary 42 --foo bar`.
+- Single-token aliases (`cs`) and multi-token aliases (`customers summary`) use the same mechanism.
+- Trailing positional args and flags pass through unchanged.
+- Longest-prefix wins when multiple aliases could match.
+- An alias that shadows a real command path emits a startup warning and the real command keeps winning.
+- An expansion that doesn't resolve to a known command emits a startup error; the CLI continues without that alias applied.
+- A global `~/.<cliName>/aliases.json` is also consulted; project-local entries override global entries on conflict.
+- **Routines and MCP tool resolution use canonical names only.** Aliases are a CLI ergonomics layer; routine YAML and MCP tool names are not affected.
 
 ### Opt-in auth for custom commands and dispatchers
 
