@@ -82,8 +82,11 @@ apijack supports pre-built plugins as standalone npm packages for common utiliti
 Full documentation is available on the [wiki](https://github.com/normalled/apijack/wiki):
 
 - [Quickstart](https://github.com/normalled/apijack/wiki/Quickstart)
+- [Building a CLI](https://github.com/normalled/apijack/wiki/Building-a-CLI)
 - [Writing Routines](https://github.com/normalled/apijack/wiki/Writing-Routines)
 - [Authentication Strategies](https://github.com/normalled/apijack/wiki/Authentication-Strategies)
+- [Session Auth](https://github.com/normalled/apijack/wiki/Session-Auth)
+- [Project Mode](https://github.com/normalled/apijack/wiki/Project-Mode)
 - [CLI Command Reference](https://github.com/normalled/apijack/wiki/CLI-Command-Reference)
 - [Routine YAML Schema](https://github.com/normalled/apijack/wiki/Routine-YAML-Schema)
 
