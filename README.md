@@ -7,6 +7,33 @@ Jack into any OpenAPI spec and rip a full-featured CLI with AI-agentic workflow 
 [![e2e](https://github.com/normalled/apijack/actions/workflows/e2e.yml/badge.svg)](https://github.com/normalled/apijack/actions/workflows/e2e.yml)
 [![buy me a coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-orange?logo=buy-me-a-coffee)](https://www.buymeacoffee.com/garreta)
 
+## What is `apijack`?
+
+`apijack` turns any API into a CLI.
+
+```
+GET /api/pets
+GET /api/pets/{id}
+GET /api/owners
+GET /api/owners/{id}
+```
+
+becomes a command tree that mirrors your API:
+
+```
+apijack
+├── pets
+│   ├── list
+│   └── get <id>
+└── owners
+    ├── list
+    └── get <id>
+```
+
+```bash
+$ apijack pets get 25
+```
+
 ## Getting Started
 
 ```bash
