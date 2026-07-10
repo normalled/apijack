@@ -262,7 +262,29 @@ export function bodyPropCoercion(
         resolved = refSchema;
     }
 
-    switch (resolved.type) {
+    // Normalize OAS 3.1 nullable forms to their sole non-null member so a
+    // nullable scalar keeps its scalar coercion (a nullable string stays a
+    // string passthrough instead of falling through to JSON):
+    //   - array type    { type: ["string", "null"] }
+    //   - anyOf/oneOf    { anyOf: [{ type: "string" }, { type: "null" }] }
+    //     (ubiquitous in Pydantic/FastAPI-generated specs)
+    let effectiveType: string | undefined = Array.isArray(resolved.type)
+        ? undefined
+        : resolved.type;
+
+    if (Array.isArray(resolved.type)) {
+        const nonNull = resolved.type.filter(t => t !== 'null');
+
+        if (nonNull.length === 1) effectiveType = nonNull[0];
+    } else if (!effectiveType && (resolved.anyOf || resolved.oneOf)) {
+        const nonNull = (resolved.anyOf || resolved.oneOf)!.filter(
+            v => v.type !== 'null',
+        );
+
+        if (nonNull.length === 1) return bodyPropCoercion(nonNull[0], schemas, undefined);
+    }
+
+    switch (effectiveType) {
         case 'integer':
         case 'number':
             return 'number';

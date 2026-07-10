@@ -164,6 +164,29 @@ describe('#116 body-prop coercion — emitted source', () => {
         expect(src).not.toContain('JSON.parse(opts.status');
     });
 
+    it('OAS 3.1 nullable string (array type) stays a passthrough string', () => {
+        const src = gen({ name: { type: ['string', 'null'] } });
+        expectParses(src);
+        expect(src).toContain('obj["name"] = opts.name;');
+        expect(src).not.toContain('JSON.parse(opts.name');
+    });
+
+    it('OAS 3.1 nullable number (array type) coerces via Number()', () => {
+        const src = gen({ count: { type: ['integer', 'null'] } });
+        expectParses(src);
+        expect(src).toContain('const n = Number(opts.count);');
+        expect(src).not.toContain('JSON.parse(opts.count');
+    });
+
+    it('OAS 3.1 nullable string (anyOf form) stays a passthrough string', () => {
+        const src = gen({
+            name: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        });
+        expectParses(src);
+        expect(src).toContain('obj["name"] = opts.name;');
+        expect(src).not.toContain('JSON.parse(opts.name');
+    });
+
     it('coerce survives allOf-merged props', () => {
         const paths: Record<string, Record<string, OpenApiOperation>> = {
             '/items': {
@@ -245,6 +268,11 @@ describe('#116 body-prop coercion — runtime behavior', () => {
 
     it('leaves a string flag untouched', () => {
         const src = gen({ name: { type: 'string' } });
+        expect(runCoercion(src, { name: 'hello' }).name).toBe('hello');
+    });
+
+    it('passes a nullable string (OAS 3.1) through untouched', () => {
+        const src = gen({ name: { type: ['string', 'null'] } });
         expect(runCoercion(src, { name: 'hello' }).name).toBe('hello');
     });
 
