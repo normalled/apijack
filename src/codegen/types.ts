@@ -1,5 +1,5 @@
 import type { OpenApiSchema } from './openapi-types';
-import { resolveType, refToName, buildJsDoc, sanitizeTypeName } from './util';
+import { resolveType, refToName, buildJsDoc, sanitizeTypeName, emitKey } from './util';
 
 /**
  * Generate TypeScript type definitions from OpenAPI component schemas.
@@ -77,7 +77,7 @@ export function generateTypes(
                     const propDoc = buildJsDoc(propSchema, '  ');
                     lines.push(...propDoc);
                     const optional = requiredSet.has(propName) ? '' : '?';
-                    lines.push(`  ${propName}${optional}: ${tsType};`);
+                    lines.push(`  ${emitKey(propName)}${optional}: ${tsType};`);
                 }
             }
 
@@ -134,7 +134,7 @@ export function generateTypes(
                         innerLines.push(...propDoc);
                         const tsType = resolveType(propSchema, allSchemas, 0);
                         const optional = partRequired.has(propName) ? '' : '?';
-                        innerLines.push(`  ${propName}${optional}: ${tsType};`);
+                        innerLines.push(`  ${emitKey(propName)}${optional}: ${tsType};`);
                     }
 
                     innerLines.push('}');
