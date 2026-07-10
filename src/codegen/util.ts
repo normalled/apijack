@@ -218,6 +218,65 @@ export function schemaToTsType(schema: OpenApiSchema): string {
 }
 
 /**
+ * Classify how a body property's always-string CLI flag value must be coerced
+ * before it goes into the request body. `schemaToTsType` collapses arrays and
+ * inline objects to `unknown`, so this resolves the raw (and `$ref`-able)
+ * schema instead: a `$ref` to a string enum stays a string (no parse) while a
+ * `$ref` to an object becomes JSON.
+ */
+export function bodyPropCoercion(
+    prop: OpenApiSchema,
+    schemas: Record<string, OpenApiSchema>,
+    enumValues: (string | number | boolean | null)[] | undefined,
+): 'number' | 'boolean' | 'json' | 'string' {
+    // Scalar enums arrive as plain strings — never JSON. Classify by member
+    // type so a numeric/boolean enum still coerces (a string enum passes
+    // through). null members are ignored (nullable enums).
+    if (enumValues) {
+        const nonNull = enumValues.filter(v => v !== null);
+
+        if (nonNull.length > 0 && nonNull.every(v => typeof v === 'number')) return 'number';
+
+        if (nonNull.length > 0 && nonNull.every(v => typeof v === 'boolean')) return 'boolean';
+
+        return 'string';
+    }
+
+    // Resolve $refs (transitively, cycle-guarded) so classification sees the
+    // underlying type — a $ref-to-object becomes JSON, a $ref-to-string stays
+    // a string.
+    let resolved = prop;
+    const seen = new Set<string>();
+
+    while (resolved.$ref) {
+        const refName = resolved.$ref.split('/').pop()!;
+
+        if (seen.has(refName)) break;
+
+        seen.add(refName);
+
+        const refSchema = schemas[refName];
+
+        if (!refSchema) break;
+
+        resolved = refSchema;
+    }
+
+    switch (resolved.type) {
+        case 'integer':
+        case 'number':
+            return 'number';
+        case 'boolean':
+            return 'boolean';
+        case 'string':
+            return 'string';
+        default:
+            // array, object, $ref-to-object, or otherwise unknown → JSON
+            return 'json';
+    }
+}
+
+/**
  * Normalize an OpenAPI tag into an array of lowercase tokens.
  * Splits on whitespace, slashes, and colons. Strips leading/trailing hyphens.
  */
@@ -506,6 +565,7 @@ export function resolveSchemaProps(
         results.push({
             name,
             type: schemaToTsType(prop),
+            coerce: bodyPropCoercion(prop, schemas, enumValues),
             cliFlag: flag,
             camelName: name,
             enumValues,

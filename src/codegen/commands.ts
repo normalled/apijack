@@ -358,9 +358,37 @@ export function generateCommands(
                         lines.push('      const obj: Record<string, unknown> = {};');
 
                         for (const bp of cmd.bodyProps) {
-                            lines.push(
-                                `      if (opts.${bp.camelName} !== undefined) obj["${bp.name}"] = opts.${bp.camelName};`,
-                            );
+                            // Commander flag values are always strings — coerce
+                            // per the prop's resolved schema (see issue #116).
+                            switch (bp.coerce) {
+                                case 'number':
+                                    lines.push(
+                                        `      if (opts.${bp.camelName} !== undefined) {`,
+                                        `        const n = Number(opts.${bp.camelName});`,
+                                        `        if (Number.isNaN(n)) throw new Error("--${bp.cliFlag} expects a number");`,
+                                        `        obj["${bp.name}"] = n;`,
+                                        '      }',
+                                    );
+                                    break;
+                                case 'boolean':
+                                    lines.push(
+                                        `      if (opts.${bp.camelName} !== undefined) obj["${bp.name}"] = opts.${bp.camelName} === "true";`,
+                                    );
+                                    break;
+                                case 'json':
+                                    lines.push(
+                                        `      if (opts.${bp.camelName} !== undefined) {`,
+                                        `        try { obj["${bp.name}"] = JSON.parse(opts.${bp.camelName} as string); }`,
+                                        `        catch { throw new Error("--${bp.cliFlag} expects JSON, e.g. '[{\\"id\\":...}]'"); }`,
+                                        '      }',
+                                    );
+                                    break;
+                                default:
+                                    // string / scalar enum — passthrough
+                                    lines.push(
+                                        `      if (opts.${bp.camelName} !== undefined) obj["${bp.name}"] = opts.${bp.camelName};`,
+                                    );
+                            }
                         }
 
                         if (cmd.bodyIsArray) {
