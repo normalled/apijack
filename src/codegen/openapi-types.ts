@@ -92,6 +92,13 @@ export const HTTP_METHODS: HttpMethod[] = [
 export interface BodyProp {
     name: string;
     type: string;
+    /**
+     * How the always-string CLI flag value is converted before it goes into
+     * the request body. Computed from the resolved schema at construction time
+     * (see resolveSchemaProps): 'number' → Number(), 'boolean' → === "true",
+     * 'json' → JSON.parse (arrays/objects/complex), 'string' → passthrough.
+     */
+    coerce: 'number' | 'boolean' | 'json' | 'string';
     cliFlag: string; // kebab-case for CLI, e.g. "first-name"
     camelName: string; // camelCase for Commander opts, e.g. "firstName"
     enumValues?: (string | number | boolean | null)[];
