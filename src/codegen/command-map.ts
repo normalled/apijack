@@ -1,6 +1,6 @@
 import type { OpenApiOperation, OpenApiSchema } from './openapi-types';
 import { HTTP_METHODS } from './openapi-types';
-import { normalizeTag, resolveSchemaProps } from './util';
+import { normalizeTag, resolveSchemaProps, sanitizeIdentifier } from './util';
 
 /**
  * Generate a command map that maps CLI command paths to their
@@ -138,12 +138,15 @@ export function generateCommandMap(
                         ? `${groupName} ${cmdName}`
                         : `${groupName} ${resourceName} ${cmdName}`;
 
-                const descPart = cmd.summary ? `, description: "${cmd.summary.replace(/"/g, '\\"')}"` : '';
+                const descPart = cmd.summary ? `, description: ${JSON.stringify(cmd.summary)}` : '';
                 const bodyPart = cmd.bodyFields.length > 0
                     ? `, bodyFields: ${JSON.stringify(cmd.bodyFields)}`
                     : '';
+                // Sanitize identically to the client method name so the
+                // dispatcher's client[operationId] lookup resolves at runtime.
+                const methodName = sanitizeIdentifier(cmd.operationId);
                 entries.push(
-                    `  "${cmdPath}": { operationId: "${cmd.operationId}", pathParams: [${cmd.pathParams.map(p => `"${p}"`).join(', ')}], queryParams: [${cmd.queryParams.map(p => `"${p}"`).join(', ')}], hasBody: ${cmd.hasBody}${bodyPart}${descPart} },`,
+                    `  "${cmdPath}": { operationId: "${methodName}", pathParams: [${cmd.pathParams.map(p => `"${p}"`).join(', ')}], queryParams: [${cmd.queryParams.map(p => `"${p}"`).join(', ')}], hasBody: ${cmd.hasBody}${bodyPart}${descPart} },`,
                 );
             }
         }

@@ -213,8 +213,14 @@ export function createCli(options: CliOptions): Cli {
                 const clientMod = await import(resolve(generatedDir, 'client'));
                 ApiClientClass = clientMod.ApiClient;
             }
-        } catch {
-            // Generated commands not available — routines that don't dispatch to API methods still work.
+        } catch (err) {
+            // A genuinely-absent module is expected before the first `generate`
+            // (routines that don't dispatch to API methods still work) — stay
+            // silent. A module that exists but fails to import (e.g. a codegen
+            // syntax error) is a real problem — surface it to stderr.
+            if ((err as { code?: string }).code !== 'ERR_MODULE_NOT_FOUND') {
+                console.warn(`[apijack] Generated module failed to import: ${(err as Error).message}`);
+            }
         }
 
         // 5. Build CliContext with lazy session.
@@ -573,8 +579,13 @@ export function createCli(options: CliOptions): Cli {
                     const clientMod = await import(resolve(generatedDir, 'client'));
                     ApiClientClass = clientMod.ApiClient;
                 }
-            } catch {
-                // Generated commands not available — consumer hasn't run `generate` yet
+            } catch (err) {
+                // A genuinely-absent module is expected before the consumer runs
+                // `generate` — stay silent. A module that exists but fails to
+                // import (e.g. a codegen syntax error) is a real problem — surface it.
+                if ((err as { code?: string }).code !== 'ERR_MODULE_NOT_FOUND') {
+                    console.warn(`[apijack] Generated module failed to import: ${(err as Error).message}`);
+                }
             }
 
             // 7. Detect request-preview output modes

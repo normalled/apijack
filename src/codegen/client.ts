@@ -1,6 +1,6 @@
 import type { OpenApiOperation, OpenApiSchema } from './openapi-types';
 import { HTTP_METHODS } from './openapi-types';
-import { schemaToTsType, refToName, resolveType, resolveResponseType } from './util';
+import { schemaToTsType, refToName, resolveType, resolveResponseType, sanitizeIdentifier } from './util';
 
 /**
  * Generate an ApiClient class from OpenAPI paths.
@@ -147,22 +147,24 @@ export function generateClient(
                 }
             }
 
-            // Emit JSDoc
-            if (docLines.length === 1) {
-                methodLines.push(`  /** ${docLines[0]} */`);
-            } else {
-                methodLines.push(`  /** ${docLines[0]}`);
+            // Emit JSDoc — escape `*/` so a description doesn't close the comment early
+            const safeDocLines = docLines.map(l => l.replace(/\*\//g, '*\\/'));
 
-                for (let i = 1; i < docLines.length; i++) {
-                    if (i === docLines.length - 1) {
-                        methodLines.push(`   * ${docLines[i]} */`);
+            if (safeDocLines.length === 1) {
+                methodLines.push(`  /** ${safeDocLines[0]} */`);
+            } else {
+                methodLines.push(`  /** ${safeDocLines[0]}`);
+
+                for (let i = 1; i < safeDocLines.length; i++) {
+                    if (i === safeDocLines.length - 1) {
+                        methodLines.push(`   * ${safeDocLines[i]} */`);
                     } else {
-                        methodLines.push(`   * ${docLines[i]}`);
+                        methodLines.push(`   * ${safeDocLines[i]}`);
                     }
                 }
             }
 
-            methodLines.push(`  async ${op.operationId}(${args.join(', ')}): Promise<${returnType}> {`);
+            methodLines.push(`  async ${sanitizeIdentifier(op.operationId)}(${args.join(', ')}): Promise<${returnType}> {`);
             methodLines.push(`    return this.request("${method.toUpperCase()}", ${pathTemplate}${optsArg}) as Promise<${returnType}>;`);
             methodLines.push('  }');
             methodLines.push('');

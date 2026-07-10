@@ -137,7 +137,7 @@ export function resolveType(
                 innerLines.push(...propDoc);
                 const tsType = resolveType(propSchema, schemas, depth + 1, visited);
                 const optional = requiredSet.has(propName) ? '' : '?';
-                innerLines.push(`  ${propName}${optional}: ${tsType};`);
+                innerLines.push(`  ${emitKey(propName)}${optional}: ${tsType};`);
             }
 
             // patternProperties inside inline objects
@@ -522,10 +522,56 @@ export function resolveSchemaProps(
 }
 
 /**
+ * Reserved words that cannot be used as bare JavaScript identifiers.
+ * Includes keywords, future reserved words, and literals.
+ */
+const RESERVED_WORDS = new Set([
+    'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+    'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'false',
+    'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new',
+    'null', 'return', 'super', 'switch', 'this', 'throw', 'true', 'try',
+    'typeof', 'var', 'void', 'while', 'with', 'yield', 'let', 'static',
+    'implements', 'interface', 'package', 'private', 'protected', 'public',
+    'await',
+]);
+
+/**
+ * Sanitize an arbitrary name (operationId, tag, etc.) into a valid JS
+ * identifier: non-identifier characters become underscores, and a leading
+ * digit or a reserved word is prefixed with `_`. Deterministic so the same
+ * input always yields the same identifier across emission sites.
+ */
+export function sanitizeIdentifier(name: string): string {
+    let id = name.replace(/[^A-Za-z0-9_$]/g, '_');
+
+    if (/^[0-9]/.test(id) || RESERVED_WORDS.has(id)) {
+        id = `_${id}`;
+    }
+
+    return id;
+}
+
+/**
+ * Emit an object property key: return it as-is when it is a valid JS
+ * identifier, otherwise quote it via JSON.stringify (e.g. "16x16").
+ */
+export function emitKey(name: string): string {
+    return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
+}
+
+/**
  * Replace non-alphanumeric characters with underscores for safe variable names.
+ * Also guards against a leading digit or reserved word producing an invalid
+ * identifier (e.g. an untagged operation grouped under `default`).
  */
 export function sanitizeVar(name: string): string {
-    return name.replace(/[^a-zA-Z0-9]/g, '_');
+    const base = name.replace(/[^a-zA-Z0-9]/g, '_');
+
+    if (/^[0-9]/.test(base) || RESERVED_WORDS.has(base)) {
+        return `_${base}`;
+    }
+
+    return base;
 }
 
 /**
