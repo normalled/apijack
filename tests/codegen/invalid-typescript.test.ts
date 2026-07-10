@@ -66,6 +66,11 @@ describe('#115 bug 1: description strings with newlines/quotes/backslashes', () 
     it('generateCommandMap emits parseable source for descriptions with quotes/newlines', () => {
         expectParses(generateCommandMap(paths, schemas));
     });
+
+    it('generateTypes emits parseable source for a property description containing */', () => {
+        // Pins the existing */-escaping in buildJsDoc (util.ts) against regression.
+        expectParses(generateTypes(schemas));
+    });
 });
 
 // -- Bug 2: dotted operationIds emitted as identifiers --

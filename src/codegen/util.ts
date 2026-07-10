@@ -563,6 +563,10 @@ export function emitKey(name: string): string {
  * Replace non-alphanumeric characters with underscores for safe variable names.
  * Also guards against a leading digit or reserved word producing an invalid
  * identifier (e.g. an untagged operation grouped under `default`).
+ *
+ * Intentionally stricter than {@link sanitizeIdentifier}: this collapses `$`
+ * to `_` as well, since it names group/resource locals derived from CLI tags
+ * rather than spec operationIds.
  */
 export function sanitizeVar(name: string): string {
     const base = name.replace(/[^a-zA-Z0-9]/g, '_');
