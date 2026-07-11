@@ -115,6 +115,97 @@ describe('#115 bug 2: dotted operationIds', () => {
     });
 });
 
+// -- #118: colliding operationIds after sanitization --
+
+describe('#118: sanitizeIdentifier collision (Foo.bar vs Foo_bar)', () => {
+    // `Foo.bar` and `Foo_bar` both sanitize to `Foo_bar`. Without de-duplication
+    // generateClient emits two identical `async Foo_bar(` methods (the second
+    // shadows the first) and both command-map entries point at the survivor —
+    // wrong-op dispatch at runtime.
+    const paths = {
+        '/foo-dot': {
+            get: {
+                operationId: 'Foo.bar',
+                tags: ['foo'],
+                responses: { 200: { description: 'ok' } },
+            },
+        },
+        '/foo-underscore': {
+            get: {
+                operationId: 'Foo_bar',
+                tags: ['foo'],
+                responses: { 200: { description: 'ok' } },
+            },
+        },
+    } as any;
+
+    /** All generated op method names (excludes the built-in `request`). */
+    function clientMethodNames(client: string): string[] {
+        return [...client.matchAll(/\n {2}async ([^\s(]+)\(/g)].map(m => m[1]);
+    }
+
+    it('generateClient emits two distinct method names', () => {
+        const client = generateClient(paths, {});
+        const names = clientMethodNames(client);
+        expect(names).toHaveLength(2);
+        expect(new Set(names).size).toBe(2);
+        expectParses(client);
+    });
+
+    it('each command-map operationId matches a distinct client method name', () => {
+        const client = generateClient(paths, {});
+        const map = generateCommandMap(paths, {});
+
+        const methodNames = new Set(clientMethodNames(client));
+        const mapOpIds = [...map.matchAll(/operationId: "([^"]+)"/g)].map(m => m[1]);
+
+        expect(mapOpIds).toHaveLength(2);
+        // Cross-site sync: every command-map operationId resolves to a real,
+        // distinct client method.
+        expect(new Set(mapOpIds).size).toBe(2);
+
+        for (const opId of mapOpIds) {
+            expect(methodNames.has(opId)).toBe(true);
+        }
+    });
+
+    it('resolves a 3-way collision to _2/_3 suffixes', () => {
+        // Foo.bar, Foo_bar, and Foo-bar all sanitize to Foo_bar.
+        const threeWay = {
+            '/a': { get: { operationId: 'Foo.bar', tags: ['foo'], responses: { 200: { description: 'ok' } } } },
+            '/b': { get: { operationId: 'Foo_bar', tags: ['foo'], responses: { 200: { description: 'ok' } } } },
+            '/c': { get: { operationId: 'Foo-bar', tags: ['foo'], responses: { 200: { description: 'ok' } } } },
+        } as any;
+        const names = clientMethodNames(generateClient(threeWay, {}));
+        expect(new Set(names)).toEqual(new Set(['Foo_bar', 'Foo_bar_2', 'Foo_bar_3']));
+    });
+
+    it('bumps a suffixed candidate past a real operationId that already owns it', () => {
+        // Foo_bar_2 is a real operation and claims that name first; the
+        // Foo.bar/Foo_bar collision pair must skip it (used-set check) rather
+        // than reuse Foo_bar_2 and collide again.
+        const withReal = {
+            '/a': { get: { operationId: 'Foo_bar_2', tags: ['foo'], responses: { 200: { description: 'ok' } } } },
+            '/b': { get: { operationId: 'Foo.bar', tags: ['foo'], responses: { 200: { description: 'ok' } } } },
+            '/c': { get: { operationId: 'Foo_bar', tags: ['foo'], responses: { 200: { description: 'ok' } } } },
+        } as any;
+        const client = generateClient(withReal, {});
+        const map = generateCommandMap(withReal, {});
+
+        const names = clientMethodNames(client);
+        expect(new Set(names)).toEqual(new Set(['Foo_bar_2', 'Foo_bar', 'Foo_bar_3']));
+
+        // Cross-site sync holds across all three distinct names.
+        const methodNames = new Set(names);
+        const mapOpIds = [...map.matchAll(/operationId: "([^"]+)"/g)].map(m => m[1]);
+        expect(new Set(mapOpIds).size).toBe(3);
+
+        for (const opId of mapOpIds) {
+            expect(methodNames.has(opId)).toBe(true);
+        }
+    });
+});
+
 // -- Bug 3: reserved-word group variable for untagged operations --
 
 describe('#115 bug 3: untagged operations (reserved-word group)', () => {
