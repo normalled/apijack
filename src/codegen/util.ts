@@ -1,4 +1,5 @@
-import type { OpenApiSchema, BodyProp } from './openapi-types';
+import type { OpenApiSchema, BodyProp, OpenApiOperation } from './openapi-types';
+import { HTTP_METHODS } from './openapi-types';
 
 /**
  * Resolve an OpenAPI schema to a TypeScript type string.
@@ -137,7 +138,7 @@ export function resolveType(
                 innerLines.push(...propDoc);
                 const tsType = resolveType(propSchema, schemas, depth + 1, visited);
                 const optional = requiredSet.has(propName) ? '' : '?';
-                innerLines.push(`  ${propName}${optional}: ${tsType};`);
+                innerLines.push(`  ${emitKey(propName)}${optional}: ${tsType};`);
             }
 
             // patternProperties inside inline objects
@@ -215,6 +216,87 @@ export function schemaToTsType(schema: OpenApiSchema): string {
     if (schema.$ref) return refToName(schema.$ref);
 
     return 'unknown';
+}
+
+/**
+ * Classify how a body property's always-string CLI flag value must be coerced
+ * before it goes into the request body. `schemaToTsType` collapses arrays and
+ * inline objects to `unknown`, so this resolves the raw (and `$ref`-able)
+ * schema instead: a `$ref` to a string enum stays a string (no parse) while a
+ * `$ref` to an object becomes JSON.
+ */
+export function bodyPropCoercion(
+    prop: OpenApiSchema,
+    schemas: Record<string, OpenApiSchema>,
+    enumValues: (string | number | boolean | null)[] | undefined,
+): 'number' | 'boolean' | 'json' | 'string' {
+    // Scalar enums arrive as plain strings — never JSON. Classify by member
+    // type so a numeric/boolean enum still coerces (a string enum passes
+    // through). null members are ignored (nullable enums).
+    if (enumValues) {
+        const nonNull = enumValues.filter(v => v !== null);
+
+        if (nonNull.length > 0 && nonNull.every(v => typeof v === 'number')) return 'number';
+
+        if (nonNull.length > 0 && nonNull.every(v => typeof v === 'boolean')) return 'boolean';
+
+        return 'string';
+    }
+
+    // Resolve $refs (transitively, cycle-guarded) so classification sees the
+    // underlying type — a $ref-to-object becomes JSON, a $ref-to-string stays
+    // a string.
+    let resolved = prop;
+    const seen = new Set<string>();
+
+    while (resolved.$ref) {
+        const refName = resolved.$ref.split('/').pop()!;
+
+        if (seen.has(refName)) break;
+
+        seen.add(refName);
+
+        const refSchema = schemas[refName];
+
+        if (!refSchema) break;
+
+        resolved = refSchema;
+    }
+
+    // Normalize OAS 3.1 nullable forms to their sole non-null member so a
+    // nullable scalar keeps its scalar coercion (a nullable string stays a
+    // string passthrough instead of falling through to JSON):
+    //   - array type    { type: ["string", "null"] }
+    //   - anyOf/oneOf    { anyOf: [{ type: "string" }, { type: "null" }] }
+    //     (ubiquitous in Pydantic/FastAPI-generated specs)
+    let effectiveType: string | undefined = Array.isArray(resolved.type)
+        ? undefined
+        : resolved.type;
+
+    if (Array.isArray(resolved.type)) {
+        const nonNull = resolved.type.filter(t => t !== 'null');
+
+        if (nonNull.length === 1) effectiveType = nonNull[0];
+    } else if (!effectiveType && (resolved.anyOf || resolved.oneOf)) {
+        const nonNull = (resolved.anyOf || resolved.oneOf)!.filter(
+            v => v.type !== 'null',
+        );
+
+        if (nonNull.length === 1) return bodyPropCoercion(nonNull[0], schemas, undefined);
+    }
+
+    switch (effectiveType) {
+        case 'integer':
+        case 'number':
+            return 'number';
+        case 'boolean':
+            return 'boolean';
+        case 'string':
+            return 'string';
+        default:
+            // array, object, $ref-to-object, or otherwise unknown → JSON
+            return 'json';
+    }
 }
 
 /**
@@ -506,6 +588,7 @@ export function resolveSchemaProps(
         results.push({
             name,
             type: schemaToTsType(prop),
+            coerce: bodyPropCoercion(prop, schemas, enumValues),
             cliFlag: flag,
             camelName: name,
             enumValues,
@@ -522,10 +605,106 @@ export function resolveSchemaProps(
 }
 
 /**
+ * Reserved words that cannot be used as bare JavaScript identifiers.
+ * Includes keywords, future reserved words, and literals.
+ */
+const RESERVED_WORDS = new Set([
+    'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+    'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'false',
+    'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new',
+    'null', 'return', 'super', 'switch', 'this', 'throw', 'true', 'try',
+    'typeof', 'var', 'void', 'while', 'with', 'yield', 'let', 'static',
+    'implements', 'interface', 'package', 'private', 'protected', 'public',
+    'await',
+]);
+
+/**
+ * Sanitize an arbitrary name (operationId, tag, etc.) into a valid JS
+ * identifier: non-identifier characters become underscores, and a leading
+ * digit or a reserved word is prefixed with `_`. Deterministic so the same
+ * input always yields the same identifier across emission sites.
+ */
+export function sanitizeIdentifier(name: string): string {
+    let id = name.replace(/[^A-Za-z0-9_$]/g, '_');
+
+    if (/^[0-9]/.test(id) || RESERVED_WORDS.has(id)) {
+        id = `_${id}`;
+    }
+
+    return id;
+}
+
+/**
+ * Build a deterministic map from each raw operationId in `paths` to a unique,
+ * sanitized method name.
+ *
+ * {@link sanitizeIdentifier} is not injective — distinct operationIds that
+ * differ only by a non-identifier character vs. an underscore collapse to the
+ * same name (e.g. both `Foo.bar` and `Foo_bar` → `Foo_bar`). Left unhandled,
+ * `generateClient` would emit two identical methods (the second shadowing the
+ * first) and both command-map entries would dispatch to the survivor — a
+ * wrong-op dispatch at runtime. On collision this appends a numeric suffix
+ * (`_2`, `_3`, …) so every operationId gets a distinct name.
+ *
+ * Iterates in the same `Object.entries(paths)` × {@link HTTP_METHODS} order
+ * that `generateClient`, `generateCommands`, and `generateCommandMap` all use,
+ * so a single shared map keeps the three emission sites in sync by
+ * construction. Look names up by raw operationId.
+ */
+export function buildMethodNameMap(
+    paths: Record<string, Record<string, OpenApiOperation>>,
+): Map<string, string> {
+    const map = new Map<string, string>();
+    const used = new Set<string>();
+
+    for (const [, methods] of Object.entries(paths)) {
+        for (const method of HTTP_METHODS) {
+            const op = methods[method] as OpenApiOperation | undefined;
+
+            if (!op || !op.operationId || map.has(op.operationId)) continue;
+
+            const base = sanitizeIdentifier(op.operationId);
+            let name = base;
+            let suffix = 2;
+
+            while (used.has(name)) {
+                name = `${base}_${suffix}`;
+                suffix++;
+            }
+
+            used.add(name);
+            map.set(op.operationId, name);
+        }
+    }
+
+    return map;
+}
+
+/**
+ * Emit an object property key: return it as-is when it is a valid JS
+ * identifier, otherwise quote it via JSON.stringify (e.g. "16x16").
+ */
+export function emitKey(name: string): string {
+    return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
+}
+
+/**
  * Replace non-alphanumeric characters with underscores for safe variable names.
+ * Also guards against a leading digit or reserved word producing an invalid
+ * identifier (e.g. an untagged operation grouped under `default`).
+ *
+ * Intentionally stricter than {@link sanitizeIdentifier}: this collapses `$`
+ * to `_` as well, since it names group/resource locals derived from CLI tags
+ * rather than spec operationIds.
  */
 export function sanitizeVar(name: string): string {
-    return name.replace(/[^a-zA-Z0-9]/g, '_');
+    const base = name.replace(/[^a-zA-Z0-9]/g, '_');
+
+    if (/^[0-9]/.test(base) || RESERVED_WORDS.has(base)) {
+        return `_${base}`;
+    }
+
+    return base;
 }
 
 /**

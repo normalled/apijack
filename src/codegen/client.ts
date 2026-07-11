@@ -1,6 +1,6 @@
 import type { OpenApiOperation, OpenApiSchema } from './openapi-types';
 import { HTTP_METHODS } from './openapi-types';
-import { schemaToTsType, refToName, resolveType, resolveResponseType } from './util';
+import { schemaToTsType, refToName, resolveType, resolveResponseType, buildMethodNameMap } from './util';
 
 /**
  * Generate an ApiClient class from OpenAPI paths.
@@ -30,6 +30,7 @@ export function generateClient(
     }
 
     const methodLines: string[] = [];
+    const methodNames = buildMethodNameMap(paths);
 
     for (const [path, methods] of Object.entries(paths)) {
         const pathLevelParams: NonNullable<OpenApiOperation['parameters']> = (methods as Record<string, unknown>).parameters as NonNullable<OpenApiOperation['parameters']> || [];
@@ -147,22 +148,24 @@ export function generateClient(
                 }
             }
 
-            // Emit JSDoc
-            if (docLines.length === 1) {
-                methodLines.push(`  /** ${docLines[0]} */`);
-            } else {
-                methodLines.push(`  /** ${docLines[0]}`);
+            // Emit JSDoc — escape `*/` so a description doesn't close the comment early
+            const safeDocLines = docLines.map(l => l.replace(/\*\//g, '*\\/'));
 
-                for (let i = 1; i < docLines.length; i++) {
-                    if (i === docLines.length - 1) {
-                        methodLines.push(`   * ${docLines[i]} */`);
+            if (safeDocLines.length === 1) {
+                methodLines.push(`  /** ${safeDocLines[0]} */`);
+            } else {
+                methodLines.push(`  /** ${safeDocLines[0]}`);
+
+                for (let i = 1; i < safeDocLines.length; i++) {
+                    if (i === safeDocLines.length - 1) {
+                        methodLines.push(`   * ${safeDocLines[i]} */`);
                     } else {
-                        methodLines.push(`   * ${docLines[i]}`);
+                        methodLines.push(`   * ${safeDocLines[i]}`);
                     }
                 }
             }
 
-            methodLines.push(`  async ${op.operationId}(${args.join(', ')}): Promise<${returnType}> {`);
+            methodLines.push(`  async ${methodNames.get(op.operationId)!}(${args.join(', ')}): Promise<${returnType}> {`);
             methodLines.push(`    return this.request("${method.toUpperCase()}", ${pathTemplate}${optsArg}) as Promise<${returnType}>;`);
             methodLines.push('  }');
             methodLines.push('');

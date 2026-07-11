@@ -9,6 +9,7 @@ import {
     normalizeTag,
     resolveSchemaProps,
     sanitizeVar,
+    buildMethodNameMap,
     capitalize,
 } from './util';
 
@@ -21,6 +22,7 @@ export function generateCommands(
     schemas: Record<string, OpenApiSchema> = {},
 ): string {
     const groups = new Map<string, Map<string, CommandDef[]>>();
+    const methodNames = buildMethodNameMap(paths);
 
     for (const [path, methods] of Object.entries(paths)) {
         const pathLevelParams: NonNullable<OpenApiOperation['parameters']> = (methods as Record<string, unknown>).parameters as NonNullable<OpenApiOperation['parameters']> || [];
@@ -187,6 +189,9 @@ export function generateCommands(
             const verbSeen = new Map<string, number>();
 
             for (const cmd of cmds) {
+                // Sanitized operationId — used as the client method name and as a
+                // local variable name; must match the client emitter and command-map.
+                const methodName = methodNames.get(cmd.operationId)!;
                 const count = verbCounts.get(cmd.verb) || 1;
                 let cmdName = cmd.verb;
 
@@ -215,7 +220,7 @@ export function generateCommands(
                 // Commands with variant props need a variable reference for configureHelp
                 if (hasVariantProps) {
                     lines.push(
-                        `  const _${cmd.operationId} = ${parent}`,
+                        `  const _${methodName} = ${parent}`,
                     );
                 } else {
                     lines.push(`  ${parent}`);
@@ -234,7 +239,7 @@ export function generateCommands(
                 }
 
                 lines.push(
-                    `    .description("${cmdDesc.replace(/"/g, '\\"')}${arrayNote} (use -o routine-step to export as YAML)")`,
+                    `    .description(${JSON.stringify(`${cmdDesc}${arrayNote} (use -o routine-step to export as YAML)`)})`,
                 );
 
                 for (const qp of cmd.queryParams) {
@@ -248,7 +253,7 @@ export function generateCommands(
                         ? `${qp.description}${qpEnum}${qpFormat}${qpDefault}${qpStyle}`
                         : `${qp.name}${qpEnum}${qpFormat}${qpDefault}${qpStyle}`;
                     lines.push(
-                        `    .option("--${qp.name} <${qp.name}>", "${qpDesc.replace(/"/g, '\\"')}")`,
+                        `    .option("--${qp.name} <${qp.name}>", ${JSON.stringify(qpDesc)})`,
                     );
                 }
 
@@ -278,20 +283,19 @@ export function generateCommands(
                             const variantTag = bp.variant
                                 ? ` (${bp.variant})`
                                 : '';
-                            const escapedDesc = desc.replace(/"/g, '\\"');
 
                             if (bp.variant) {
                                 // Variant-specific: hidden by default, shown with -V
                                 lines.push(
-                                    `    .addOption(new Option("--${bp.cliFlag} <value>", "${escapedDesc}${variantTag}").hideHelp())`,
+                                    `    .addOption(new Option("--${bp.cliFlag} <value>", ${JSON.stringify(`${desc}${variantTag}`)}).hideHelp())`,
                                 );
                             } else if (bp.required) {
                                 lines.push(
-                                    `    .requiredOption("--${bp.cliFlag} <value>", "${escapedDesc} (required)")`,
+                                    `    .requiredOption("--${bp.cliFlag} <value>", ${JSON.stringify(`${desc} (required)`)})`,
                                 );
                             } else {
                                 lines.push(
-                                    `    .option("--${bp.cliFlag} <value>", "${escapedDesc}")`,
+                                    `    .option("--${bp.cliFlag} <value>", ${JSON.stringify(desc)})`,
                                 );
                             }
                         }
@@ -355,9 +359,37 @@ export function generateCommands(
                         lines.push('      const obj: Record<string, unknown> = {};');
 
                         for (const bp of cmd.bodyProps) {
-                            lines.push(
-                                `      if (opts.${bp.camelName} !== undefined) obj["${bp.name}"] = opts.${bp.camelName};`,
-                            );
+                            // Commander flag values are always strings — coerce
+                            // per the prop's resolved schema (see issue #116).
+                            switch (bp.coerce) {
+                                case 'number':
+                                    lines.push(
+                                        `      if (opts.${bp.camelName} !== undefined) {`,
+                                        `        const n = Number(opts.${bp.camelName});`,
+                                        `        if (Number.isNaN(n)) throw new Error("--${bp.cliFlag} expects a number");`,
+                                        `        obj["${bp.name}"] = n;`,
+                                        '      }',
+                                    );
+                                    break;
+                                case 'boolean':
+                                    lines.push(
+                                        `      if (opts.${bp.camelName} !== undefined) obj["${bp.name}"] = opts.${bp.camelName} === "true";`,
+                                    );
+                                    break;
+                                case 'json':
+                                    lines.push(
+                                        `      if (opts.${bp.camelName} !== undefined) {`,
+                                        `        try { obj["${bp.name}"] = JSON.parse(opts.${bp.camelName} as string); }`,
+                                        `        catch { throw new Error("--${bp.cliFlag} expects JSON, e.g. '[{\\"id\\":...}]'"); }`,
+                                        '      }',
+                                    );
+                                    break;
+                                default:
+                                    // string / scalar enum — passthrough
+                                    lines.push(
+                                        `      if (opts.${bp.camelName} !== undefined) obj["${bp.name}"] = opts.${bp.camelName};`,
+                                    );
+                            }
                         }
 
                         if (cmd.bodyIsArray) {
@@ -380,14 +412,14 @@ export function generateCommands(
                 }
 
                 lines.push(
-                    `      const result = await client.${cmd.operationId}(${callArgs.join(', ')});`,
+                    `      const result = await client.${methodName}(${callArgs.join(', ')});`,
                 );
                 lines.push('      onResult(result);');
                 lines.push('    });');
 
                 // For commands with variant props, configure help to show hidden options with --verbose
                 if (hasVariantProps) {
-                    lines.push(`  _${cmd.operationId}.configureHelp({`);
+                    lines.push(`  _${methodName}.configureHelp({`);
                     lines.push('    visibleOptions: (cmd) => {');
                     lines.push(
                         '      if (process.argv.includes("-V")) {',
