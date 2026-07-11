@@ -9,7 +9,7 @@ import {
     normalizeTag,
     resolveSchemaProps,
     sanitizeVar,
-    sanitizeIdentifier,
+    buildMethodNameMap,
     capitalize,
 } from './util';
 
@@ -22,6 +22,7 @@ export function generateCommands(
     schemas: Record<string, OpenApiSchema> = {},
 ): string {
     const groups = new Map<string, Map<string, CommandDef[]>>();
+    const methodNames = buildMethodNameMap(paths);
 
     for (const [path, methods] of Object.entries(paths)) {
         const pathLevelParams: NonNullable<OpenApiOperation['parameters']> = (methods as Record<string, unknown>).parameters as NonNullable<OpenApiOperation['parameters']> || [];
@@ -190,7 +191,7 @@ export function generateCommands(
             for (const cmd of cmds) {
                 // Sanitized operationId — used as the client method name and as a
                 // local variable name; must match the client emitter and command-map.
-                const methodName = sanitizeIdentifier(cmd.operationId);
+                const methodName = methodNames.get(cmd.operationId)!;
                 const count = verbCounts.get(cmd.verb) || 1;
                 let cmdName = cmd.verb;
 

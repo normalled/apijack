@@ -1,4 +1,5 @@
-import type { OpenApiSchema, BodyProp } from './openapi-types';
+import type { OpenApiSchema, BodyProp, OpenApiOperation } from './openapi-types';
+import { HTTP_METHODS } from './openapi-types';
 
 /**
  * Resolve an OpenAPI schema to a TypeScript type string.
@@ -631,6 +632,52 @@ export function sanitizeIdentifier(name: string): string {
     }
 
     return id;
+}
+
+/**
+ * Build a deterministic map from each raw operationId in `paths` to a unique,
+ * sanitized method name.
+ *
+ * {@link sanitizeIdentifier} is not injective — distinct operationIds that
+ * differ only by a non-identifier character vs. an underscore collapse to the
+ * same name (e.g. both `Foo.bar` and `Foo_bar` → `Foo_bar`). Left unhandled,
+ * `generateClient` would emit two identical methods (the second shadowing the
+ * first) and both command-map entries would dispatch to the survivor — a
+ * wrong-op dispatch at runtime. On collision this appends a numeric suffix
+ * (`_2`, `_3`, …) so every operationId gets a distinct name.
+ *
+ * Iterates in the same `Object.entries(paths)` × {@link HTTP_METHODS} order
+ * that `generateClient`, `generateCommands`, and `generateCommandMap` all use,
+ * so a single shared map keeps the three emission sites in sync by
+ * construction. Look names up by raw operationId.
+ */
+export function buildMethodNameMap(
+    paths: Record<string, Record<string, OpenApiOperation>>,
+): Map<string, string> {
+    const map = new Map<string, string>();
+    const used = new Set<string>();
+
+    for (const [, methods] of Object.entries(paths)) {
+        for (const method of HTTP_METHODS) {
+            const op = methods[method] as OpenApiOperation | undefined;
+
+            if (!op || !op.operationId || map.has(op.operationId)) continue;
+
+            const base = sanitizeIdentifier(op.operationId);
+            let name = base;
+            let suffix = 2;
+
+            while (used.has(name)) {
+                name = `${base}_${suffix}`;
+                suffix++;
+            }
+
+            used.add(name);
+            map.set(op.operationId, name);
+        }
+    }
+
+    return map;
 }
 
 /**

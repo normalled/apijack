@@ -1,6 +1,6 @@
 import type { OpenApiOperation, OpenApiSchema } from './openapi-types';
 import { HTTP_METHODS } from './openapi-types';
-import { schemaToTsType, refToName, resolveType, resolveResponseType, sanitizeIdentifier } from './util';
+import { schemaToTsType, refToName, resolveType, resolveResponseType, buildMethodNameMap } from './util';
 
 /**
  * Generate an ApiClient class from OpenAPI paths.
@@ -30,6 +30,7 @@ export function generateClient(
     }
 
     const methodLines: string[] = [];
+    const methodNames = buildMethodNameMap(paths);
 
     for (const [path, methods] of Object.entries(paths)) {
         const pathLevelParams: NonNullable<OpenApiOperation['parameters']> = (methods as Record<string, unknown>).parameters as NonNullable<OpenApiOperation['parameters']> || [];
@@ -164,7 +165,7 @@ export function generateClient(
                 }
             }
 
-            methodLines.push(`  async ${sanitizeIdentifier(op.operationId)}(${args.join(', ')}): Promise<${returnType}> {`);
+            methodLines.push(`  async ${methodNames.get(op.operationId)!}(${args.join(', ')}): Promise<${returnType}> {`);
             methodLines.push(`    return this.request("${method.toUpperCase()}", ${pathTemplate}${optsArg}) as Promise<${returnType}>;`);
             methodLines.push('  }');
             methodLines.push('');
