@@ -12,7 +12,7 @@ export const configSwitchTool = defineTool({
     handler: async (params, ctx) => {
         if (ctx.environment !== undefined) {
             return textResult(
-                `This MCP server is pinned to environment '${ctx.environment}' (started with --config ${ctx.environment}), `
+                `This MCP server is pinned to environment '${ctx.environment}', `
                 + 'so switching the active environment would not change where its commands go. '
                 + 'Restart the server without --config to use the active environment.',
                 true,

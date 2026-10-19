@@ -100,7 +100,7 @@ export const setupTool = defineTool({
         // shared generated dir with it).
         if (ctx.environment !== undefined) {
             return textResult(
-                `Environment "${params.name}" configured (${params.url})\n`
+                `Environment "${params.name}" configured (${params.url}) and now the active environment\n`
                 + `Skipped generate: this MCP server is pinned to environment '${ctx.environment}'. `
                 + `To generate for "${params.name}", run generate without --config.`,
             );
