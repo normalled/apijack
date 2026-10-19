@@ -29,6 +29,7 @@ export interface Label {
 export interface Pr {
     number: number;
     headRefOid: string;
+    isDraft: boolean;
     labels: Label[];
 }
 
@@ -67,6 +68,8 @@ export interface Fixture {
     checkRuns: Record<string, CheckRun[]>;
     /** Head SHAs whose check-runs call fails (HTTP 502). */
     failingCheckRuns?: string[];
+    /** How many label POSTs fail (HTTP 502) before they start succeeding. */
+    failLabelPosts?: number;
 }
 
 export interface RunResult {
@@ -83,10 +86,11 @@ export function minutesAgo(minutes: number): string {
     return new Date(Date.now() - minutes * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
-export function pr(number: number, labels: string[], head: string): Pr {
+export function pr(number: number, labels: string[], head: string, isDraft = false): Pr {
     return {
         number,
         headRefOid: head,
+        isDraft,
         labels: labels.map(name => ({
             id: `LA_${name.replace(/ /g, '_')}`,
             name,
@@ -151,8 +155,32 @@ export function fixture(parts: Partial<Fixture>): Fixture {
     return { repo: 'normalled/apijack', prs: [], events: {}, commits: {}, checkRuns: {}, ...parts };
 }
 
+/**
+ * PR #10, opened 95 minutes ago and auto-labeled `needs review`. A review-issue
+ * run then applied `review in progress` `labeledMinutesAgo` minutes ago and
+ * died before posting a verdict (timeout, crash), so the label stayed.
+ */
+export function strandedReview(labeledMinutesAgo: number): Fixture {
+    return fixture({
+        prs: [pr(10, ['review in progress'], 'a10')],
+        events: {
+            10: [
+                labeled('needs review', minutesAgo(94)),
+                unlabeled('needs review', minutesAgo(labeledMinutesAgo)),
+                labeled('review in progress', minutesAgo(labeledMinutesAgo)),
+            ],
+        },
+        commits: { a10: commit('a10', minutesAgo(95)) },
+    });
+}
+
 /** Run a repo script (path relative to the repo root) with the fake `gh` serving `state`. */
-export async function runWithFakeGh(script: string, args: string[], state: Fixture): Promise<RunResult> {
+export function runWithFakeGh(script: string, args: string[], state: Fixture): Promise<RunResult> {
+    return runArgvWithFakeGh([join(repoRoot, script), ...args], state);
+}
+
+/** Run `argv` from the repo root with the fake `gh` serving `state`. */
+export async function runArgvWithFakeGh(argv: string[], state: Fixture): Promise<RunResult> {
     const fakeBin = mkdtempSync(join(tmpdir(), 'review-scripts-fakebin-'));
     const fixtureFile = join(fakeBin, 'fixture.json');
     const callLog = join(fakeBin, 'calls.log');
@@ -162,7 +190,7 @@ export async function runWithFakeGh(script: string, args: string[], state: Fixtu
     chmodSync(join(fakeBin, 'gh'), 0o755);
 
     try {
-        const proc = Bun.spawn([join(repoRoot, script), ...args], {
+        const proc = Bun.spawn(argv, {
             cwd: repoRoot,
             stdout: 'pipe',
             stderr: 'pipe',

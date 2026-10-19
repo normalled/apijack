@@ -48,7 +48,7 @@ Move the PR into the "review in progress" state. This single call removes any of
 .claude/skills/review-issue/scripts/set-review-label.sh <pr-number> "review in progress"
 ```
 
-Run it even when the PR already shows `review in progress`. That means an earlier review died before posting a verdict and the cron took the PR back. The script re-applies the label so this attempt is recorded, which is how the cron knows not to take the PR back a second time.
+If the PR already shows `review in progress`, an earlier review died before posting a verdict and the cron took the PR back. In cron mode the job has already recorded this attempt (`claim-review-candidate.sh`), so the call changes nothing; running it anyway is harmless.
 
 ### 2. Establish acceptance criteria
 
