@@ -5,16 +5,17 @@ schedule: "*/5 * * * *"
 enabled: true
 auth: subscription
 
-# The 900 passed to find-review-candidate.sh is how long (in seconds) a
+# The 1800 passed to find-review-candidate.sh is how long (in seconds) a
 # `review in progress` label must sit before the PR is taken back from a dead
-# run. Keep it above `timeout` below, and keep both call sites in step.
+# run: `timeout` below plus 5 minutes. Keep it above `timeout`, and keep both
+# call sites in step with each other and with the script's default and header.
 preflight:
-  run: .claude/skills/review-issue/scripts/find-review-candidate.sh 900 > /dev/null
+  run: .claude/skills/review-issue/scripts/find-review-candidate.sh 1800 > /dev/null
   timeout: 30s
 
 claude:
   prompt_cmd: |
-    pr=$(.claude/skills/review-issue/scripts/find-review-candidate.sh 900)
+    pr=$(.claude/skills/review-issue/scripts/find-review-candidate.sh 1800)
     echo "/review-issue $pr"
 
   append_system_prompt: |
@@ -73,7 +74,9 @@ claude:
   permission_mode: auto
 
 cwd: "."
-timeout: 10m
+# A full review of a medium-sized PR, including the second-opinion reviewer
+# subagent, takes well over 10 minutes (#178).
+timeout: 25m
 
 logging:
   retention_days: 30

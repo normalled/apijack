@@ -94,8 +94,8 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
     });
 
     describe('stale `review in progress`', () => {
-        test('takes back a label older than the default 15-minute threshold', async () => {
-            const r = await find(strandedReview(20));
+        test('takes back a label older than the default 30-minute threshold', async () => {
+            const r = await find(strandedReview(35));
 
             expect(r.exitCode).toBe(0);
             expect(r.stdout).toBe('10\n');
@@ -103,21 +103,24 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
         });
 
         test('leaves a label younger than the threshold alone', async () => {
-            const r = await find(strandedReview(5));
+            // 26 minutes is just past the job's 25-minute timeout: the run may
+            // only now have been killed, and the threshold keeps 5 minutes of
+            // slack on top of the timeout.
+            const r = await find(strandedReview(26));
 
             expect(r.exitCode).toBe(1);
             expect(r.stdout).toBe('');
         });
 
         test('honors a stale-after argument', async () => {
-            const r = await find(strandedReview(20), ['3600']);
+            const r = await find(strandedReview(35), ['3600']);
 
             expect(r.exitCode).toBe(1);
             expect(r.stdout).toBe('');
         });
 
         test('rejects a stale-after argument that is not a number of seconds', async () => {
-            const r = await find(strandedReview(20), ['15m']);
+            const r = await find(strandedReview(35), ['15m']);
 
             expect(r.exitCode).toBe(2);
             expect(r.stdout).toBe('');
@@ -125,12 +128,12 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
         });
 
         test('does not take back a second time on the same head commit', async () => {
-            const state = strandedReview(45);
+            const state = strandedReview(75);
             // The take-back run re-applied the label (see set-review-label.sh)
             // and died too.
             state.events[10].push(
-                unlabeled('review in progress', minutesAgo(25)),
-                labeled('review in progress', minutesAgo(25)),
+                unlabeled('review in progress', minutesAgo(40)),
+                labeled('review in progress', minutesAgo(40)),
             );
 
             const r = await find(state);
@@ -250,12 +253,13 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
                 commits: { a10: commit('a10', minutesAgo(10)) },
                 checkRuns: { a10: pending },
             })],
-            ['stale `review in progress`', { ...strandedReview(20), checkRuns: { a10: pending } }],
+            ['stale `review in progress`', { ...strandedReview(35), checkRuns: { a10: pending } }],
         ])('defers a %s PR too', async (_label, state) => {
             const r = await find(state);
 
             expect(r.exitCode).toBe(1);
             expect(r.stdout).toBe('');
+            expect(r.stderr).toContain('PR #10: deferred');
         });
     });
 
@@ -299,8 +303,8 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
                         unlabeled('needs review', minutesAgo(290)),
                         labeled('review in progress', minutesAgo(290)),
                         ...longHistory(),
-                        unlabeled('review in progress', minutesAgo(25)),
-                        labeled('review in progress', minutesAgo(25)),
+                        unlabeled('review in progress', minutesAgo(40)),
+                        labeled('review in progress', minutesAgo(40)),
                     ],
                 },
                 commits: { a10: commit('a10', minutesAgo(310)) },
@@ -335,7 +339,7 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
 
     describe('take-back cap, end to end with set-review-label.sh', () => {
         test('a taken-back review that dies again is not taken back a second time', async () => {
-            const first = await find(strandedReview(20));
+            const first = await find(strandedReview(35));
             expect(first.stdout).toBe('10\n');
 
             // The take-back run's first step (review-issue SKILL.md step 1.5).

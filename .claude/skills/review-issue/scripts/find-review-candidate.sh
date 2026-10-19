@@ -25,15 +25,16 @@
 # Exits 1 when nothing is ready. Deferred and capped PRs are noted on stderr.
 #
 # Usage: find-review-candidate.sh [stale-after-seconds]
-#   Defaults to 900 (15 minutes). The cron's overlap lock already keeps a live
-#   review-issue run from being taken back; the threshold protects interactive
+#   Defaults to 1800 (30 minutes): the review-issue job's 25-minute `timeout`
+#   plus 5 minutes. The cron's overlap lock already keeps a live review-issue
+#   run from being taken back; the threshold protects interactive
 #   `/review-issue` sessions, so keep it above the job's `timeout`.
 
 set -euo pipefail
 
 source "$(git rev-parse --show-toplevel)/scripts/gh-pin-account.sh"
 
-stale_after="${1:-900}"
+stale_after="${1:-1800}"
 if ! [[ "$stale_after" =~ ^[0-9]+$ ]]; then
     echo "usage: $0 [stale-after-seconds]" >&2
     exit 2
