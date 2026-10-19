@@ -92,7 +92,18 @@ export function registerRoutineCommand(
         .option('--set <pairs...>', 'Override variables (key=value)')
         .option('--dry-run', 'Print resolved commands without executing')
         .option('--json', 'Emit RoutineResult as JSON to stdout (silences progress output)')
-        .action(async (name: string, opts: { set?: string[]; dryRun?: boolean; json?: boolean }) => {
+        .option('-s, --quiet', 'Print only what the routine itself prints (no banner, step lines, or summary)')
+        .action(async (name: string, opts: { set?: string[]; json?: boolean }, cmd: Command) => {
+            // The program registers its own --dry-run (and --quiet, for the 'quiet'
+            // output mode), and Commander lets those swallow the same flags placed
+            // after `routine run` — read both with globals so either position works.
+            const { quiet, dryRun } = cmd.optsWithGlobals<{ quiet?: boolean; dryRun?: boolean }>();
+
+            if (quiet && opts.json) {
+                console.error("error: option '-s, --quiet' cannot be used with option '--json'");
+                process.exit(1);
+            }
+
             if (!dispatch) {
                 if (opts.json) {
                     const failure: RoutineResult = {
@@ -134,7 +145,7 @@ export function registerRoutineCommand(
                         executeRoutine,
                         dispatch,
                         overrides,
-                        dryRun: opts.dryRun,
+                        dryRun,
                         silent: true,
                         customResolvers,
                         pluginRegistry,
@@ -167,6 +178,33 @@ export function registerRoutineCommand(
                 return;
             }
 
+            if (quiet) {
+                // Quiet mode — nothing of our own on stdout, so only what the
+                // routine's commands print reaches it. Not silent: the executor
+                // still reports failed steps and asserts on stderr.
+                try {
+                    const def = loadRoutineFile(name, routinesDir, builtinsMap);
+                    const result = await routineRunAction({
+                        loadRoutine: () => def,
+                        validateRoutine,
+                        executeRoutine,
+                        dispatch,
+                        overrides,
+                        dryRun,
+                        customResolvers,
+                        pluginRegistry,
+                        invalidateSession: () => sessionMgr.invalidate(),
+                    });
+
+                    if (!result.success) process.exit(1);
+                } catch (err) {
+                    console.error(err instanceof Error ? err.message : String(err));
+                    process.exit(1);
+                }
+
+                return;
+            }
+
             // Default mode — colored progress output (unchanged from before).
             try {
                 const def = loadRoutineFile(name, routinesDir, builtinsMap);
@@ -180,7 +218,7 @@ export function registerRoutineCommand(
                     executeRoutine,
                     dispatch,
                     overrides,
-                    dryRun: opts.dryRun,
+                    dryRun,
                     customResolvers,
                     pluginRegistry,
                     invalidateSession: () => sessionMgr.invalidate(),
