@@ -212,6 +212,7 @@ Each environment in `config.json` keeps its own cached session at `<configDir>/s
 
 - `config switch <name>` keeps every environment's session, so switching away and back doesn't log you out.
 - Saving an environment's credentials (`setup` / `login`, `config import`, `config update-password`, the MCP `setup` tool) clears that environment's session, so the next command logs in with the new credentials. Re-running `setup` with unchanged credentials costs one extra login.
+- Editing credentials in `config.json` by hand bypasses that. A changed `url` or `user` is still caught, but a changed `password` isn't, so run `config clear-session` afterwards.
 - `config clear-session [name]` deletes the active (or named) environment's session; `--all` deletes them all.
 - `routine run` reuses the environment's cached session like any other command. Programmatic `cli.runRoutine()` / `runRoutine()` still clear it before running, so fixtures start from a fresh login.
 - Creating `sessions/` also writes `sessions/.gitignore` containing `*`, so session tokens stay out of git even in projects that only ignore the old `.apijack/session.json`. The directory is created owner-only (`0700`) and session files are written `0600`.
