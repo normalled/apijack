@@ -49,6 +49,7 @@ The MCP setup tool only accepts dev/staging URLs. Production APIs must use env v
 apijack setup                    # Add another environment
 apijack config list              # Show all environments
 apijack config switch staging    # Switch active environment
+apijack config clear-session     # Log the active environment out (--all for every environment)
 apijack generate                 # Regenerate from new environment's spec
 ```
 
@@ -79,4 +80,4 @@ apijack plugin config add-cidr 10.0.0.0/8
 - **"No environments configured"** — run `apijack setup` or use the MCP `setup` tool
 - **"Command map not available"** — run `apijack generate` after setup
 - **"Production API detected"** — use env vars or add the network to allowed CIDRs
-- **Auth failures after setup** — try `apijack config switch <env>` to verify active environment, then `apijack generate` to refresh
+- **Auth failures after setup** — try `apijack config switch <env>` to verify active environment, `apijack config clear-session` to force a fresh login, then `apijack generate` to refresh

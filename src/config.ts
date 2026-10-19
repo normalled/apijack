@@ -4,6 +4,7 @@ import { dirname, join } from 'path';
 import { homedir } from 'os';
 import type { ResolvedAuth, SessionAuthConfig } from './auth/types';
 import { classifyUrl } from './url-classifier';
+import { SessionManager } from './session';
 
 /**
  * Multi-environment config stored at ~/.<cliName>/config.json
@@ -45,17 +46,23 @@ function resolveConfigPath(cliName: string, opts?: ConfigOpts): string {
     return opts?.configPath ?? defaultConfigPath(cliName);
 }
 
+export interface ResolvedEnvironment {
+    /** config.json environment name; null when env vars supply the credentials. */
+    name: string | null;
+    auth: ResolvedAuth;
+}
+
 /**
- * Resolve authentication credentials.
+ * Resolve which environment this invocation uses, with its credentials.
  * Priority: environment variables > config file.
  *
  * Env var prefix is derived from cliName.toUpperCase():
  *   e.g. cliName="myapp" -> MYAPP_URL, MYAPP_USER, MYAPP_PASS
  */
-export function resolveAuth(
+export function resolveEnvironment(
     cliName: string,
     opts?: ConfigOpts,
-): ResolvedAuth | null {
+): ResolvedEnvironment | null {
     const prefix = cliName.toUpperCase();
     const envUrl = process.env[`${prefix}_URL`];
     const envUser = process.env[`${prefix}_USER`];
@@ -63,20 +70,26 @@ export function resolveAuth(
 
     if (envUrl && envUser && envPass) {
         return {
-            baseUrl: envUrl,
-            username: envUser,
-            password: envPass,
+            name: null,
+            auth: {
+                baseUrl: envUrl,
+                username: envUser,
+                password: envPass,
+            },
         };
     }
 
     const configPath = resolveConfigPath(cliName, opts);
-    const env = loadActiveEnvSync(configPath);
+    const active = loadActiveEnvSync(configPath);
 
-    if (env) {
+    if (active) {
         return {
-            baseUrl: env.url,
-            username: env.user,
-            password: env.password,
+            name: active.name,
+            auth: {
+                baseUrl: active.env.url,
+                username: active.env.user,
+                password: active.env.password,
+            },
         };
     }
 
@@ -84,10 +97,21 @@ export function resolveAuth(
 }
 
 /**
- * Load the active environment config synchronously.
- * Returns the full environment object (including extra fields) or null.
+ * Resolve authentication credentials.
+ * Priority: environment variables > config file.
  */
-function loadActiveEnvSync(path: string): EnvironmentConfig | null {
+export function resolveAuth(
+    cliName: string,
+    opts?: ConfigOpts,
+): ResolvedAuth | null {
+    return resolveEnvironment(cliName, opts)?.auth ?? null;
+}
+
+/**
+ * Load the active environment config synchronously.
+ * Returns its name and full environment object (including extra fields) or null.
+ */
+function loadActiveEnvSync(path: string): { name: string; env: EnvironmentConfig } | null {
     try {
         if (!existsSync(path)) return null;
 
@@ -96,7 +120,7 @@ function loadActiveEnvSync(path: string): EnvironmentConfig | null {
 
         if (!config.active || !config.environments?.[config.active]) return null;
 
-        return config.environments[config.active];
+        return { name: config.active, env: config.environments[config.active] };
     } catch {
         return null;
     }
@@ -112,7 +136,7 @@ export function getActiveEnvConfig(
 ): EnvironmentConfig | null {
     const configPath = resolveConfigPath(cliName, opts);
 
-    return loadActiveEnvSync(configPath);
+    return loadActiveEnvSync(configPath)?.env ?? null;
 }
 
 /**
@@ -186,6 +210,9 @@ export async function saveEnvironment(
     const dir = dirname(configPath);
     await mkdir(dir, { recursive: true });
     await Bun.write(configPath, JSON.stringify(config, null, 2) + '\n');
+
+    // A session minted with the previous credentials must not outlive them.
+    SessionManager.clear(dir, name);
 }
 
 /**

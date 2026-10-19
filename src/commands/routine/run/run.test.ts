@@ -9,7 +9,6 @@ describe('routineRunAction', () => {
             executeRoutine: mock(() => Promise.resolve({ status: 'ok' as const, success: true, output: {}, steps: [], durationMs: 0, stepsRun: 2, stepsSkipped: 0, stepsFailed: 0 })),
             dispatch: mock(() => Promise.resolve({})),
             overrides: {},
-            invalidateSession: mock(() => {}),
         });
         expect(result.success).toBe(true);
         expect(result.stepsRun).toBe(2);
@@ -22,7 +21,6 @@ describe('routineRunAction', () => {
             executeRoutine: mock(() => Promise.resolve({ status: 'ok' as const, success: true, output: {}, steps: [], durationMs: 0, stepsRun: 0, stepsSkipped: 0, stepsFailed: 0 })),
             dispatch: mock(() => Promise.resolve({})),
             overrides: {},
-            invalidateSession: mock(() => {}),
         })).rejects.toThrow('Validation errors');
     });
 
@@ -48,7 +46,6 @@ describe('routineRunAction', () => {
             dispatch: async () => ({}),
             overrides: {},
             silent: true,
-            invalidateSession: () => {},
         });
         expect(capturedOpts.silent).toBe(true);
         expect(result.success).toBe(true);

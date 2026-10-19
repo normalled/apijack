@@ -4,6 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import {
     resolveAuth,
+    resolveEnvironment,
     saveEnvironment,
     switchEnvironment,
     listEnvironments,
@@ -11,6 +12,7 @@ import {
     updateEnvironmentField,
     loadConfig,
 } from '../src/config';
+import { SessionManager } from '../src/session';
 
 function makeTmpDir(): string {
     return mkdtempSync(join(tmpdir(), 'cli-config-test-'));
@@ -103,7 +105,63 @@ describe('config management', () => {
         });
     });
 
+    describe('resolveEnvironment()', () => {
+        test('names the active environment alongside its credentials', async () => {
+            await saveEnvironment('myapp', 'local', {
+                url: 'http://localhost:8080',
+                user: 'localuser',
+                password: 'localpass',
+            }, false, { configPath });
+            await saveEnvironment('myapp', 'staging', {
+                url: 'http://localhost:9090',
+                user: 'staginguser',
+                password: 'stagingpass',
+            }, true, { configPath });
+
+            expect(resolveEnvironment('myapp', { configPath })).toEqual({
+                name: 'staging',
+                auth: { baseUrl: 'http://localhost:9090', username: 'staginguser', password: 'stagingpass' },
+            });
+        });
+
+        test('reports a null name when env vars supply the credentials, even with an active environment', async () => {
+            await saveEnvironment('testcli', 'prod', {
+                url: 'http://localhost:9090',
+                user: 'fileuser',
+                password: 'filepass',
+            }, true, { configPath });
+
+            process.env.TESTCLI_URL = 'https://env.example.com';
+            process.env.TESTCLI_USER = 'envuser';
+            process.env.TESTCLI_PASS = 'envpass';
+
+            expect(resolveEnvironment('testcli', { configPath })).toEqual({
+                name: null,
+                auth: { baseUrl: 'https://env.example.com', username: 'envuser', password: 'envpass' },
+            });
+        });
+
+        test('returns null when nothing is configured', () => {
+            expect(resolveEnvironment('myapp', { configPath })).toBeNull();
+        });
+    });
+
     describe('saveEnvironment()', () => {
+        test('clears the saved environment\'s cached session and no other', async () => {
+            const session = { headers: { Authorization: 'Basic stale' } };
+            SessionManager.forEnvironment(tmpDir, { env: 'local', baseUrl: 'http://localhost:8080', username: 'admin' }).save(session);
+            SessionManager.forEnvironment(tmpDir, { env: 'other', baseUrl: 'http://localhost:9090', username: 'admin' }).save(session);
+
+            await saveEnvironment('myapp', 'local', {
+                url: 'http://localhost:8080',
+                user: 'admin',
+                password: 'new-secret',
+            }, true, { configPath });
+
+            expect(existsSync(join(tmpDir, 'sessions', 'local.json'))).toBe(false);
+            expect(existsSync(join(tmpDir, 'sessions', 'other.json'))).toBe(true);
+        });
+
         test('creates config file with correct structure', async () => {
             await saveEnvironment('myapp', 'local', {
                 url: 'http://localhost:8080',

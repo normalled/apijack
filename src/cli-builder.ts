@@ -9,7 +9,7 @@ import type {
     CustomResolver,
     ApijackPlugin,
 } from './types';
-import { resolveAuth, verifyCredentials, saveEnvironment, getActiveEnvConfig } from './config';
+import { resolveEnvironment, verifyCredentials, saveEnvironment, getActiveEnvConfig, type ResolvedEnvironment } from './config';
 import { SessionManager } from './session';
 import { formatOutput, type OutputMode } from './output';
 import { formatDryRun, formatCurl, type CapturedRequest } from './output-request';
@@ -149,6 +149,16 @@ export function createCli(options: CliOptions): Cli {
     const defaultRequiresAuth = options.customCommandDefaults?.requiresAuth ?? false;
     const effectiveRequiresAuth = (explicit: boolean | undefined): boolean =>
         explicit ?? defaultRequiresAuth;
+    // Each environment keeps its own session file. currentEnvironment() selects the
+    // credentials and the session file only: getActiveEnvConfig() still reads
+    // sessionAuth / refreshOn from the active environment on its own.
+    const currentEnvironment = (): ResolvedEnvironment | null => resolveEnvironment(cliName, configOpts);
+    const sessionManagerFor = (environment: ResolvedEnvironment): SessionManager =>
+        SessionManager.forEnvironment(configDir, {
+            env: environment.name,
+            baseUrl: environment.auth.baseUrl,
+            username: environment.auth.username,
+        });
 
     let routineRuntime: {
         ctx: CliContext;
@@ -189,11 +199,13 @@ export function createCli(options: CliOptions): Cli {
         }
 
         // 2. Resolve auth from active env config.
-        const resolved = resolveAuth(cliName, configOpts);
+        const environment = currentEnvironment();
 
-        if (!resolved) {
+        if (!environment) {
             throw new Error(`No active env config. Run '${displayName} setup' to configure credentials.`);
         }
+
+        const resolved = environment.auth;
 
         // 3. Compute auth strategy + sessionMgr.
         const envConfig = getActiveEnvConfig(cliName, configOpts);
@@ -201,7 +213,7 @@ export function createCli(options: CliOptions): Cli {
         const strategy = mergedSessionAuth
             ? new SessionAuthStrategy(options.auth, mergedSessionAuth)
             : options.auth;
-        const sessionMgr = new SessionManager(cliName, join(configDir, 'session.json'));
+        const sessionMgr = sessionManagerFor(environment);
 
         // 4. Import generated client (best-effort — same as cli.run()).
         let ApiClientClass: (new (...args: unknown[]) => Record<string, unknown>) | null = null;
@@ -480,6 +492,7 @@ export function createCli(options: CliOptions): Cli {
                 knownSites: options.knownSites,
                 allowedCidrs: options.allowedCidrs,
                 displayName,
+                sessions: { configDir, currentEnvironment },
             });
             registerUpgradeCommand(program, options.version);
             registerMcpCommand(
@@ -492,7 +505,8 @@ export function createCli(options: CliOptions): Cli {
             registerPluginsCommand(program, pluginRegistry, options.version);
 
             // 4. Resolve auth
-            let resolved = resolveAuth(cliName, configOpts);
+            let environment = currentEnvironment();
+            let resolved = environment?.auth ?? null;
 
             const cmd = effectiveArgv2;
             const skipAuthCommands = new Set([
@@ -546,7 +560,8 @@ export function createCli(options: CliOptions): Cli {
                     process.exit(2);
                 }
 
-                resolved = resolveAuth(cliName, configOpts);
+                environment = currentEnvironment();
+                resolved = environment?.auth ?? null;
             }
 
             // 5. Compute auth strategy (no network — just config)
@@ -555,13 +570,13 @@ export function createCli(options: CliOptions): Cli {
             let strategy = options.auth;
             let sessionMgr: SessionManager | null = null;
 
-            if (resolved) {
+            if (environment) {
                 const envConfig = getActiveEnvConfig(cliName, configOpts);
                 ({ mergedSessionAuth, refreshOn } = resolveRefreshWiring(options, envConfig));
                 strategy = mergedSessionAuth
                     ? new SessionAuthStrategy(options.auth, mergedSessionAuth)
                     : options.auth;
-                sessionMgr = new SessionManager(cliName, join(configDir, 'session.json'));
+                sessionMgr = sessionManagerFor(environment);
             }
 
             // 5b. Register generate (depends on strategy + sessionMgr from step 5)
