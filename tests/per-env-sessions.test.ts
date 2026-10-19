@@ -277,7 +277,8 @@ describe('per-environment sessions via cli.run (configPath / project mode)', () 
 /**
  * Default mode (no configPath) keeps config and sessions under ~/.<cli>/, and
  * os.homedir() ignores runtime HOME changes, so these run a fixture CLI in a
- * child process with HOME pointed at a temp dir.
+ * child process with its home pointed at a temp dir: HOME, plus USERPROFILE,
+ * which is what os.homedir() reads on Windows.
  */
 describe('per-environment sessions in a child process (isolated HOME)', () => {
     let home: string;
@@ -334,7 +335,7 @@ await cli.run();
     function run(args: string[], env: Record<string, string> = {}): RunResult {
         const proc = Bun.spawnSync([process.execPath, fixture, ...args], {
             cwd: home,
-            env: { ...process.env, HOME: home, ...env },
+            env: { ...process.env, HOME: home, USERPROFILE: home, ...env },
         });
 
         return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString(), exitCode: proc.exitCode };
