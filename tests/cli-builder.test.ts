@@ -1243,8 +1243,9 @@ steps:
     async function runCli(
         argv: string[],
         configure?: (cli: Cli) => void,
+        overrides: Partial<CliOptions> = {},
     ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined; setupPrompted: boolean }> {
-        const cli = createCli(makeOptions({ configPath, generatedDir }));
+        const cli = createCli(makeOptions({ configPath, generatedDir, ...overrides }));
         cli.dispatcher('count', async () => {
             dispatched.push('count');
 
@@ -1425,6 +1426,21 @@ steps:
             expect(stderr).toContain("unknown option '--bogus'");
             expect(exitCode).toBe(1);
         });
+
+        test('-o with no value and no command is still rejected', async () => {
+            const { stderr, exitCode } = await runCli(['-o']);
+
+            expect(stderr).toContain("option '-o <format>' argument missing");
+            expect(exitCode).toBe(1);
+        });
+
+        test('a leading option this CLI did not register is still rejected', async () => {
+            // Without the 'quiet' output mode, the program has no --quiet option.
+            const { stderr, exitCode } = await runCli(['--quiet'], undefined, { outputModes: ['json'] });
+
+            expect(stderr).toContain("unknown option '--quiet'");
+            expect(exitCode).toBe(1);
+        });
     });
 
     test('every program-level option createCli registers is scanned as a leading option', async () => {
@@ -1439,7 +1455,11 @@ steps:
 
         expect(program).toBeDefined();
 
-        for (const opt of program!.options) {
+        // Commander keeps the help option out of `program.options`;
+        // `visibleOptions` adds it back.
+        const registered = new Set([...program!.options, ...program!.createHelp().visibleOptions(program!)]);
+
+        for (const opt of registered) {
             const takesValue = opt.required || opt.optional;
 
             for (const flag of [opt.short, opt.long].filter((f): f is string => !!f)) {

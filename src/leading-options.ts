@@ -20,7 +20,11 @@ export interface LeadingOption {
     value?: string;
     /** The argv tokens this option occupied. */
     tokens: string[];
-    /** False for an option the table doesn't list (scanned as a boolean). */
+    /**
+     * False for an option the table doesn't list (scanned as a boolean), and
+     * for a listed one used in a way Commander rejects: a boolean given
+     * `--opt=value`, or a value option with no value.
+     */
     known: boolean;
 }
 
@@ -37,7 +41,7 @@ export interface LeadingScan {
  * when `outputModes` leaves them unregistered — scanning a boolean never
  * consumes a token, so listing it is harmless.
  */
-export const PROGRAM_OPTIONS: LeadingOptionSpec[] = [
+export const PROGRAM_OPTIONS: readonly LeadingOptionSpec[] = [
     { flags: ['--table'], takesValue: false },
     { flags: ['--quiet'], takesValue: false },
     { flags: ['-o'], takesValue: true },
@@ -55,7 +59,7 @@ export const PROGRAM_OPTIONS: LeadingOptionSpec[] = [
  */
 export function scanLeadingOptions(
     args: string[],
-    specs: LeadingOptionSpec[] = PROGRAM_OPTIONS,
+    specs: readonly LeadingOptionSpec[] = PROGRAM_OPTIONS,
 ): LeadingScan {
     const options: LeadingOption[] = [];
     let i = 0;
@@ -78,15 +82,17 @@ export function scanLeadingOptions(
     return { options, leading: args.slice(0, i), rest: args.slice(i) };
 }
 
-function matchOption(arg: string, next: string | undefined, specs: LeadingOptionSpec[]): LeadingOption {
+function matchOption(arg: string, next: string | undefined, specs: readonly LeadingOptionSpec[]): LeadingOption {
     const eq = arg.startsWith('--') ? arg.indexOf('=') : -1;
     const flag = eq > 0 ? arg.slice(0, eq) : arg;
     const spec = specs.find(s => s.flags.includes(flag));
 
     if (spec) {
-        if (eq > 0) return { flag, value: arg.slice(eq + 1), tokens: [arg], known: true };
+        if (eq > 0) return { flag, value: arg.slice(eq + 1), tokens: [arg], known: spec.takesValue };
 
-        if (spec.takesValue && next !== undefined) {
+        if (spec.takesValue) {
+            if (next === undefined) return { flag, tokens: [arg], known: false };
+
             return { flag, value: next, tokens: [arg, next], known: true };
         }
 

@@ -68,6 +68,13 @@ function readAliasFile(path: string, errors: string[]): AliasMap {
             continue;
         }
 
+        // A leading `-` token is scanned as a program option before aliases are
+        // matched (see leading-options.ts), so this alias could never apply.
+        if (alias.startsWith('-')) {
+            errors.push(`${path}: alias "${alias}" can't start with "-" (it would be read as an option)`);
+            continue;
+        }
+
         out[alias] = expansion;
     }
 

@@ -55,11 +55,20 @@ describe('scanLeadingOptions()', () => {
         });
     });
 
-    test('a trailing value option with no value consumes nothing more', () => {
+    test('a trailing value option with no value is not a valid known option', () => {
+        // Commander rejects it ("argument missing"), so it must not count as known.
         expect(scanLeadingOptions(['-o'])).toEqual({
-            options: [{ flag: '-o', tokens: ['-o'], known: true }],
+            options: [{ flag: '-o', tokens: ['-o'], known: false }],
             leading: ['-o'],
             rest: [],
+        });
+    });
+
+    test('a boolean option given an inline value is not a valid known option', () => {
+        expect(scanLeadingOptions(['--quiet=1', 'routine'])).toEqual({
+            options: [{ flag: '--quiet', value: '1', tokens: ['--quiet=1'], known: false }],
+            leading: ['--quiet=1'],
+            rest: ['routine'],
         });
     });
 

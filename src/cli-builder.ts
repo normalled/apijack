@@ -942,13 +942,16 @@ export function createCli(options: CliOptions): Cli {
             }
 
             // 12. Custom help — intercept no command (past any leading program
-            // options) and --help. --version and unknown options go to Commander.
-            if (
-                commandArgs.length === 0
-                && !isVersion
-                && leadingOptions.every(o => o.known)
-            ) {
-                const showAll = leadingOptions.some(o => o.flag === '--help' || o.flag === '-h');
+            // options) and --help. --version, and any option this program would
+            // reject, go to Commander.
+            const isHelpFlag = (flag: string) => flag === '--help' || flag === '-h';
+            const leadingAccepted = leadingOptions.every(o =>
+                o.known
+                && (isHelpFlag(o.flag) || program.options.some(opt => opt.short === o.flag || opt.long === o.flag)),
+            );
+
+            if (commandArgs.length === 0 && !isVersion && leadingAccepted) {
+                const showAll = leadingOptions.some(o => isHelpFlag(o.flag));
                 const customCommandNames = new Set(consumerCommands.map(c => c.name));
                 showCustomHelp(program, displayName, showAll, customCommandNames);
                 process.exit(0);
