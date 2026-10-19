@@ -5,6 +5,8 @@
  * (first-run setup prompt, auth skip, dry-run, plugins-check guard, alias
  * rewriting, custom help). Those need the command token, which isn't argv[0]
  * when the user leads with a program option (`mycli --quiet routine list`).
+ * The request-preview mode needs the `-o` value from anywhere in argv
+ * (`findOptionValue`).
  */
 
 export interface LeadingOptionSpec {
@@ -80,6 +82,48 @@ export function scanLeadingOptions(
     }
 
     return { options, leading: args.slice(0, i), rest: args.slice(i) };
+}
+
+/**
+ * The value of the short value option `flag` (e.g. `-o`) anywhere in argv, as
+ * Commander's program-level parse reads it — `-o` is documented after the command
+ * (`mycli pets list -o curl`), so a leading-only scan isn't enough.
+ *
+ * - A `--` ends scanning; past it, `-ocurl` is an operand.
+ * - The option takes the next token as-is, or an attached value (`-ocurl`).
+ * - Every other token is skipped on its own, so `--name -ocurl` still yields
+ *   `curl`, as it does in Commander.
+ * - The last occurrence wins.
+ * - `-o=curl` is read as `curl` (see `stripShortOptionEquals`).
+ * - Combined short flags (`-vocurl`) aren't split, since which letters are
+ *   booleans depends on options registered later; `createCli` fails such a
+ *   preview in a `preAction` hook instead of sending the request.
+ */
+export function findOptionValue(args: string[], flag: string): string | undefined {
+    const specs: LeadingOptionSpec[] = [{ flags: [flag], takesValue: true }];
+    let value: string | undefined;
+    let i = 0;
+
+    while (i < args.length && args[i] !== '--') {
+        const option = matchOption(args[i], args[i + 1], specs);
+
+        if (option.known && option.value !== undefined) {
+            value = stripShortOptionEquals(option.value);
+            i += option.tokens.length;
+        } else {
+            i++;
+        }
+    }
+
+    return value;
+}
+
+/**
+ * Commander splits `--opt=value` but not a short option's `-o=value`, which
+ * it reads as the value `=value`. Take it as `value`, like `-o value`.
+ */
+export function stripShortOptionEquals(value: string): string {
+    return value.startsWith('=') ? value.slice(1) : value;
 }
 
 function matchOption(arg: string, next: string | undefined, specs: readonly LeadingOptionSpec[]): LeadingOption {

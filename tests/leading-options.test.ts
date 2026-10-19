@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import {
     scanLeadingOptions,
+    findOptionValue,
     PROGRAM_OPTIONS,
     type LeadingOptionSpec,
 } from '../src/leading-options';
@@ -143,5 +144,36 @@ describe('scanLeadingOptions()', () => {
             // taken as the command — the row is what makes the value consumable.
             expect(scanLeadingOptions(['--profile', 'dev', 'routine']).rest).toEqual(['dev', 'routine']);
         });
+    });
+});
+
+describe('findOptionValue()', () => {
+    // Mirrors Commander's program-level parse, which reads `-o` anywhere
+    // before `--`, not only in front of the command.
+    test.each([
+        ['-o <v> after the command', ['pets', 'list', '-o', 'curl'], 'curl'],
+        ['-o<v> after the command', ['pets', 'list', '-ocurl'], 'curl'],
+        ['-o<v> before the command', ['-ocurl', 'pets', 'list'], 'curl'],
+        ['-o=<v> as -o <v>', ['pets', 'list', '-o=curl'], 'curl'],
+        ['the last of repeated -o (preview last)', ['pets', 'list', '-o', 'json', '-ocurl'], 'curl'],
+        ['the last of repeated -o (preview first)', ['-ocurl', 'pets', 'list', '-o', 'json'], 'json'],
+        ['the next token even when it looks like an option', ['pets', 'list', '-o', '--quiet'], '--quiet'],
+        ['-o<v> where a subcommand option value would go', ['pets', 'create', '--name', '-ocurl'], 'curl'],
+        ['-o <v> after an unknown option and its value', ['pets', 'create', '--name', 'x', '-o', 'curl'], 'curl'],
+        ['only the -o before --', ['pets', 'list', '-o', 'json', '--', '-o', 'curl'], 'json'],
+        ['a value that is itself an attached -o', ['pets', 'list', '-o', '-ocurl'], '-ocurl'],
+        ['a -- that is the value of -o, then scanning on', ['pets', 'list', '-o', '--', '-ocurl'], 'curl'],
+    ])('finds %s', (_label, args, expected) => {
+        expect(findOptionValue(args, '-o')).toBe(expected);
+    });
+
+    test.each([
+        ['when -o is absent', ['pets', 'list', '--table']],
+        ['past --', ['pets', 'delete', '--', '-ocurl']],
+        ['for a trailing -o with no value', ['pets', 'list', '-o']],
+        ['for a long option that starts with -o', ['pets', 'list', '--output', 'curl']],
+        ['for a combined short flag that is not -o', ['pets', 'create', '-Bocurl']],
+    ])('finds nothing %s', (_label, args) => {
+        expect(findOptionValue(args, '-o')).toBeUndefined();
     });
 });
