@@ -273,6 +273,7 @@ Resolution rules:
 - Argv is rewritten at CLI bootstrap, before Commander parses. `mycli cs 42 --foo bar` becomes `mycli customers get-customer-order-summary 42 --foo bar`.
 - Single-token aliases (`cs`) and multi-token aliases (`customers summary`) use the same mechanism.
 - Trailing positional args and flags pass through unchanged.
+- Leading program options are skipped before matching: `mycli --quiet cs 42` resolves `cs` too. For the same reason, an alias key can't start with `-`; such entries are skipped with a startup error.
 - Longest-prefix wins when multiple aliases could match.
 - An alias that shadows a real command path emits a startup warning and the real command keeps winning.
 - An expansion that doesn't resolve to a known command emits a startup error; the CLI continues without that alias applied.
