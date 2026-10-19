@@ -37,7 +37,7 @@ import type { RoutineResult } from './routine/executor';
 import { executeRoutine } from './routine/executor';
 import { loadRoutineFile, validateRoutine } from './routine/loader';
 import { loadAliases, collectCommandPaths, rewriteArgv, resolveLeadingTokens } from './aliases';
-import { scanLeadingOptions } from './leading-options';
+import { scanLeadingOptions, findOptionValue, stripShortOptionEquals } from './leading-options';
 
 const coreManifest = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
@@ -465,6 +465,8 @@ export function createCli(options: CliOptions): Cli {
             program.option(
                 '-o <format>',
                 `Output format (${(options.outputModes || ['json', 'table', 'quiet']).join(', ')}, routine-step, curl, curl-with-creds)`,
+                // `-o=curl` as `curl`, matching the request-preview detection below.
+                stripShortOptionEquals,
             );
             program.option('--dry-run', 'Preview the API request without executing');
 
@@ -596,9 +598,10 @@ export function createCli(options: CliOptions): Cli {
                 }
             }
 
-            // 7. Detect request-preview output modes
-            const oIdx = process.argv.indexOf('-o');
-            const oVal = oIdx >= 0 ? process.argv[oIdx + 1] : undefined;
+            // 7. Detect request-preview output modes. Read `-o` the way Commander
+            // does (`-o curl`, `-ocurl`, before or after the command, last wins),
+            // or `-ocurl` would miss the preview and send the request.
+            const oVal = findOptionValue(process.argv.slice(2), '-o');
             const isDryRun = process.argv.includes('--dry-run') && effectiveArgv2 !== 'routine';
             const isCurl = oVal === 'curl';
             const isCurlWithCreds = oVal === 'curl-with-creds';
