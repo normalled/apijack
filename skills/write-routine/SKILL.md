@@ -257,7 +257,10 @@ Built-in commands available in routines:
 ```bash
 <cli> routine run <name>                   # Execute
 <cli> routine run <name> --set key=value   # Override variables
+<cli> --config <env> routine run <name>    # Run against another configured environment
 <cli> routine run <name> --dry-run         # Preview without executing
+<cli> routine run <name> --json            # Emit RoutineResult as JSON to stdout
+<cli> routine run <name> -s / --quiet      # Print only what the routine's commands print (failures still on stderr)
 <cli> routine validate <name>              # Check YAML structure
 <cli> routine test <name>                  # Run spec/test file
 <cli> routine list                         # List available

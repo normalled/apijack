@@ -81,4 +81,5 @@ apijack plugin config add-cidr 10.0.0.0/8
 - **"No environments configured"** — run `apijack setup` or use the MCP `setup` tool
 - **"Command map not available"** — run `apijack generate` after setup
 - **"Production API detected"** — use env vars or add the network to allowed CIDRs
+- **Edited `config.json` by hand** — run `apijack config clear-session` (or `apijack config clear-session <env>` for another environment) so the next command logs in with the new credentials
 - **Auth failures after setup** — try `apijack config switch <env>` to verify active environment, `apijack config clear-session` to force a fresh login, then `apijack generate` to refresh
