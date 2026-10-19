@@ -1,33 +1,13 @@
 import { describe, test, expect } from 'bun:test';
 import {
-    checkRun, commit, fixture, labeled, minutesAgo, otherEvents, pr, runWithFakeGh, unlabeled,
+    checkRun, commit, fixture, labeled, minutesAgo, otherEvents, pr, runWithFakeGh, strandedReview, unlabeled,
     type CheckRun, type Fixture,
 } from './fixtures/fake-gh-review';
 
 const findScript = '.claude/skills/review-issue/scripts/find-review-candidate.sh';
-const setLabelScript = '.claude/skills/review-issue/scripts/set-review-label.sh';
 
 function find(state: Fixture, args: string[] = []) {
     return runWithFakeGh(findScript, args, state);
-}
-
-/**
- * PR #10, opened 95 minutes ago and auto-labeled `needs review`. A review-issue
- * run then applied `review in progress` `labeledMinutesAgo` minutes ago and
- * died before posting a verdict (timeout, crash), so the label stayed.
- */
-function strandedReview(labeledMinutesAgo: number): Fixture {
-    return fixture({
-        prs: [pr(10, ['review in progress'], 'a10')],
-        events: {
-            10: [
-                labeled('needs review', minutesAgo(94)),
-                unlabeled('needs review', minutesAgo(labeledMinutesAgo)),
-                labeled('review in progress', minutesAgo(labeledMinutesAgo)),
-            ],
-        },
-        commits: { a10: commit('a10', minutesAgo(95)) },
-    });
 }
 
 // bun test runs on windows-latest in CI, where Bun can't exec a .sh directly
@@ -78,7 +58,7 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
             expect(r.stdout).toBe('');
         });
 
-        test('never selects `first pass reviewed` or `approved`', async () => {
+        test('never selects `approved`, or `first pass reviewed` without a newer commit', async () => {
             const r = await find(fixture({
                 prs: [pr(10, ['first pass reviewed'], 'a10'), pr(11, ['approved'], 'a11')],
                 events: {
@@ -86,6 +66,41 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
                     11: [labeled('approved', minutesAgo(60))],
                 },
                 commits: { a10: commit('a10', minutesAgo(90)), a11: commit('a11', minutesAgo(90)) },
+            }));
+
+            expect(r.exitCode).toBe(1);
+            expect(r.stdout).toBe('');
+        });
+    });
+
+    describe('stale `first pass reviewed`', () => {
+        // A commit pushed after the first-pass review makes that review stale.
+        // final-review skips such a PR, so the review cron has to pick it up.
+        test('selects `first pass reviewed` once a commit lands after the label', async () => {
+            const r = await find(fixture({
+                prs: [pr(10, ['first pass reviewed'], 'b10')],
+                events: {
+                    10: [
+                        labeled('review in progress', minutesAgo(55)),
+                        unlabeled('review in progress', minutesAgo(50)),
+                        labeled('first pass reviewed', minutesAgo(50)),
+                    ],
+                },
+                commits: { b10: commit('b10', minutesAgo(10)) },
+            }));
+
+            expect(r.exitCode).toBe(0);
+            expect(r.stdout).toBe('10\n');
+        });
+
+        test('leaves a commit made in the same second as the label to final-review', async () => {
+            // final-review treats only a strictly newer commit as stale, so
+            // every `first pass reviewed` PR belongs to exactly one cron.
+            const at = minutesAgo(50);
+            const r = await find(fixture({
+                prs: [pr(10, ['first pass reviewed'], 'b10')],
+                events: { 10: [labeled('first pass reviewed', at)] },
+                commits: { b10: commit('b10', at) },
             }));
 
             expect(r.exitCode).toBe(1);
@@ -175,6 +190,40 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
             expect(r.stdout).toBe('10\n');
         });
 
+        test('does not count an attempt from more than 6 hours ago toward the cap', async () => {
+            // A PR capped during an outage re-arms on its own once its
+            // attempts age out of the window.
+            const state = strandedReview(7 * 60 + 10);
+            state.commits.a10 = commit('a10', minutesAgo(8 * 60));
+            state.events[10][0] = labeled('needs review', minutesAgo(8 * 60 - 1));
+            state.events[10].push(
+                unlabeled('review in progress', minutesAgo(40)),
+                labeled('review in progress', minutesAgo(40)),
+            );
+
+            const r = await find(state);
+
+            expect(r.exitCode).toBe(0);
+            expect(r.stdout).toBe('10\n');
+            expect(r.stderr).toContain('PR #10: taking back');
+        });
+
+        test('counts an attempt from inside the 6-hour window toward the cap', async () => {
+            const state = strandedReview(5 * 60 + 50);
+            state.commits.a10 = commit('a10', minutesAgo(8 * 60));
+            state.events[10][0] = labeled('needs review', minutesAgo(8 * 60 - 1));
+            state.events[10].push(
+                unlabeled('review in progress', minutesAgo(40)),
+                labeled('review in progress', minutesAgo(40)),
+            );
+
+            const r = await find(state);
+
+            expect(r.exitCode).toBe(1);
+            expect(r.stdout).toBe('');
+            expect(r.stderr).toContain('PR #10: \'review in progress\' stalled again');
+        });
+
         test('takes back again after a reset to `needs review`', async () => {
             const state = strandedReview(80);
             state.events[10].push(
@@ -254,6 +303,12 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
                 checkRuns: { a10: pending },
             })],
             ['stale `review in progress`', { ...strandedReview(35), checkRuns: { a10: pending } }],
+            ['stale `first pass reviewed`', fixture({
+                prs: [pr(10, ['first pass reviewed'], 'a10')],
+                events: { 10: [labeled('first pass reviewed', minutesAgo(50))] },
+                commits: { a10: commit('a10', minutesAgo(10)) },
+                checkRuns: { a10: pending },
+            })],
         ])('defers a %s PR too', async (_label, state) => {
             const r = await find(state);
 
@@ -334,25 +389,6 @@ describe.skipIf(process.platform === 'win32')('find-review-candidate.sh', () => 
             expect(r.exitCode).toBe(1);
             expect(r.stdout).toBe('');
             expect(r.stderr).toBe('');
-        });
-    });
-
-    describe('take-back cap, end to end with set-review-label.sh', () => {
-        test('a taken-back review that dies again is not taken back a second time', async () => {
-            const first = await find(strandedReview(35));
-            expect(first.stdout).toBe('10\n');
-
-            // The take-back run's first step (review-issue SKILL.md step 1.5).
-            const relabel = await runWithFakeGh(setLabelScript, ['10', 'review in progress'], first.state);
-            expect(relabel.exitCode).toBe(0);
-
-            // That run dies too. With stale-after 0 its label is already stale,
-            // so only the cap can keep the PR out.
-            const second = await find(relabel.state, ['0']);
-
-            expect(second.exitCode).toBe(1);
-            expect(second.stdout).toBe('');
-            expect(second.stderr).toContain('PR #10: \'review in progress\' stalled again');
         });
     });
 });

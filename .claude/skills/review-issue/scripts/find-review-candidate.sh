@@ -6,11 +6,15 @@
 #   - labeled `changes requested` AND at least one commit has been pushed to
 #     the PR head after the `changes requested` label was applied (i.e., the
 #     author has responded to feedback and the PR is ready for re-review), or
+#   - labeled `first pass reviewed` AND a commit has been pushed after that
+#     label (the first-pass review is stale; final-review skips such a PR), or
 #   - labeled `review in progress` AND the label was applied more than
 #     stale-after seconds ago (the run that applied it died without posting a
-#     verdict). Taken back at most once per head commit, so a review that dies
-#     every time isn't retried forever; a new commit or a reset to
-#     `needs review` re-arms it.
+#     verdict). Take-backs are capped: once two attempts are on record since
+#     the latest of the head commit, the last reset to `needs review`, and the
+#     start of a 6-hour window, the PR is skipped. So a review that dies every
+#     time costs at most two runs per 6 hours; a new commit or a reset re-arms
+#     it at once, and a PR capped during an outage re-arms on its own.
 #
 # ...and every check run on the PR's head commit has completed (see
 # pending-checks.sh). A pending PR is deferred, not dropped: the script moves
@@ -18,8 +22,8 @@
 # checks finish. A review can't pass without green CI, so a run started
 # earlier could only wait out its timeout.
 #
-# Skips PRs labeled `first pass reviewed` or `approved` — those belong to the
-# final-review cron or are already done.
+# Skips `approved` PRs, and `first pass reviewed` PRs with no newer commit —
+# those belong to the final-review cron or are already done.
 #
 # Exits 0 with the PR number on stdout when a candidate is found.
 # Exits 1 when nothing is ready. Deferred and capped PRs are noted on stderr.
@@ -39,6 +43,9 @@ if ! [[ "$stale_after" =~ ^[0-9]+$ ]]; then
     echo "usage: $0 [stale-after-seconds]" >&2
     exit 2
 fi
+
+# Attempts older than this (seconds) don't count toward the take-back cap.
+attempt_window=21600
 
 repo="normalled/apijack"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,10 +86,14 @@ while read -r pr_json; do
     if grep -qxF "needs review" <<<"$labels"; then
         # `needs review` is eligible as soon as its checks settle.
         :
-    elif grep -qxF "changes requested" <<<"$labels"; then
-        # `changes requested` is eligible only when a commit lands after the label.
+    elif grep -qxE "changes requested|first pass reviewed" <<<"$labels"; then
+        # `changes requested` and `first pass reviewed` are eligible only when a
+        # commit lands after the label. Strictly after, the same comparison
+        # find-final-review-candidate.sh uses, so each `first pass reviewed` PR
+        # belongs to exactly one of the two crons.
+        verdict=$(grep -xE "changes requested|first pass reviewed" <<<"$labels" | head -n 1)
         events=$(labeled_events "$n")
-        labeled_at=$(label_times "$events" "changes requested" | tail -n 1)
+        labeled_at=$(label_times "$events" "$verdict" | tail -n 1)
         [ -z "$labeled_at" ] && continue
 
         head_at=$(gh api "repos/$repo/commits/$head" --jq '.commit.committer.date // empty')
@@ -93,10 +104,11 @@ while read -r pr_json; do
         [ "$head_ts" -gt "$labeled_ts" ] || continue
     elif grep -qxF "review in progress" <<<"$labels"; then
         # `review in progress` is eligible once stale (see the header). Every
-        # review attempt leaves a `labeled` event (set-review-label.sh re-applies
-        # this label even when it's present), so attempts are counted from the
-        # events after the head commit or the last reset to `needs review`,
-        # whichever is later.
+        # review attempt leaves one `labeled` event (the agent's step 1.5, or
+        # claim-review-candidate.sh on a take-back), so attempts are counted
+        # from the events after the head commit, the last reset to
+        # `needs review`, or the start of the attempt window, whichever is
+        # latest.
         events=$(labeled_events "$n")
         attempts_at=$(label_times "$events" "review in progress")
         [ -z "$attempts_at" ] && continue
@@ -109,6 +121,9 @@ while read -r pr_json; do
         [ -z "$head_at" ] && continue
 
         since_ts=$(date -u -d "$head_at" +%s)
+        if [ $(( now - attempt_window )) -gt "$since_ts" ]; then
+            since_ts=$(( now - attempt_window ))
+        fi
         reset_at=$(label_times "$events" "needs review" | tail -n 1)
         if [ -n "$reset_at" ]; then
             reset_ts=$(date -u -d "$reset_at" +%s)
@@ -125,7 +140,7 @@ while read -r pr_json; do
         done <<<"$attempts_at"
         if [ "$attempts" -ge 2 ]; then
             echo "PR #$n: 'review in progress' stalled again after a take-back on ${head:0:7};" \
-                "not retrying until a new commit or a reset to 'needs review'" >&2
+                "not retrying until a new commit, a reset to 'needs review', or the 6-hour window passes" >&2
             continue
         fi
         taken_back_from="$labeled_at"

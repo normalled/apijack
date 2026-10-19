@@ -13,7 +13,7 @@
 # Calls understood:
 #   gh auth token --user <name>                              (gh-pin-account.sh)
 #   gh repo view --json nameWithOwner -q <expr>
-#   gh pr list --repo <r> --state open --base dev --json <fields> --jq <expr>
+#   gh pr list --repo <r> --state open --base dev [--label <name>] --json <fields> --jq <expr>
 #   gh pr view <n> --repo <r> --json headRefOid --jq <expr>
 #   gh api [--paginate] repos/<r>/issues/<n>/events[?per_page=<k>] --jq <expr>
 #       Like GitHub: oldest first, 30 a page unless per_page says otherwise,
@@ -24,6 +24,7 @@
 #   gh api repos/<r>/issues/<n>/labels --jq <expr>
 #   gh api -X DELETE repos/<r>/issues/<n>/labels/<url-encoded-name>
 #   gh api -X POST repos/<r>/issues/<n>/labels -f 'labels[]=<name>'
+#       The first failLabelPosts POSTs (a fixture counter) fail with HTTP 502.
 
 set -euo pipefail
 
@@ -35,6 +36,7 @@ printf '%s\n' "$*" >> "$log"
 jqexpr=""
 method="GET"
 paginate=0
+label_filter=""
 fields=()
 words=()
 while [ $# -gt 0 ]; do
@@ -42,6 +44,7 @@ while [ $# -gt 0 ]; do
         --jq|-q) jqexpr="$2"; shift 2 ;;
         -X) method="$2"; shift 2 ;;
         -f) fields+=("$2"); shift 2 ;;
+        --label) label_filter="$2"; shift 2 ;;
         --repo|--state|--base|--json|--user) shift 2 ;;
         --paginate) paginate=1; shift ;;
         -*) echo "fake gh: unexpected flag: $1" >&2; exit 2 ;;
@@ -79,7 +82,8 @@ case "${words[0]:-} ${words[1]:-}" in
         exit 0
         ;;
     "pr list")
-        jq -c '.prs' "$fixture" | emit
+        jq -c --arg l "$label_filter" \
+            '[.prs[] | select($l == "" or any(.labels[]; .name == $l))]' "$fixture" | emit
         exit 0
         ;;
     "pr view")
@@ -147,6 +151,11 @@ elif [[ "$method" == DELETE && "$path" =~ ^repos/[^/]+/[^/]+/issues/([0-9]+)/lab
             actor: {login: "garretpremo"}, label: {name: $l, color: "ededed"}}]'
 elif [[ "$method" == POST && "$path" =~ ^repos/[^/]+/[^/]+/issues/([0-9]+)/labels$ ]]; then
     n="${BASH_REMATCH[1]}"
+    if [ "$(jq '.failLabelPosts // 0' "$fixture")" -gt 0 ]; then
+        update_fixture '.failLabelPosts -= 1'
+        echo "gh: Server Error (HTTP 502)" >&2
+        exit 1
+    fi
     for field in "${fields[@]}"; do
         name="${field#'labels[]='}"
         # GitHub treats adding a label that is already on the issue as a no-op:
