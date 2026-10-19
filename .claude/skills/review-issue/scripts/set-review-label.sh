@@ -54,6 +54,16 @@ for l in "${review_labels[@]}"; do
     gh api -X DELETE "repos/$repo/issues/$pr/labels/$encoded" >/dev/null
 done
 
+# `review in progress` is re-applied even when the PR already has it (adding a
+# label that's present is a no-op on GitHub), so every review attempt leaves a
+# fresh `labeled` event. find-review-candidate.sh times stale reviews and caps
+# take-backs by those events.
+if [ "$target" = "review in progress" ] && grep -qxF "$target" <<<"$current"; then
+    encoded=$(jq -rn --arg s "$target" '$s|@uri')
+    gh api -X DELETE "repos/$repo/issues/$pr/labels/$encoded" >/dev/null
+    current=$(grep -vxF "$target" <<<"$current" || true)
+fi
+
 if ! grep -qxF "$target" <<<"$current"; then
     gh api -X POST "repos/$repo/issues/$pr/labels" -f "labels[]=$target" >/dev/null
 fi
