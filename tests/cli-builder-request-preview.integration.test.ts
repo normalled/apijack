@@ -180,6 +180,7 @@ describe('request-preview -o forms (via cli.run) (#184)', () => {
         ['pets delete 7 -ocurl-with-creds', ['pets', 'delete', '7', '-ocurl-with-creds'], [DELETE_CURL, CREDS_HEADER]],
         ['-ocurl-with-creds pets delete 7', ['-ocurl-with-creds', 'pets', 'delete', '7'], [DELETE_CURL, CREDS_HEADER]],
         ['pets delete 7 -o=curl-with-creds', ['pets', 'delete', '7', '-o=curl-with-creds'], [DELETE_CURL, CREDS_HEADER]],
+        ['-o=curl-with-creds pets delete 7', ['-o=curl-with-creds', 'pets', 'delete', '7'], [DELETE_CURL, CREDS_HEADER]],
         ['the last -o wins: -o json -o curl', ['pets', 'list', '-o', 'json', '-o', 'curl'], [LIST_CURL]],
     ])('%s prints the curl preview without sending the request', async (_label, argv, expected) => {
         const { stdout, exitCode } = await runCli(argv);
@@ -219,6 +220,24 @@ describe('request-preview -o forms (via cli.run) (#184)', () => {
 
         expect(requests).toEqual(['GET http://localhost:9999/pets']);
         expect(stdout).not.toContain('curl');
+    });
+
+    test.each([
+        ['-vocurl', ['pets', 'list', '-vocurl'], 'curl'],
+        ['-vo curl', ['pets', 'list', '-vo', 'curl'], 'curl'],
+        ['-voroutine-step', ['pets', 'create', '--name', 'x', '-voroutine-step'], 'routine-step'],
+    ])('%s (combined with a consumer-registered program flag) errors instead of sending the request', async (_label, argv, mode) => {
+        // Commander reads `-o` out of the combined group, but the pre-parse
+        // lookup can't know `-v` is a boolean, so the preview isn't installed.
+        const { stderr, exitCode } = await runCli(argv, (cli) => {
+            cli.command('verbose', (program) => {
+                program.option('-v, --verbose', 'Verbose output');
+            });
+        });
+
+        expect(requests).toEqual([]);
+        expect(exitCode).toBe(1);
+        expect(stderr).toContain(`"-o ${mode}"`);
     });
 
     test('-o=json leaves program.opts().o as json, like -o json', async () => {

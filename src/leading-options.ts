@@ -85,8 +85,8 @@ export function scanLeadingOptions(
 }
 
 /**
- * The value of the value option `flag` anywhere in argv, as Commander's
- * program-level parse reads it — `-o` is documented after the command
+ * The value of the short value option `flag` (e.g. `-o`) anywhere in argv, as
+ * Commander's program-level parse reads it — `-o` is documented after the command
  * (`mycli pets list -o curl`), so a leading-only scan isn't enough.
  *
  * - A `--` ends scanning; past it, `-ocurl` is an operand.
@@ -94,7 +94,10 @@ export function scanLeadingOptions(
  * - Every other token is skipped on its own, so `--name -ocurl` still yields
  *   `curl`, as it does in Commander.
  * - The last occurrence wins.
- * - A short option's `-o=curl` is read as `curl` (see `stripShortOptionEquals`).
+ * - `-o=curl` is read as `curl` (see `stripShortOptionEquals`).
+ * - Combined short flags (`-vocurl`) aren't split, since which letters are
+ *   booleans depends on options registered later; `createCli` fails such a
+ *   preview in a `preAction` hook instead of sending the request.
  */
 export function findOptionValue(args: string[], flag: string): string | undefined {
     const specs: LeadingOptionSpec[] = [{ flags: [flag], takesValue: true }];
@@ -105,7 +108,7 @@ export function findOptionValue(args: string[], flag: string): string | undefine
         const option = matchOption(args[i], args[i + 1], specs);
 
         if (option.known && option.value !== undefined) {
-            value = flag.startsWith('--') ? option.value : stripShortOptionEquals(option.value);
+            value = stripShortOptionEquals(option.value);
             i += option.tokens.length;
         } else {
             i++;

@@ -161,6 +161,8 @@ describe('findOptionValue()', () => {
         ['-o<v> where a subcommand option value would go', ['pets', 'create', '--name', '-ocurl'], 'curl'],
         ['-o <v> after an unknown option and its value', ['pets', 'create', '--name', 'x', '-o', 'curl'], 'curl'],
         ['only the -o before --', ['pets', 'list', '-o', 'json', '--', '-o', 'curl'], 'json'],
+        ['a value that is itself an attached -o', ['pets', 'list', '-o', '-ocurl'], '-ocurl'],
+        ['a -- that is the value of -o, then scanning on', ['pets', 'list', '-o', '--', '-ocurl'], 'curl'],
     ])('finds %s', (_label, args, expected) => {
         expect(findOptionValue(args, '-o')).toBe(expected);
     });

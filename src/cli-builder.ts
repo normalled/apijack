@@ -610,6 +610,20 @@ export function createCli(options: CliOptions): Cli {
             // Skip auth resolution for preview/inspection modes. curl-with-creds still resolves.
             const skipAuthResolution = isRoutineStep || isDryRun || isCurl || isHelpOrVersion;
 
+            // Commander can still find a preview `-o` the lookup missed, e.g. inside
+            // `-vocurl` with a consumer-registered `-v`. Fail before any action
+            // (registered first, so before the requiresAuth hook) rather than send.
+            program.hook('preAction', () => {
+                const parsed = program.opts().o as string | undefined;
+
+                if (
+                    parsed !== oVal
+                    && (parsed === 'curl' || parsed === 'curl-with-creds' || parsed === 'routine-step')
+                ) {
+                    program.error(`error: -o ${parsed} was not recognized early enough to preview safely; pass it as a separate "-o ${parsed}" token`);
+                }
+            });
+
             // Shared session resolver — lazy, runs on first API request or explicit consumer call
             const resolveSession = async (): Promise<void> => {
                 if (!resolved || !sessionMgr) {
