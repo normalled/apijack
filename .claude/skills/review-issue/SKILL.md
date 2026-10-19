@@ -48,6 +48,8 @@ Move the PR into the "review in progress" state. This single call removes any of
 .claude/skills/review-issue/scripts/set-review-label.sh <pr-number> "review in progress"
 ```
 
+Run it even when the PR already shows `review in progress`. That means an earlier review died before posting a verdict and the cron took the PR back. The script re-applies the label so this attempt is recorded, which is how the cron knows not to take the PR back a second time.
+
 ### 2. Establish acceptance criteria
 
 - **Explicit** — issue lists them → use those
@@ -72,6 +74,8 @@ Skill(skill="superpowers:requesting-code-review")
 ```
 
 ### 4. Decide
+
+> **Cron mode:** when running non-interactively, never wait for CI. Run `.claude/skills/review-issue/scripts/pending-checks.sh <pr-number>` once, right before deciding; use it instead of reading `gh pr checks`. It prints how many check runs on the head commit have not completed. If that's more than 0, or the script fails without printing a number, post nothing, move the label back with `.claude/skills/review-issue/scripts/set-review-label.sh <pr-number> "needs review"`, and stop. The cron skips PRs with pending checks (using the same script), so the next run picks this one up after CI finishes. If it prints 0, nothing is pending, so decide normally. That includes a PR with no check runs at all (`gh pr checks` then says "no checks reported") and checks that finished as failed, skipped or cancelled. A failed check is a review finding, not a reason to wait. Don't use `gh pr checks --watch`, sleep or poll loops, background watchers, `Monitor`, or `ScheduleWakeup`: the run is killed at the job's timeout and the finished review is lost.
 
 **If ANY blocking issue is found OR any acceptance criterion is unmet:**
 

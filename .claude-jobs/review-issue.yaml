@@ -5,13 +5,17 @@ schedule: "*/5 * * * *"
 enabled: true
 auth: subscription
 
+# The 1800 passed to find-review-candidate.sh is how long (in seconds) a
+# `review in progress` label must sit before the PR is taken back from a dead
+# run: `timeout` below plus 5 minutes. Keep it above `timeout`, and keep both
+# call sites in step with each other and with the script's default and header.
 preflight:
-  run: .claude/skills/review-issue/scripts/find-review-candidate.sh > /dev/null
+  run: .claude/skills/review-issue/scripts/find-review-candidate.sh 1800 > /dev/null
   timeout: 30s
 
 claude:
   prompt_cmd: |
-    pr=$(.claude/skills/review-issue/scripts/find-review-candidate.sh)
+    pr=$(.claude/skills/review-issue/scripts/find-review-candidate.sh 1800)
     echo "/review-issue $pr"
 
   append_system_prompt: |
@@ -24,6 +28,18 @@ claude:
     to other skills like next-deployer. If the skill suggests merging or
     handing off, skip those steps and exit.
 
+    Never wait for CI. This run is killed at its timeout, and a wait throws
+    the finished review away. Right before deciding, run
+    `.claude/skills/review-issue/scripts/pending-checks.sh <pr>` once,
+    instead of reading `gh pr checks`; it prints how many check runs have
+    not completed. If that's more than 0, or the script fails without
+    printing a number, post nothing, set the label back to `needs review`
+    with set-review-label.sh, and stop (skill step 4,
+    "Cron mode"). If it prints 0, decide normally: zero check runs, and
+    checks that finished as failed, skipped or cancelled, are not pending.
+    No `gh pr checks --watch`, sleep or poll loops, background watchers,
+    Monitor, or ScheduleWakeup.
+
   allowed_tools:
     - "Bash(gh pr view*)"
     - "Bash(gh pr list*)"
@@ -35,6 +51,7 @@ claude:
     - "Bash(.claude/skills/review-issue/scripts/set-review-label.sh*)"
     - "Bash(.claude/skills/review-issue/scripts/ensure-review-labels.sh*)"
     - "Bash(.claude/skills/review-issue/scripts/post-review.sh*)"
+    - "Bash(.claude/skills/review-issue/scripts/pending-checks.sh*)"
     # Write is allowed so the agent can produce the review-body file that
     # post-review.sh consumes (avoids the backtick-escaping artifact that
     # happens when markdown is shoved into `gh pr review --body "..."`).
@@ -48,10 +65,18 @@ claude:
     - "Read"
     - "Grep"
 
+  # A one-shot cron run can't be woken up later or wait out CI, so these can
+  # only strand the review (#178).
+  disallowed_tools:
+    - "ScheduleWakeup"
+    - "Monitor"
+
   permission_mode: auto
 
 cwd: "."
-timeout: 10m
+# A full review of a medium-sized PR, including the second-opinion reviewer
+# subagent, takes well over 10 minutes (#178).
+timeout: 25m
 
 logging:
   retention_days: 30
