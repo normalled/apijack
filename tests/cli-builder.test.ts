@@ -1110,8 +1110,12 @@ steps:
         return { stdout, stderr, exitCode };
     }
 
-    test('--dry-run previews steps without dispatching, despite the program-level --dry-run', async () => {
-        const { exitCode } = await runCli(['routine', 'run', 'progress', '--dry-run']);
+    test.each([
+        ['after the routine name', ['routine', 'run', 'progress', '--dry-run']],
+        ['with --json', ['routine', 'run', 'progress', '--dry-run', '--json']],
+        ['before the subcommand', ['--dry-run', 'routine', 'run', 'progress']],
+    ])('--dry-run %s previews steps without dispatching, despite the program-level --dry-run', async (_label, argv) => {
+        const { exitCode } = await runCli(argv);
 
         expect(dispatched).toEqual([]);
         expect(exitCode).toBeUndefined();
@@ -1148,8 +1152,8 @@ steps:
         expect(exitCode).toBe(1);
     });
 
-    test('--quiet reports an unknown routine on stderr and exits 1', async () => {
-        const { stdout, stderr, exitCode } = await runCli(['routine', 'run', 'nope', '--quiet']);
+    test('-s reports an unknown routine on stderr and exits 1', async () => {
+        const { stdout, stderr, exitCode } = await runCli(['routine', 'run', 'nope', '-s']);
 
         expect(stdout).toBe('');
         expect(stderr).toContain('Routine not found: nope');

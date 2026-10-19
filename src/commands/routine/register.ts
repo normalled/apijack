@@ -100,8 +100,7 @@ export function registerRoutineCommand(
             const { quiet, dryRun } = cmd.optsWithGlobals<{ quiet?: boolean; dryRun?: boolean }>();
 
             if (quiet && opts.json) {
-                console.error("error: option '-s, --quiet' cannot be used with option '--json'");
-                process.exit(1);
+                cmd.error("error: option '-s, --quiet' cannot be used with option '--json'");
             }
 
             if (!dispatch) {
