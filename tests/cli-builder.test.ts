@@ -989,3 +989,186 @@ steps:
         expect(b.status).toBe('ok');
     });
 });
+
+describe('routine run flags (via cli.run)', () => {
+    let tmpHome: string;
+    let configPath: string;
+    let originalHome: string | undefined;
+    let dispatched: string[];
+
+    beforeEach(() => {
+        tmpHome = join(tmpdir(), `routineRunFlags-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        const cliConfigDir = join(tmpHome, '.testcli');
+        mkdirSync(join(cliConfigDir, 'routines'), { recursive: true });
+        configPath = join(cliConfigDir, 'config.json');
+        writeFileSync(configPath, JSON.stringify({
+            active: 'default',
+            environments: {
+                default: { url: 'http://localhost:9999', user: 'u', password: 'p' },
+            },
+        }));
+        writeFileSync(join(cliConfigDir, 'routines', 'progress.yaml'),
+            `name: progress
+description: Prints deleted / total
+steps:
+  - name: total
+    command: count
+  - name: print
+    command: print-progress
+`);
+        writeFileSync(join(cliConfigDir, 'routines', 'broken.yaml'),
+            `name: broken
+steps:
+  - name: explode
+    command: explode
+`);
+
+        originalHome = process.env.HOME;
+        process.env.HOME = tmpHome;
+        dispatched = [];
+    });
+
+    afterEach(() => {
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+
+        rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    async function runCli(
+        argv: string[],
+        overrides: Partial<CliOptions> = {},
+    ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
+        const cli = createCli(makeOptions({
+            configPath,
+            generatedDir: join(tmpHome, 'src', 'generated'),
+            ...overrides,
+        }));
+        cli.dispatcher('count', async () => {
+            dispatched.push('count');
+
+            return 608206;
+        });
+        cli.dispatcher('print-progress', async () => {
+            dispatched.push('print-progress');
+            console.log('167446 / 608206');
+
+            return null;
+        });
+        cli.dispatcher('explode', async () => {
+            dispatched.push('explode');
+            throw new Error('boom');
+        });
+
+        let stdout = '';
+        let stderr = '';
+        let exitCode: number | undefined;
+        const origArgv = process.argv;
+        const origLog = console.log;
+        const origErr = console.error;
+        const origStdout = process.stdout.write;
+        const origStderr = process.stderr.write;
+        const origExit = process.exit;
+
+        try {
+            process.argv = ['node', 'testcli', ...argv];
+            console.log = (...args: unknown[]) => {
+                stdout += args.join(' ') + '\n';
+            };
+            console.error = (...args: unknown[]) => {
+                stderr += args.join(' ') + '\n';
+            };
+            process.stdout.write = ((c: string | Uint8Array) => {
+                stdout += String(c);
+
+                return true;
+            }) as never;
+            process.stderr.write = ((c: string | Uint8Array) => {
+                stderr += String(c);
+
+                return true;
+            }) as never;
+            process.exit = ((code?: number) => {
+                exitCode = code ?? 0;
+                throw new Error('__exit__');
+            }) as never;
+
+            try {
+                await cli.run();
+            } catch (e) {
+                if ((e as Error).message !== '__exit__') throw e;
+            }
+        } finally {
+            process.argv = origArgv;
+            console.log = origLog;
+            console.error = origErr;
+            process.stdout.write = origStdout;
+            process.stderr.write = origStderr;
+            process.exit = origExit;
+        }
+
+        return { stdout, stderr, exitCode };
+    }
+
+    test.each([
+        ['after the routine name', ['routine', 'run', 'progress', '--dry-run']],
+        ['with --json', ['routine', 'run', 'progress', '--dry-run', '--json']],
+        ['before the subcommand', ['--dry-run', 'routine', 'run', 'progress']],
+    ])('--dry-run %s previews steps without dispatching, despite the program-level --dry-run', async (_label, argv) => {
+        const { exitCode } = await runCli(argv);
+
+        expect(dispatched).toEqual([]);
+        expect(exitCode).toBeUndefined();
+    });
+
+    test.each([
+        ['--quiet with the program-level --quiet registered', ['routine', 'run', 'progress', '--quiet'], ['json', 'table', 'quiet']],
+        ['--quiet without the program-level --quiet', ['routine', 'run', 'progress', '--quiet'], ['json']],
+        ['-s', ['routine', 'run', 'progress', '-s'], ['json', 'table', 'quiet']],
+        ['program-level --quiet before the subcommand', ['--quiet', 'routine', 'run', 'progress'], ['json', 'table', 'quiet']],
+    ])('%s prints only what the routine prints', async (_label, argv, outputModes) => {
+        const { stdout, stderr, exitCode } = await runCli(argv, { outputModes });
+
+        expect(dispatched).toEqual(['count', 'print-progress']);
+        expect(stdout).toBe('167446 / 608206\n');
+        expect(stderr).toBe('');
+        expect(exitCode).toBeUndefined();
+    });
+
+    test('--quiet with --dry-run prints only the resolved commands', async () => {
+        const { stdout, exitCode } = await runCli(['routine', 'run', 'progress', '--quiet', '--dry-run']);
+
+        expect(dispatched).toEqual([]);
+        expect(stdout).toBe('[1] total: count\n[2] print: print-progress\n');
+        expect(exitCode).toBeUndefined();
+    });
+
+    test('--quiet reports a failing step on stderr and exits 1', async () => {
+        const { stdout, stderr, exitCode } = await runCli(['routine', 'run', 'broken', '--quiet']);
+
+        expect(dispatched).toEqual(['explode']);
+        expect(stdout).toBe('');
+        expect(stderr).toContain('Step "explode" failed: boom');
+        expect(exitCode).toBe(1);
+    });
+
+    test('-s reports an unknown routine on stderr and exits 1', async () => {
+        const { stdout, stderr, exitCode } = await runCli(['routine', 'run', 'nope', '-s']);
+
+        expect(stdout).toBe('');
+        expect(stderr).toContain('Routine not found: nope');
+        expect(exitCode).toBe(1);
+    });
+
+    test.each([
+        ['-s', ['json']],
+        ['--quiet', ['json', 'table', 'quiet']],
+    ])('%s combined with --json is rejected before running', async (flag, outputModes) => {
+        const { stdout, stderr, exitCode } = await runCli(['routine', 'run', 'progress', flag, '--json'], { outputModes });
+
+        expect(dispatched).toEqual([]);
+        expect(stdout).toBe('');
+        expect(stderr).toContain("cannot be used with option '--json'");
+        expect(exitCode).toBe(1);
+    });
+});

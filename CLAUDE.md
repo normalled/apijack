@@ -98,6 +98,7 @@ Usable anywhere a routine value is resolved (args, conditions, variables):
 <cli> routine run <name> --set key=value  # Override variables
 <cli> routine run <name> --dry-run        # Preview without executing
 <cli> routine run <name> --json           # Emit RoutineResult as JSON to stdout
+<cli> routine run <name> -s / --quiet     # Print only what the routine's commands print (failures still on stderr)
 <cli> routine validate <name>   # Validate YAML structure
 <cli> routine test <name>       # Run spec (test) file
 <cli> routine init              # Install built-in routines
