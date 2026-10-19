@@ -37,6 +37,7 @@ import type { RoutineResult } from './routine/executor';
 import { executeRoutine } from './routine/executor';
 import { loadRoutineFile, validateRoutine } from './routine/loader';
 import { loadAliases, collectCommandPaths, rewriteArgv, resolveLeadingTokens } from './aliases';
+import { scanLeadingOptions } from './leading-options';
 
 const coreManifest = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
@@ -401,7 +402,14 @@ export function createCli(options: CliOptions): Cli {
                 process.stderr.write(`${displayName}: aliases: ${err}\n`);
             }
 
-            const effectiveArgs = resolveLeadingTokens(process.argv.slice(2), aliasMap);
+            // Leading program options (`--quiet`, `-o json`, ...) come before the
+            // command token, so skip them before any check that reads the command.
+            const {
+                options: leadingOptions,
+                leading: leadingArgs,
+                rest: commandArgs,
+            } = scanLeadingOptions(process.argv.slice(2));
+            const effectiveArgs = resolveLeadingTokens(commandArgs, aliasMap);
             const effectiveArgv2 = effectiveArgs[0];
             const effectiveArgv3 = effectiveArgs[1];
 
@@ -498,8 +506,8 @@ export function createCli(options: CliOptions): Cli {
                 'plugin',
                 'plugins',
             ]);
-            const isHelpOrVersion = cmd === '--help' || cmd === '-h'
-                || cmd === '--version' || cmd === '-V'
+            const isVersion = leadingOptions.some(o => o.flag === '--version' || o.flag === '-V');
+            const isHelpOrVersion = isVersion
                 || process.argv.includes('--help') || process.argv.includes('-h');
 
             if (
@@ -933,16 +941,14 @@ export function createCli(options: CliOptions): Cli {
                 });
             }
 
-            // 12. Custom help — intercept no-args and --help
-            const userArgs = process.argv.slice(2);
-
+            // 12. Custom help — intercept no command (past any leading program
+            // options) and --help. --version and unknown options go to Commander.
             if (
-                userArgs.length === 0
-                || (userArgs.length === 1
-                    && (userArgs[0] === '--help' || userArgs[0] === '-h'))
+                commandArgs.length === 0
+                && !isVersion
+                && leadingOptions.every(o => o.known)
             ) {
-                const showAll
-                    = userArgs[0] === '--help' || userArgs[0] === '-h';
+                const showAll = leadingOptions.some(o => o.flag === '--help' || o.flag === '-h');
                 const customCommandNames = new Set(consumerCommands.map(c => c.name));
                 showCustomHelp(program, displayName, showAll, customCommandNames);
                 process.exit(0);
@@ -960,7 +966,7 @@ export function createCli(options: CliOptions): Cli {
             if (Object.keys(aliasMap).length > 0) {
                 const realPaths = collectCommandPaths(program);
                 const { rewrittenArgs, warnings, errors } = rewriteArgv(
-                    process.argv.slice(2),
+                    commandArgs,
                     aliasMap,
                     realPaths,
                     // Set iff generated-command registration actually ran, so this
@@ -976,7 +982,8 @@ export function createCli(options: CliOptions): Cli {
                     process.stderr.write(`${displayName}: aliases: ${e}\n`);
                 }
 
-                process.argv = [...process.argv.slice(0, 2), ...rewrittenArgs];
+                // Leading program options stay in front of the expansion.
+                process.argv = [...process.argv.slice(0, 2), ...leadingArgs, ...rewrittenArgs];
             }
 
             // 14. Parse and execute

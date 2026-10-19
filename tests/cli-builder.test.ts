@@ -7,6 +7,7 @@ import { createCli, type Cli } from '../src/cli-builder';
 import type { CliOptions, CliContext, CommandRegistrar, DispatcherHandler, ApijackPlugin } from '../src/types';
 import { BasicAuthStrategy } from '../src/auth/basic';
 import { configUpdatePasswordAction } from '../src/commands/config/update-password/update-password';
+import { scanLeadingOptions } from '../src/leading-options';
 
 const coreManifest = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
@@ -1170,5 +1171,286 @@ steps:
         expect(stdout).toBe('');
         expect(stderr).toContain("cannot be used with option '--json'");
         expect(exitCode).toBe(1);
+    });
+});
+
+describe('leading program options (via cli.run) (#181)', () => {
+    let tmpHome: string;
+    let cliConfigDir: string;
+    let configPath: string;
+    let generatedDir: string;
+    let originalHome: string | undefined;
+    let originalIsTTY: boolean | undefined;
+    let dispatched: string[];
+
+    beforeEach(() => {
+        tmpHome = join(tmpdir(), `leadingOptions-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        cliConfigDir = join(tmpHome, '.testcli');
+        mkdirSync(join(cliConfigDir, 'routines'), { recursive: true });
+        configPath = join(cliConfigDir, 'config.json');
+        generatedDir = join(tmpHome, 'src', 'generated');
+
+        originalHome = process.env.HOME;
+        process.env.HOME = tmpHome;
+        // The first-run setup wizard only opens on an interactive stdin.
+        originalIsTTY = process.stdin.isTTY;
+        (process.stdin as { isTTY?: boolean }).isTTY = true;
+        dispatched = [];
+    });
+
+    afterEach(() => {
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+
+        (process.stdin as { isTTY?: boolean }).isTTY = originalIsTTY;
+        rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    function writeConfig(): void {
+        writeFileSync(configPath, JSON.stringify({
+            active: 'default',
+            environments: {
+                default: { url: 'http://localhost:9999', user: 'u', password: 'p' },
+            },
+        }));
+    }
+
+    function writeAliases(aliases: Record<string, string>): void {
+        writeFileSync(join(cliConfigDir, 'aliases.json'), JSON.stringify(aliases));
+    }
+
+    function writeProgressRoutine(): void {
+        writeFileSync(join(cliConfigDir, 'routines', 'progress.yaml'),
+            `name: progress
+steps:
+  - name: total
+    command: count
+`);
+    }
+
+    /** One generated API command group (`items`), so help output can show API commands. */
+    function writeGeneratedCommands(): void {
+        mkdirSync(generatedDir, { recursive: true });
+        writeFileSync(
+            join(generatedDir, 'commands.ts'),
+            'export function registerGeneratedCommands(program: any): void {\n'
+            + '    program.command("items").description("Items");\n'
+            + '}\n',
+        );
+        writeFileSync(join(generatedDir, 'client.ts'), 'export class ApiClient {}\n');
+    }
+
+    async function runCli(
+        argv: string[],
+        configure?: (cli: Cli) => void,
+    ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined; setupPrompted: boolean }> {
+        const cli = createCli(makeOptions({ configPath, generatedDir }));
+        cli.dispatcher('count', async () => {
+            dispatched.push('count');
+
+            return 1;
+        });
+        configure?.(cli);
+
+        let stdout = '';
+        let stderr = '';
+        let exitCode: number | undefined;
+        let setupPrompted = false;
+        const origArgv = process.argv;
+        const origLog = console.log;
+        const origErr = console.error;
+        const origStdout = process.stdout.write;
+        const origStderr = process.stderr.write;
+        const origExit = process.exit;
+
+        try {
+            process.argv = ['node', 'testcli', ...argv];
+            console.log = (...args: unknown[]) => {
+                const line = args.join(' ');
+
+                // The wizard would block on stdin next — stop the run here instead.
+                if (line.startsWith('testcli Setup')) {
+                    setupPrompted = true;
+                    throw new Error('__setup__');
+                }
+
+                stdout += line + '\n';
+            };
+            console.error = (...args: unknown[]) => {
+                stderr += args.join(' ') + '\n';
+            };
+            process.stdout.write = ((c: string | Uint8Array) => {
+                stdout += String(c);
+
+                return true;
+            }) as never;
+            process.stderr.write = ((c: string | Uint8Array) => {
+                stderr += String(c);
+
+                return true;
+            }) as never;
+            process.exit = ((code?: number) => {
+                exitCode = code ?? 0;
+                throw new Error('__exit__');
+            }) as never;
+
+            try {
+                await cli.run();
+            } catch (e) {
+                const msg = (e as Error).message;
+
+                if (msg !== '__exit__' && msg !== '__setup__') throw e;
+            }
+        } finally {
+            process.argv = origArgv;
+            console.log = origLog;
+            console.error = origErr;
+            process.stdout.write = origStdout;
+            process.stderr.write = origStderr;
+            process.exit = origExit;
+        }
+
+        return { stdout, stderr, exitCode, setupPrompted };
+    }
+
+    describe('first-run setup wizard (no config, interactive stdin)', () => {
+        test.each([
+            ['--quiet routine list', ['--quiet', 'routine', 'list'], 'No routines found'],
+            ['--table config list', ['--table', 'config', 'list'], 'No environments configured'],
+            ['-o json config list', ['-o', 'json', 'config', 'list'], 'No environments configured'],
+            ['-ojson config list', ['-ojson', 'config', 'list'], 'No environments configured'],
+            ['--dry-run routine list', ['--dry-run', 'routine', 'list'], 'No routines found'],
+            ['-- routine list', ['--', 'routine', 'list'], 'No routines found'],
+        ])('%s runs the command without opening the wizard', async (_label, argv, expected) => {
+            const { stdout, setupPrompted } = await runCli(argv);
+
+            expect(setupPrompted).toBe(false);
+            expect(stdout).toContain(expected);
+        });
+
+        test('--quiet --version prints the version without opening the wizard', async () => {
+            const { stdout, setupPrompted, exitCode } = await runCli(['--quiet', '--version']);
+
+            expect(setupPrompted).toBe(false);
+            expect(stdout).toBe('1.0.0\n');
+            expect(exitCode).toBe(0);
+        });
+
+        test('a leading option before a command that needs credentials still opens the wizard', async () => {
+            const { setupPrompted } = await runCli(['--quiet', 'widgets', 'list']);
+
+            expect(setupPrompted).toBe(true);
+        });
+
+        test('an alias after a leading option is resolved before the wizard check', async () => {
+            writeAliases({ rl: 'routine list' });
+
+            const { stdout, setupPrompted } = await runCli(['--quiet', 'rl']);
+
+            expect(setupPrompted).toBe(false);
+            expect(stdout).toContain('No routines found');
+        });
+    });
+
+    test('--quiet plugins check reports plugin problems instead of throwing at startup', async () => {
+        const { stderr, exitCode } = await runCli(['--quiet', 'plugins', 'check'], (cli) => {
+            // Fails namespace validation, which startup would otherwise throw on.
+            cli.use({ name: 'faker', resolvers: { _other: () => 'x' } });
+        });
+
+        expect(stderr).toContain('registered resolver "_other" which is outside its namespace');
+        expect(exitCode).toBe(1);
+    });
+
+    describe('aliases after leading options', () => {
+        beforeEach(() => {
+            writeConfig();
+        });
+
+        test('a single-token alias resolves after a leading boolean option', async () => {
+            writeAliases({ rl: 'routine list' });
+
+            const { stdout, exitCode } = await runCli(['--quiet', 'rl']);
+
+            expect(stdout).toContain('No routines found');
+            expect(exitCode).toBeUndefined();
+        });
+
+        test('a multi-token alias resolves after a leading value option', async () => {
+            writeAliases({ 'r ls': 'routine list' });
+
+            const { stdout, exitCode } = await runCli(['-o', 'json', 'r', 'ls']);
+
+            expect(stdout).toContain('No routines found');
+            expect(exitCode).toBeUndefined();
+        });
+
+        test('the leading options still apply to the expanded command', async () => {
+            writeAliases({ rr: 'routine run' });
+            writeProgressRoutine();
+
+            const { stdout, exitCode } = await runCli(['--dry-run', 'rr', 'progress']);
+
+            // --dry-run kept in front of `routine run progress` → preview, no dispatch.
+            expect(dispatched).toEqual([]);
+            expect(stdout).toContain('[1] total: count');
+            expect(exitCode).toBeUndefined();
+        });
+    });
+
+    describe('help', () => {
+        beforeEach(() => {
+            writeConfig();
+            writeGeneratedCommands();
+        });
+
+        test('--quiet --help shows the full custom help, like --help', async () => {
+            const { stdout, exitCode } = await runCli(['--quiet', '--help']);
+
+            expect(stdout).toContain('API Commands (1):');
+            expect(stdout).toContain("Run 'testcli <command> --help' for details on any command.");
+            expect(exitCode).toBe(0);
+        });
+
+        test('--quiet with no command shows the summary custom help, like no args', async () => {
+            const { stdout, exitCode } = await runCli(['--quiet']);
+
+            expect(stdout).toContain("1 API command groups available — run 'testcli --help' to list all");
+            expect(exitCode).toBe(0);
+        });
+
+        test('an unknown leading option with no command is still rejected', async () => {
+            const { stderr, exitCode } = await runCli(['--bogus']);
+
+            expect(stderr).toContain("unknown option '--bogus'");
+            expect(exitCode).toBe(1);
+        });
+    });
+
+    test('every program-level option createCli registers is scanned as a leading option', async () => {
+        writeConfig();
+        let program: Command | undefined;
+
+        await runCli(['config', 'list'], (cli) => {
+            cli.command('capture', (p) => {
+                program = p;
+            });
+        });
+
+        expect(program).toBeDefined();
+
+        for (const opt of program!.options) {
+            const takesValue = opt.required || opt.optional;
+
+            for (const flag of [opt.short, opt.long].filter((f): f is string => !!f)) {
+                const scan = scanLeadingOptions([flag, 'x', 'cmd']);
+
+                expect({ flag, known: scan.options[0]?.known, rest: scan.rest }).toEqual({
+                    flag,
+                    known: true,
+                    rest: takesValue ? ['cmd'] : ['x', 'cmd'],
+                });
+            }
+        }
     });
 });
