@@ -20,12 +20,13 @@ describe('mcpAction', () => {
         });
     });
 
-    test('passes the selected environment on to the CLI processes it spawns', async () => {
+    test('pins the server to the selected environment: spawned CLI calls and in-process tools', async () => {
         const startFn = mock(() => Promise.resolve());
         await mcpAction({
             cliName: 'testcli',
             cliInvocation: ['node', 'testcli'],
             environment: 'coolsilk',
+            configPath: '/tmp/cfg/config.json',
             generatedDir: '/tmp/generated',
             routinesDir: '/tmp/routines',
             startMcpServer: startFn,
@@ -34,6 +35,8 @@ describe('mcpAction', () => {
         expect(startFn).toHaveBeenCalledWith({
             cliName: 'testcli',
             cliInvocation: ['node', 'testcli', '--config', 'coolsilk'],
+            environment: 'coolsilk',
+            configPath: '/tmp/cfg/config.json',
             generatedDir: '/tmp/generated',
             routinesDir: '/tmp/routines',
         });

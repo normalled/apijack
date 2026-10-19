@@ -74,7 +74,7 @@ export function registerConfigCommand(
         const { configDir, currentEnvironment } = opts.sessions;
         config
             .command('clear-session [name]')
-            .description('Delete a cached session so the next command logs in again (defaults to the active environment)')
+            .description('Delete a cached session so the next command logs in again (defaults to the selected or active environment)')
             .option('--all', 'Delete every environment\'s cached session')
             .action(async (name: string | undefined, cmdOpts: { all?: boolean }) => {
                 const result = await configClearSessionAction({
@@ -184,7 +184,7 @@ export function registerConfigCommand(
 
         config
             .command('update-password [name]')
-            .description('Update password for an environment (defaults to active)')
+            .description('Update password for an environment (defaults to the selected or active one)')
             .option('--password <password>', 'New password')
             .action(async (name: string | undefined, cmdOpts: { password?: string }) => {
                 // Validate environment exists before prompting for password
@@ -195,7 +195,8 @@ export function registerConfigCommand(
                     process.exit(1);
                 }
 
-                const envName = name ?? cfg.active;
+                // Under a leading --config, the selected environment; else the active one.
+                const envName = name ?? opts?.sessions?.currentEnvironment()?.name ?? cfg.active;
 
                 if (!cfg.environments[envName]) {
                     console.error(`Environment '${envName}' not found.`);

@@ -47,6 +47,30 @@ describe('get_config tool', () => {
         rmSync(configDir, { recursive: true, force: true });
     });
 
+    test('returns the pinned environment, not the active one, when the server is pinned', async () => {
+        const { mkdtempSync, writeFileSync, rmSync } = await import('fs');
+        const { tmpdir } = await import('os');
+        const dir = mkdtempSync(tmpdir() + '/get-config-pinned-');
+        writeFileSync(dir + '/config.json', JSON.stringify({
+            active: 'dev',
+            environments: {
+                dev: { url: 'http://localhost:8080', user: 'admin', password: 'x' },
+                staging: { url: 'http://localhost:7070', user: 'stager', password: 'y' },
+            },
+        }));
+
+        try {
+            const result = await getConfigTool.handler({}, makeCtx({ configPath: dir + '/config.json', environment: 'staging' }));
+
+            expect(result.isError).toBeUndefined();
+            const parsed = JSON.parse(result.content[0].text);
+            expect(parsed.url).toBe('http://localhost:7070');
+            expect(parsed.user).toBe('stager');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('returns error when no config exists', async () => {
         const ctx = makeCtx({ cliName: 'nonexistent-cli-name-xyz' });
         const result = await getConfigTool.handler({}, ctx);

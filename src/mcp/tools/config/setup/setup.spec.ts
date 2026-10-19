@@ -122,4 +122,39 @@ describe('setup tool', () => {
 
         rmSync(configDir, { recursive: true, force: true });
     });
+
+    test('while the server is pinned, saves the environment but skips generate', async () => {
+        const { mkdtempSync, readFileSync, rmSync } = await import('fs');
+        const { tmpdir } = await import('os');
+        const dir = mkdtempSync(tmpdir() + '/setup-pinned-');
+        const spawnCalls: unknown[][] = [];
+        const origSpawn = Bun.spawn;
+
+        // @ts-expect-error - mocking Bun.spawn
+        Bun.spawn = (cmd: string[]) => {
+            spawnCalls.push(cmd);
+            throw new Error('should not spawn');
+        };
+
+        try {
+            const result = await setupTool.handler({
+                name: 'local2',
+                url: 'http://localhost:8181',
+                user: 'admin',
+                password: 'secret',
+            }, makeCtx({ configPath: dir + '/config.json', environment: 'staging' }));
+
+            expect(result.isError).toBeUndefined();
+            expect(result.content[0].text).toContain('Environment "local2" configured');
+            expect(result.content[0].text).toContain('run generate without --config');
+            expect(spawnCalls).toEqual([]);
+
+            const config = JSON.parse(readFileSync(dir + '/config.json', 'utf-8'));
+            expect(config.active).toBe('local2');
+            expect(config.environments.local2.url).toBe('http://localhost:8181');
+        } finally {
+            Bun.spawn = origSpawn;
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });

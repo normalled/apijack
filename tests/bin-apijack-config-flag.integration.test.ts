@@ -36,6 +36,80 @@ async function runBin(args: string[], opts: { cwd: string; home: string }): Prom
     return { stdout, stderr, exitCode };
 }
 
+interface ToolCall {
+    name: string;
+    arguments: Record<string, unknown>;
+}
+
+/**
+ * Start `apijack <args> mcp`-style server, run the tool calls over stdio JSON-RPC
+ * and return each call's first text content, in order.
+ */
+async function callMcpTools(args: string[], opts: { cwd: string; home: string }, calls: ToolCall[]): Promise<string[]> {
+    const env: Record<string, string | undefined> = { ...process.env, HOME: opts.home, APIJACK_SKIP_UPDATE: '1' };
+    delete env.APIJACK_URL;
+    delete env.APIJACK_USER;
+    delete env.APIJACK_PASS;
+
+    const proc = Bun.spawn([process.execPath, binPath, ...args], {
+        cwd: opts.cwd,
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env,
+    });
+    const send = (message: object) => {
+        proc.stdin.write(JSON.stringify(message) + '\n');
+        proc.stdin.flush();
+    };
+    const responses = new Map<number, { result?: { content: { text: string }[] } }>();
+    const reader = proc.stdout.getReader();
+    const decoder = new TextDecoder();
+    const timeout = setTimeout(() => proc.kill(), 20_000);
+    let buffered = '';
+
+    send({
+        jsonrpc: '2.0',
+        id: 0,
+        method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } },
+    });
+
+    try {
+        while (responses.size < calls.length + 1) {
+            const { done, value } = await reader.read();
+
+            if (done) break;
+
+            buffered += decoder.decode(value, { stream: true });
+            let newline: number;
+
+            while ((newline = buffered.indexOf('\n')) >= 0) {
+                const line = buffered.slice(0, newline).trim();
+                buffered = buffered.slice(newline + 1);
+
+                if (!line) continue;
+
+                const message = JSON.parse(line) as { id?: number; result?: { content: { text: string }[] } };
+
+                if (message.id === undefined) continue;
+
+                responses.set(message.id, message);
+
+                if (message.id === 0) {
+                    send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+                    calls.forEach((call, i) => send({ jsonrpc: '2.0', id: i + 1, method: 'tools/call', params: call }));
+                }
+            }
+        }
+    } finally {
+        clearTimeout(timeout);
+        proc.kill();
+    }
+
+    return calls.map((_call, i) => responses.get(i + 1)?.result?.content[0]?.text ?? '<no response>');
+}
+
 /** Generated code whose `probe` command reports which environment's code ran and what it would send. */
 function writeProbeGenerated(dir: string, mark: string): void {
     mkdirSync(dir, { recursive: true });
@@ -132,6 +206,16 @@ describe('bin/apijack.ts --config <name> in global mode', () => {
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain("Environment 'nope' not found. Available: dev, remote");
     });
+
+    test('--config <name> mcp pins the server\'s commands and get_config to that environment', async () => {
+        const [probe, config] = await callMcpTools(['--config', 'remote', 'mcp'], { cwd, home }, [
+            { name: 'run_commands', arguments: { commands: [{ command: 'probe' }] } },
+            { name: 'get_config', arguments: {} },
+        ]);
+
+        expect(probe).toContain(`MARK=remote URL=${remoteUrl}`);
+        expect(JSON.parse(config!).url).toBe(remoteUrl);
+    }, 30_000);
 });
 
 describe('bin/apijack.ts --config <name> in project mode', () => {

@@ -3,11 +3,20 @@ import { Command } from 'commander';
 export interface McpInput {
     cliName: string;
     cliInvocation: string[];
-    /** Forwarded as a leading `--config <name>` to every CLI process the server spawns. */
+    /** Pins the server: a leading `--config <name>` on every CLI process it spawns, and the in-process tools' environment. */
     environment?: string;
+    /** The config.json the in-process tools read and write. */
+    configPath?: string;
     generatedDir: string;
     routinesDir: string;
-    startMcpServer: (opts: { cliName: string; cliInvocation: string[]; generatedDir: string; routinesDir: string }) => Promise<void>;
+    startMcpServer: (opts: {
+        cliName: string;
+        cliInvocation: string[];
+        environment?: string;
+        configPath?: string;
+        generatedDir: string;
+        routinesDir: string;
+    }) => Promise<void>;
 }
 
 export async function mcpAction(input: McpInput): Promise<void> {
@@ -17,6 +26,8 @@ export async function mcpAction(input: McpInput): Promise<void> {
             cliInvocation: input.environment === undefined
                 ? input.cliInvocation
                 : [...input.cliInvocation, '--config', input.environment],
+            environment: input.environment,
+            configPath: input.configPath,
             generatedDir: input.generatedDir,
             routinesDir: input.routinesDir,
         });
@@ -40,7 +51,11 @@ export function registerMcpCommand(
     cliName: string,
     generatedDir: string,
     routinesDir: string,
-    environment?: string,
+    opts?: {
+        /** Read when the command runs, so it sees a `--config` taken from argv after registration. */
+        environment?: () => string | undefined;
+        configPath?: string;
+    },
 ): void {
     program
         .command('mcp')
@@ -51,7 +66,8 @@ export function registerMcpCommand(
                 await mcpAction({
                     cliName,
                     cliInvocation: process.argv.slice(0, 2),
-                    environment,
+                    environment: opts?.environment?.(),
+                    configPath: opts?.configPath,
                     generatedDir,
                     routinesDir,
                     startMcpServer,

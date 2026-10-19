@@ -433,6 +433,25 @@ describe('config management', () => {
     });
 
     describe('updateEnvironmentField()', () => {
+        test('sets the field on the named environment when one is given', async () => {
+            await saveEnvironment('myapp', 'remote', {
+                url: 'http://localhost:7070',
+                user: 'u',
+                password: 'p',
+            }, false, { configPath });
+            await saveEnvironment('myapp', 'dev', {
+                url: 'http://localhost:8080',
+                user: 'u',
+                password: 'p',
+            }, true, { configPath });
+
+            await updateEnvironmentField('myapp', 'projectId', 7, { configPath, environment: 'remote' });
+
+            const config = await loadConfig('myapp', { configPath });
+            expect(config!.environments.remote.projectId).toBe(7);
+            expect(config!.environments.dev.projectId).toBeUndefined();
+        });
+
         test('sets arbitrary field on active environment', async () => {
             await saveEnvironment('myapp', 'local', {
                 url: 'http://localhost',

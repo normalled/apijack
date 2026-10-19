@@ -1704,6 +1704,44 @@ describe('global --config <name> (via cli.run) (#180)', () => {
         expect(exitCode).toBe(1);
     });
 
+    test('an existing session file of the active environment is left untouched', async () => {
+        SessionManager.forEnvironment(cliConfigDir, { env: 'dev', baseUrl: DEV_URL, username: 'devuser' })
+            .save({ headers: { 'X-Dev': 'kept' } });
+        const before = readFileSync(sessionFile('dev'), 'utf-8');
+
+        await runCli(['--config', 'coolsilk', 'whoami'], cli => registerWhoami(cli, true), {
+            auth: {
+                authenticate: async () => ({ headers: { 'X-Test': '1' } }),
+                restore: async cached => cached,
+            },
+        });
+
+        expect(readFileSync(sessionFile('dev'), 'utf-8')).toBe(before);
+        expect(existsSync(sessionFile('coolsilk'))).toBe(true);
+    });
+
+    test('config update-password defaults to the selected environment', async () => {
+        writeFileSync(configPath, JSON.stringify({
+            active: 'dev',
+            environments: {
+                dev: { url: 'http://localhost:8080', user: 'devuser', password: 'old-dev' },
+                local2: { url: 'http://localhost:8181', user: 'l2user', password: 'old-l2' },
+            },
+        }));
+
+        const { stdout } = await runCli(['--config', 'local2', 'config', 'update-password', '--password', 'new-l2'], undefined, {
+            knownSites: {},
+        });
+
+        const saved = JSON.parse(readFileSync(configPath, 'utf-8')) as {
+            active: string;
+            environments: Record<string, { password: string }>;
+        };
+        expect(stdout).toContain("Updating password for 'local2'");
+        expect(saved.environments.local2.password).toBe('new-l2');
+        expect(saved.environments.dev.password).toBe('old-dev');
+    });
+
     test('the session is resolved into that environment\'s session file only', async () => {
         await runCli(['--config', 'coolsilk', 'whoami'], cli => registerWhoami(cli, true), {
             auth: {
@@ -1803,12 +1841,32 @@ steps:
         });
     });
 
+    test('the hint is only for --config itself, not a longer unknown flag', async () => {
+        const { stderr, exitCode } = await runCli(['routine', 'list', '--configuration', 'x']);
+
+        expect(stderr).toContain("unknown option '--configuration'");
+        expect(stderr).not.toContain('goes before the command');
+        expect(exitCode).toBe(1);
+    });
+
+    test('a --config=<name> after a command that has none also gets the hint', async () => {
+        const { stderr } = await runCli(['routine', 'list', '--config=coolsilk']);
+
+        expect(stderr).toContain('--config <name> goes before the command');
+    });
+
     test('a --config after a command that has none points at the leading position', async () => {
         const { stderr, exitCode } = await runCli(['routine', 'list', '--config', 'coolsilk']);
 
         expect(stderr).toContain("unknown option '--config'");
         expect(stderr).toContain('--config <name> goes before the command: testcli --config <name> <command>');
         expect(exitCode).toBe(1);
+    });
+
+    test('Commander\'s help command lists --config <name> too', async () => {
+        const { stdout } = await runCli(['help']);
+
+        expect(stdout).toContain('--config <name>');
     });
 
     test('--help lists --config <name>', async () => {

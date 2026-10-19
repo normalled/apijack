@@ -100,7 +100,7 @@ export function resolveEnvironment(
 
 /**
  * Resolve authentication credentials.
- * Priority: environment variables > config file.
+ * Priority: `opts.environment` > environment variables > config file's active one.
  */
 export function resolveAuth(
     cliName: string,
@@ -274,8 +274,8 @@ export async function listEnvironments(
 }
 
 /**
- * Set an arbitrary field on the active environment.
- * Does nothing if no config exists or no active environment is set.
+ * Set an arbitrary field on the active environment, or the one `opts.environment` names.
+ * Does nothing if no config exists or that environment doesn't.
  */
 export async function updateEnvironmentField(
     cliName: string,
@@ -286,9 +286,11 @@ export async function updateEnvironmentField(
     const configPath = resolveConfigPath(cliName, opts);
     const config = await loadConfig(cliName, opts);
 
-    if (!config || !config.active) return;
+    const target = opts?.environment ?? config?.active;
 
-    const env = config.environments[config.active];
+    if (!config || !target) return;
+
+    const env = Object.hasOwn(config.environments, target) ? config.environments[target] : undefined;
 
     if (!env) return;
 

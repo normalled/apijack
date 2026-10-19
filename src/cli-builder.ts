@@ -509,9 +509,10 @@ export function createCli(options: CliOptions): Cli {
             // A --config after the command isn't the global one, which goes first
             // (and was taken out of argv above). Say so when a command rejects it.
             // Set before any subcommand exists so they all inherit it.
+            program.addHelpText('after', '\nGlobal option (put it before the command):\n  --config <name>  Use this configured environment instead of the active one');
             program.configureOutput({
                 outputError: (str, write) => write(
-                    str.includes("unknown option '--config")
+                    /unknown option '--config(=[^']*)?'/.test(str)
                         ? `${str}(--config <name> goes before the command: ${displayName} --config <name> <command> ...)\n`
                         : str,
                 ),
@@ -554,7 +555,7 @@ export function createCli(options: CliOptions): Cli {
                 cliName,
                 resolve(options.generatedDir || 'src/generated'),
                 join(homedir(), '.' + options.name, 'routines'),
-                selectedEnvironment,
+                { environment: () => selectedEnvironment, configPath: options.configPath },
             );
             registerPluginCommand(program, cliName, options.version);
             registerPluginsCommand(program, pluginRegistry, options.version);

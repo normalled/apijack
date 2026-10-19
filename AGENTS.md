@@ -127,9 +127,9 @@ apijack supports pluggable authentication:
 | `setup` / `login` | Interactive credential configuration |
 | `config list` | List configured environments |
 | `config switch <name>` | Switch active environment |
-| `config clear-session [name] [--all]` | Delete the active (or named) environment's cached session; `--all` deletes every environment's |
+| `config clear-session [name] [--all]` | Delete the selected or active (or named) environment's cached session; `--all` deletes every environment's |
 | `--config <name> <command>` | Run one command against another configured environment, without switching (goes before the command) |
-| `generate` | Regenerate CLI from the active environment's OpenAPI spec |
+| `generate` | Regenerate CLI from the selected (or active) environment's OpenAPI spec |
 | `routine list` | List available routines |
 | `routine run <name>` | Execute a routine |
 | `routine validate <name>` | Validate routine YAML |
