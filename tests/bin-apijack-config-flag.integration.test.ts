@@ -18,7 +18,8 @@ interface RunResult {
 }
 
 async function runBin(args: string[], opts: { cwd: string; home: string }): Promise<RunResult> {
-    const env: Record<string, string | undefined> = { ...process.env, HOME: opts.home, APIJACK_SKIP_UPDATE: '1' };
+    // os.homedir() reads USERPROFILE on Windows, HOME elsewhere.
+    const env: Record<string, string | undefined> = { ...process.env, HOME: opts.home, USERPROFILE: opts.home, APIJACK_SKIP_UPDATE: '1' };
     delete env.APIJACK_URL;
     delete env.APIJACK_USER;
     delete env.APIJACK_PASS;
@@ -46,7 +47,8 @@ interface ToolCall {
  * and return each call's first text content, in order.
  */
 async function callMcpTools(args: string[], opts: { cwd: string; home: string }, calls: ToolCall[]): Promise<string[]> {
-    const env: Record<string, string | undefined> = { ...process.env, HOME: opts.home, APIJACK_SKIP_UPDATE: '1' };
+    // os.homedir() reads USERPROFILE on Windows, HOME elsewhere.
+    const env: Record<string, string | undefined> = { ...process.env, HOME: opts.home, USERPROFILE: opts.home, APIJACK_SKIP_UPDATE: '1' };
     delete env.APIJACK_URL;
     delete env.APIJACK_USER;
     delete env.APIJACK_PASS;
