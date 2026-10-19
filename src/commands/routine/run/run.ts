@@ -13,7 +13,6 @@ export interface RoutineRunDeps {
     silent?: boolean;
     customResolvers?: Map<string, CustomResolver>;
     pluginRegistry?: PluginRegistry;
-    invalidateSession: () => void;
     onStep?: (step: RoutineStep, i: number, total: number) => void;
     onIteration?: (step: RoutineStep, current: number, total: number, stepIndex: number, stepTotal: number) => void;
 }
@@ -25,8 +24,6 @@ export async function routineRunAction(deps: RoutineRunDeps): Promise<RoutineRes
     if (errors.length > 0) {
         throw new Error(`Validation errors:\n${errors.map(e => `  - ${e}`).join('\n')}`);
     }
-
-    deps.invalidateSession();
 
     const result = await deps.executeRoutine(def, deps.overrides, deps.dispatch, {
         dryRun: deps.dryRun,

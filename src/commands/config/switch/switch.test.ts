@@ -6,7 +6,6 @@ describe('configSwitchAction', () => {
         const result = await configSwitchAction({
             name: 'staging',
             switchEnv: mock(() => Promise.resolve(true)),
-            invalidateSession: mock(() => {}),
         });
         expect(result.ok).toBe(true);
     });
@@ -15,7 +14,6 @@ describe('configSwitchAction', () => {
         const result = await configSwitchAction({
             name: 'nonexistent',
             switchEnv: mock(() => Promise.resolve(false)),
-            invalidateSession: mock(() => {}),
             listEnvs: mock(() => Promise.resolve([
                 { name: 'local', url: '', user: '', active: true },
             ])),

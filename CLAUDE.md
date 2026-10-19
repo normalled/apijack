@@ -203,6 +203,17 @@ apijack supports pluggable authentication:
 
 Generated OpenAPI commands resolve the session automatically. Consumer-registered custom commands and dispatchers opt in — see Project Extensions below.
 
+### Sessions (one per environment)
+
+Each environment in `config.json` keeps its own cached session at `<configDir>/sessions/<env>.json`, where `<configDir>` is the directory holding `config.json`: `<project>/.apijack/` in project mode, `~/.<cli>/` by default, or next to a custom `configPath`. The environment name is percent-encoded in the filename (`my env` → `my%20env.json`). Each file records the environment, `baseUrl` and username it was minted for. A cached session recorded for a different `baseUrl` or username is ignored, and the CLI logs in again. Credentials from `<CLI>_URL` / `_USER` / `_PASS` get a session file of their own.
+
+- `config switch <name>` keeps every environment's session, so switching away and back doesn't log you out.
+- Saving an environment's credentials (`setup` / `login`, `config import`, `config update-password`, the MCP `setup` tool) clears that environment's session, so the next command logs in with the new credentials. Re-running `setup` with unchanged credentials costs one extra login.
+- `config clear-session [name]` deletes the active (or named) environment's session; `--all` deletes them all.
+- `routine run` reuses the environment's cached session like any other command. Programmatic `cli.runRoutine()` / `runRoutine()` still clear it before running, so fixtures start from a fresh login.
+- Creating `sessions/` also writes `sessions/.gitignore` containing `*`, so session tokens stay out of git even in projects that only ignore the old `.apijack/session.json`. The directory is created owner-only (`0700`) and session files are written `0600`.
+- The single `session.json` used before per-environment sessions is no longer read or written; it's safe to delete.
+
 ### Stale-session refresh and retry (opt-in)
 
 `SessionAuthStrategy`'s cached cookies can go stale on the server side (idle timeout) without the client knowing — the next call ships the dead cookie and the server returns 401 (or 403 in some Spring configs). To recover transparently, opt in by setting `refreshOn` on the session config:
@@ -317,6 +328,7 @@ Module-level `requiresAuth` overrides the settings default. On `CliContext`:
 | `setup` / `login` | Interactive credential configuration |
 | `config list` | List configured environments |
 | `config switch <name>` | Switch active environment |
+| `config clear-session [name] [--all]` | Delete the active (or named) environment's cached session; `--all` deletes every environment's |
 | `generate` | Regenerate CLI from the active environment's OpenAPI spec |
 | `routine list` | List available routines |
 | `routine run <name>` | Execute a routine |

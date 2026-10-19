@@ -15,5 +15,6 @@ if [[ -n "$pids" ]]; then
 fi
 
 rm -rf /tmp/apijack-petstore-test
-rm -f "$HOME/.apijack/session.json"
+rm -f "$HOME/.apijack/sessions/petstore.json"
+rm -f "$HOME/.apijack/session.json" # written by releases before per-environment sessions (#179)
 rm -f "$HOME/.apijack/routines/smoke-test.yaml"

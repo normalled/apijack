@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, cpSync, readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import type { CommandDispatcher, CustomResolver } from '../../types';
 import type { PluginRegistry } from '../../plugin/registry';
-import { SessionManager } from '../../session';
 import { loadRoutineFile, loadSpecFile, listRoutines, validateRoutine, formatRoutineTree, formatRoutineList } from '../../routine/loader';
 import { executeRoutine, type RoutineResult } from '../../routine/executor';
 import { routineListAction } from './list/list';
@@ -132,8 +131,6 @@ export function registerRoutineCommand(
                 if (eq > 0) overrides[s.slice(0, eq)] = s.slice(eq + 1);
             }
 
-            const sessionMgr = new SessionManager(cliName);
-
             if (opts.json) {
                 // JSON mode — silent, structured output.
                 try {
@@ -148,7 +145,6 @@ export function registerRoutineCommand(
                         silent: true,
                         customResolvers,
                         pluginRegistry,
-                        invalidateSession: () => sessionMgr.invalidate(),
                     });
 
                     // Strip fields routineRunAction appends for the CLI banner — the
@@ -192,7 +188,6 @@ export function registerRoutineCommand(
                         dryRun,
                         customResolvers,
                         pluginRegistry,
-                        invalidateSession: () => sessionMgr.invalidate(),
                     });
 
                     if (!result.success) process.exit(1);
@@ -220,7 +215,6 @@ export function registerRoutineCommand(
                     dryRun,
                     customResolvers,
                     pluginRegistry,
-                    invalidateSession: () => sessionMgr.invalidate(),
                     onStep: (step, i, total) => {
                         console.log(`\x1b[36m[${i + 1}/${total}]\x1b[0m ${step.name}`);
                     },
