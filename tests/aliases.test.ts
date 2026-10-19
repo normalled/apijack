@@ -105,18 +105,18 @@ describe('loadAliases()', () => {
         expect(result.errors.length).toBe(2);
     });
 
-    test('skips alias keys that start with "-" with an error', () => {
+    test('warns about alias keys that start with "-" but still loads them', () => {
         // A leading "-" token is scanned as a program option before aliases
-        // are matched, so such an alias could never apply.
+        // are matched, so such an alias no longer applies in leading position.
         writeFileSync(
             join(projectDir, 'aliases.json'),
             JSON.stringify({ '-l': 'routine list', 'rl': 'routine list' }),
         );
 
         const result = loadAliases(projectDir, cliName);
-        expect(result.map).toEqual({ rl: 'routine list' });
+        expect(result.map).toEqual({ '-l': 'routine list', 'rl': 'routine list' });
         expect(result.errors).toEqual([
-            `${join(projectDir, 'aliases.json')}: alias "-l" can't start with "-" (it would be read as an option)`,
+            `${join(projectDir, 'aliases.json')}: alias "-l" starts with "-", so it is read as an option and won't match`,
         ]);
     });
 
