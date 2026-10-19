@@ -20,6 +20,25 @@ describe('mcpAction', () => {
         });
     });
 
+    test('passes the selected environment on to the CLI processes it spawns', async () => {
+        const startFn = mock(() => Promise.resolve());
+        await mcpAction({
+            cliName: 'testcli',
+            cliInvocation: ['node', 'testcli'],
+            environment: 'coolsilk',
+            generatedDir: '/tmp/generated',
+            routinesDir: '/tmp/routines',
+            startMcpServer: startFn,
+        });
+
+        expect(startFn).toHaveBeenCalledWith({
+            cliName: 'testcli',
+            cliInvocation: ['node', 'testcli', '--config', 'coolsilk'],
+            generatedDir: '/tmp/generated',
+            routinesDir: '/tmp/routines',
+        });
+    });
+
     test('throws MODULE_NOT_FOUND as user-friendly message', () => {
         const err = new Error('Cannot find module');
         expect(mcpAction({

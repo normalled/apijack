@@ -3,6 +3,8 @@ import { Command } from 'commander';
 export interface McpInput {
     cliName: string;
     cliInvocation: string[];
+    /** Forwarded as a leading `--config <name>` to every CLI process the server spawns. */
+    environment?: string;
     generatedDir: string;
     routinesDir: string;
     startMcpServer: (opts: { cliName: string; cliInvocation: string[]; generatedDir: string; routinesDir: string }) => Promise<void>;
@@ -12,7 +14,9 @@ export async function mcpAction(input: McpInput): Promise<void> {
     try {
         await input.startMcpServer({
             cliName: input.cliName,
-            cliInvocation: input.cliInvocation,
+            cliInvocation: input.environment === undefined
+                ? input.cliInvocation
+                : [...input.cliInvocation, '--config', input.environment],
             generatedDir: input.generatedDir,
             routinesDir: input.routinesDir,
         });
@@ -36,6 +40,7 @@ export function registerMcpCommand(
     cliName: string,
     generatedDir: string,
     routinesDir: string,
+    environment?: string,
 ): void {
     program
         .command('mcp')
@@ -46,6 +51,7 @@ export function registerMcpCommand(
                 await mcpAction({
                     cliName,
                     cliInvocation: process.argv.slice(0, 2),
+                    environment,
                     generatedDir,
                     routinesDir,
                     startMcpServer,

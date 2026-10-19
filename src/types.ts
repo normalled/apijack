@@ -46,6 +46,9 @@ export interface CliOptions {
     preDispatch?: (command: string, args: Record<string, unknown>, ctx: CliContext) => Promise<void>;
     allowedCidrs?: string[];
     configPath?: string;
+    /** config.json environment to use instead of the active one. A leading
+     *  `--config <name>` on the command line takes precedence. */
+    environment?: string;
     customCommandDefaults?: { requiresAuth?: boolean };
     /** URL pre-filled in the interactive setup prompts. Defaults to `http://localhost:8080`.
      *  Prompt default only — it does not participate in the NAME_URL / saved-config

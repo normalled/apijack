@@ -37,9 +37,10 @@ export interface LeadingScan {
 }
 
 /**
- * The options `createCli` registers on the program. Booleans are listed even
- * when `outputModes` leaves them unregistered — scanning a boolean never
- * consumes a token, so listing it is harmless.
+ * The options `createCli` registers on the program, plus `--config`, which it
+ * takes out of argv before Commander parses (see `takeLeadingOption`). Booleans
+ * are listed even when `outputModes` leaves them unregistered — scanning a
+ * boolean never consumes a token, so listing it is harmless.
  */
 export const PROGRAM_OPTIONS: readonly LeadingOptionSpec[] = [
     { flags: ['--table'], takesValue: false },
@@ -48,6 +49,7 @@ export const PROGRAM_OPTIONS: readonly LeadingOptionSpec[] = [
     { flags: ['--dry-run'], takesValue: false },
     { flags: ['-V', '--version'], takesValue: false },
     { flags: ['-h', '--help'], takesValue: false },
+    { flags: ['--config'], takesValue: true },
 ];
 
 /**
@@ -111,4 +113,26 @@ function matchOption(arg: string, next: string | undefined, specs: readonly Lead
     if (eq > 0) return { flag, value: arg.slice(eq + 1), tokens: [arg], known: false };
 
     return { flag, tokens: [arg], known: false };
+}
+
+/**
+ * Remove every occurrence of `flag` from the leading program options and return
+ * the last value given. Tokens from the command on — including a command's own
+ * option of the same name — are left alone.
+ */
+export function takeLeadingOption(
+    args: string[],
+    flag: string,
+    specs: readonly LeadingOptionSpec[] = PROGRAM_OPTIONS,
+): { found: boolean; value?: string; args: string[] } {
+    const { options, leading, rest } = scanLeadingOptions(args, specs);
+    const taken = options.filter(o => o.flag === flag);
+
+    if (taken.length === 0) return { found: false, args };
+
+    const kept = options.filter(o => o.flag !== flag).flatMap(o => o.tokens);
+    // A `--` terminator is the only leading token no option consumed.
+    const terminator = leading.slice(options.reduce((n, o) => n + o.tokens.length, 0));
+
+    return { found: true, value: taken[taken.length - 1].value, args: [...kept, ...terminator, ...rest] };
 }

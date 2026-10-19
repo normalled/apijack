@@ -22,6 +22,8 @@ export interface StandaloneRunRoutineOptions extends RunRoutineOptions {
     cwd?: string;
     cliName?: string;
     programName?: string;
+    /** config.json environment to run against instead of the active one. */
+    config?: string;
 }
 
 export async function runRoutine(
@@ -77,11 +79,8 @@ export async function runRoutine(
     const globalDir = join(effectiveHome, `.${cliName}`);
     let generatedDir: string;
 
-    // Cache the active env once — three call sites consumed it before, each re-reading config.json.
-    // NOTE: opts.env (per spec) for selecting a specific named env is intentionally not yet wired —
-    // would require plumbing through createCli/resolveAuth. Tracked as future work; consumers can
-    // pre-switch via `apijack config switch <env>` for now.
-    const envConfig = getActiveEnvConfig(cliName, { configPath: join(configDir, 'config.json') });
+    // Cache the selected (or active) env once — three call sites consumed it before, each re-reading config.json.
+    const envConfig = getActiveEnvConfig(cliName, { configPath: join(configDir, 'config.json'), environment: opts.config });
 
     if (projectConfig?.generatedDir && projectRoot) {
         generatedDir = resolve(projectRoot, projectConfig.generatedDir);
@@ -167,6 +166,7 @@ export async function runRoutine(
         generatedDir,
         allowedCidrs: projectConfig?.allowedCidrs,
         configPath: join(configDir, 'config.json'),
+        environment: opts.config,
         customCommandDefaults: projectSettings.customCommands?.defaults,
     });
 

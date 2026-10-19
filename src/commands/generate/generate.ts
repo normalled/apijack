@@ -43,7 +43,7 @@ export function registerGenerateCommand(
     cliName: string,
     specPath: string,
     generatedDir: string,
-    configOpts?: { configPath: string },
+    configOpts?: { configPath?: string; environment?: string },
     strategy?: AuthStrategy,
     sessionManager?: SessionManager | null,
 ): void {

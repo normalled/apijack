@@ -50,6 +50,7 @@ apijack setup                    # Add another environment
 apijack config list              # Show all environments
 apijack config switch staging    # Switch active environment
 apijack config clear-session     # Log the active environment out (--all for every environment)
+apijack --config staging <cmd>   # Run one command against staging without switching
 apijack generate                 # Regenerate from new environment's spec
 ```
 

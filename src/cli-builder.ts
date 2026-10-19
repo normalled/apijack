@@ -9,7 +9,7 @@ import type {
     CustomResolver,
     ApijackPlugin,
 } from './types';
-import { resolveEnvironment, verifyCredentials, saveEnvironment, getActiveEnvConfig, type ResolvedEnvironment } from './config';
+import { resolveEnvironment, verifyCredentials, saveEnvironment, getActiveEnvConfig, environmentNames, type ResolvedEnvironment } from './config';
 import { SessionManager } from './session';
 import { formatOutput, type OutputMode } from './output';
 import { formatDryRun, formatCurl, type CapturedRequest } from './output-request';
@@ -37,7 +37,7 @@ import type { RoutineResult } from './routine/executor';
 import { executeRoutine } from './routine/executor';
 import { loadRoutineFile, validateRoutine } from './routine/loader';
 import { loadAliases, collectCommandPaths, rewriteArgv, resolveLeadingTokens } from './aliases';
-import { scanLeadingOptions } from './leading-options';
+import { scanLeadingOptions, takeLeadingOption } from './leading-options';
 
 const coreManifest = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
@@ -92,6 +92,9 @@ function showCustomHelp(
     for (const opt of program.options) {
         console.log(`  ${opt.flags.padEnd(30)} ${opt.description}`);
     }
+
+    // Not a Commander option: run() takes it out of argv before parsing.
+    console.log(`  ${'--config <name>'.padEnd(30)} Use this configured environment instead of the active one`);
 
     console.log(`  ${'-h, --help'.padEnd(30)} display help for command`);
 
@@ -149,10 +152,22 @@ export function createCli(options: CliOptions): Cli {
     const defaultRequiresAuth = options.customCommandDefaults?.requiresAuth ?? false;
     const effectiveRequiresAuth = (explicit: boolean | undefined): boolean =>
         explicit ?? defaultRequiresAuth;
-    // Each environment keeps its own session file. currentEnvironment() selects the
-    // credentials and the session file only: getActiveEnvConfig() still reads
-    // sessionAuth / refreshOn from the active environment on its own.
-    const currentEnvironment = (): ResolvedEnvironment | null => resolveEnvironment(cliName, configOpts);
+    // The environment this invocation uses: a leading `--config <name>` (run() sets
+    // it), else options.environment, else the env vars / config.json's active one.
+    // It selects the credentials, the session file, and the env-level
+    // sessionAuth / refreshOn settings.
+    let selectedEnvironment = options.environment;
+    const envOpts = () => ({ ...configOpts, environment: selectedEnvironment });
+    const currentEnvironment = (): ResolvedEnvironment | null => resolveEnvironment(cliName, envOpts());
+    const unknownEnvironmentError = (): string | null => {
+        if (selectedEnvironment === undefined) return null;
+
+        const names = environmentNames(cliName, configOpts);
+
+        return names.includes(selectedEnvironment)
+            ? null
+            : `Environment '${selectedEnvironment}' not found. Available: ${names.join(', ') || 'none'}`;
+    };
     const sessionManagerFor = (environment: ResolvedEnvironment): SessionManager =>
         SessionManager.forEnvironment(configDir, {
             env: environment.name,
@@ -198,7 +213,11 @@ export function createCli(options: CliOptions): Cli {
             }
         }
 
-        // 2. Resolve auth from active env config.
+        // 2. Resolve auth from the selected (or active) env config.
+        const unknownEnvironment = unknownEnvironmentError();
+
+        if (unknownEnvironment) throw new Error(unknownEnvironment);
+
         const environment = currentEnvironment();
 
         if (!environment) {
@@ -208,7 +227,7 @@ export function createCli(options: CliOptions): Cli {
         const resolved = environment.auth;
 
         // 3. Compute auth strategy + sessionMgr.
-        const envConfig = getActiveEnvConfig(cliName, configOpts);
+        const envConfig = getActiveEnvConfig(cliName, envOpts());
         const { mergedSessionAuth, refreshOn } = resolveRefreshWiring(options, envConfig);
         const strategy = mergedSessionAuth
             ? new SessionAuthStrategy(options.auth, mergedSessionAuth)
@@ -414,6 +433,28 @@ export function createCli(options: CliOptions): Cli {
                 process.stderr.write(`${displayName}: aliases: ${err}\n`);
             }
 
+            // A leading `--config <name>` picks the environment for this one
+            // invocation. Take it out of argv so Commander never sees it: a
+            // generated command may have a --config option of its own.
+            const configFlag = takeLeadingOption(process.argv.slice(2), '--config');
+
+            if (configFlag.found) {
+                if (!configFlag.value) {
+                    console.error("error: option '--config <name>' argument missing");
+                    process.exit(1);
+                }
+
+                selectedEnvironment = configFlag.value;
+                process.argv = [...process.argv.slice(0, 2), ...configFlag.args];
+            }
+
+            const unknownEnvironment = unknownEnvironmentError();
+
+            if (unknownEnvironment) {
+                console.error(unknownEnvironment);
+                process.exit(1);
+            }
+
             // Leading program options (`--quiet`, `-o json`, ...) come before the
             // command token, so skip them before any check that reads the command.
             const {
@@ -465,6 +506,17 @@ export function createCli(options: CliOptions): Cli {
                 .description(options.description)
                 .version(options.version);
 
+            // A --config after the command isn't the global one, which goes first
+            // (and was taken out of argv above). Say so when a command rejects it.
+            // Set before any subcommand exists so they all inherit it.
+            program.configureOutput({
+                outputError: (str, write) => write(
+                    str.includes("unknown option '--config")
+                        ? `${str}(--config <name> goes before the command: ${displayName} --config <name> <command> ...)\n`
+                        : str,
+                ),
+            });
+
             // 2. Register output mode flags
             if (options.outputModes?.includes('table')) {
                 program.option('--table', 'Output as table');
@@ -500,6 +552,7 @@ export function createCli(options: CliOptions): Cli {
                 cliName,
                 resolve(options.generatedDir || 'src/generated'),
                 join(homedir(), '.' + options.name, 'routines'),
+                selectedEnvironment,
             );
             registerPluginCommand(program, cliName, options.version);
             registerPluginsCommand(program, pluginRegistry, options.version);
@@ -510,6 +563,7 @@ export function createCli(options: CliOptions): Cli {
 
             const cmd = effectiveArgv2;
             const skipAuthCommands = new Set([
+                'help',
                 'login',
                 'setup',
                 'config',
@@ -571,7 +625,7 @@ export function createCli(options: CliOptions): Cli {
             let sessionMgr: SessionManager | null = null;
 
             if (environment) {
-                const envConfig = getActiveEnvConfig(cliName, configOpts);
+                const envConfig = getActiveEnvConfig(cliName, envOpts());
                 ({ mergedSessionAuth, refreshOn } = resolveRefreshWiring(options, envConfig));
                 strategy = mergedSessionAuth
                     ? new SessionAuthStrategy(options.auth, mergedSessionAuth)
@@ -585,7 +639,7 @@ export function createCli(options: CliOptions): Cli {
                 cliName,
                 options.specPath,
                 generatedDir,
-                configOpts,
+                envOpts(),
                 strategy,
                 sessionMgr,
             );

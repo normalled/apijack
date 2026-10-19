@@ -36,6 +36,8 @@ interface ConfigOpts {
     configPath?: string;
     allowInsecureStorage?: boolean;
     allowedCidrs?: string[];
+    /** Use this config.json environment instead of `active` (and ignore the env vars). */
+    environment?: string;
 }
 
 function defaultConfigPath(cliName: string): string {
@@ -54,7 +56,7 @@ export interface ResolvedEnvironment {
 
 /**
  * Resolve which environment this invocation uses, with its credentials.
- * Priority: environment variables > config file.
+ * Priority: `opts.environment` > environment variables > config file's active one.
  *
  * Env var prefix is derived from cliName.toUpperCase():
  *   e.g. cliName="myapp" -> MYAPP_URL, MYAPP_USER, MYAPP_PASS
@@ -68,7 +70,7 @@ export function resolveEnvironment(
     const envUser = process.env[`${prefix}_USER`];
     const envPass = process.env[`${prefix}_PASS`];
 
-    if (envUrl && envUser && envPass) {
+    if (envUrl && envUser && envPass && opts?.environment === undefined) {
         return {
             name: null,
             auth: {
@@ -80,7 +82,7 @@ export function resolveEnvironment(
     }
 
     const configPath = resolveConfigPath(cliName, opts);
-    const active = loadActiveEnvSync(configPath);
+    const active = loadEnvSync(configPath, opts?.environment);
 
     if (active) {
         return {
@@ -107,28 +109,34 @@ export function resolveAuth(
     return resolveEnvironment(cliName, opts)?.auth ?? null;
 }
 
-/**
- * Load the active environment config synchronously.
- * Returns its name and full environment object (including extra fields) or null.
- */
-function loadActiveEnvSync(path: string): { name: string; env: EnvironmentConfig } | null {
+function loadConfigSync(path: string): CliConfig | null {
     try {
         if (!existsSync(path)) return null;
 
-        const text = readFileSync(path, 'utf-8');
-        const config = JSON.parse(text) as CliConfig;
-
-        if (!config.active || !config.environments?.[config.active]) return null;
-
-        return { name: config.active, env: config.environments[config.active] };
+        return JSON.parse(readFileSync(path, 'utf-8')) as CliConfig;
     } catch {
         return null;
     }
 }
 
 /**
- * Get the full active environment config object (including extra fields).
- * Synchronous read.
+ * Load an environment config synchronously: the named one, or the active one.
+ * Returns its name and full environment object (including extra fields) or null.
+ */
+function loadEnvSync(path: string, name?: string): { name: string; env: EnvironmentConfig } | null {
+    const config = loadConfigSync(path);
+    const selected = name ?? config?.active;
+
+    // hasOwn: the name may come from the command line (`--config constructor`).
+    if (!selected || !config?.environments || !Object.hasOwn(config.environments, selected)
+        || !config.environments[selected]) return null;
+
+    return { name: selected, env: config.environments[selected] };
+}
+
+/**
+ * Get the full active environment config object (including extra fields),
+ * or the one `opts.environment` names. Synchronous read.
  */
 export function getActiveEnvConfig(
     cliName: string,
@@ -136,7 +144,18 @@ export function getActiveEnvConfig(
 ): EnvironmentConfig | null {
     const configPath = resolveConfigPath(cliName, opts);
 
-    return loadActiveEnvSync(configPath)?.env ?? null;
+    return loadEnvSync(configPath, opts?.environment)?.env ?? null;
+}
+
+/**
+ * Names of the environments in config.json, or an empty list when there is
+ * none. Synchronous read.
+ */
+export function environmentNames(
+    cliName: string,
+    opts?: ConfigOpts,
+): string[] {
+    return Object.keys(loadConfigSync(resolveConfigPath(cliName, opts))?.environments ?? {});
 }
 
 /**

@@ -1,8 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { runRoutine } from '../src/run-routine';
+import { SessionManager } from '../src/session';
 
 describe('runRoutine (standalone)', () => {
     let tmpHome: string;
@@ -72,6 +73,95 @@ export default async (args) => ({ echoed: args.msg });
     test('throws when no active env config exists', async () => {
         rmSync(join(projectDir, '.apijack', 'config.json'));
         await expect(runRoutine('echo')).rejects.toThrow(/active env|setup/i);
+    });
+
+    describe('opts.config', () => {
+        beforeEach(() => {
+            writeFileSync(join(projectDir, '.apijack', 'config.json'), JSON.stringify({
+                active: 'default',
+                environments: {
+                    default: { url: 'http://localhost:9999', user: 'u', password: 'p' },
+                    coolsilk: { url: 'http://localhost:7777', user: 'cs', password: 'p' },
+                },
+            }));
+            writeFileSync(join(projectDir, '.apijack', 'routines', 'where.yaml'),
+                `name: where
+steps:
+  - name: base-url
+    command: where-dispatch
+    output: here
+`);
+            writeFileSync(join(projectDir, '.apijack', 'dispatchers', 'where-dispatch.ts'),
+                `export default async (args, positional, ctx) => ctx.auth.baseUrl;
+`);
+        });
+
+        test('runs the routine against the named environment', async () => {
+            const result = await runRoutine('where', { config: 'coolsilk' });
+            expect(result.status).toBe('ok');
+            expect(result.output).toEqual({ here: 'http://localhost:7777' });
+        });
+
+        test('clears the named environment\'s session, not the active one\'s', async () => {
+            const configDir = join(projectDir, '.apijack');
+
+            for (const env of ['default', 'coolsilk']) {
+                SessionManager.forEnvironment(configDir, { env, baseUrl: 'x', username: 'y' }).save({ headers: {} });
+            }
+
+            await runRoutine('where', { config: 'coolsilk' });
+
+            expect(existsSync(join(configDir, 'sessions', 'coolsilk.json'))).toBe(false);
+            expect(existsSync(join(configDir, 'sessions', 'default.json'))).toBe(true);
+        });
+
+        test('uses the named environment\'s sessionAuth for the handshake', async () => {
+            const cookies = { extract: ['SESSION'], applyTo: ['GET'] };
+            writeFileSync(join(projectDir, '.apijack', 'config.json'), JSON.stringify({
+                active: 'default',
+                environments: {
+                    default: {
+                        url: 'http://localhost:9999', user: 'u', password: 'p',
+                        sessionAuth: { session: { endpoint: '/default-session' }, cookies },
+                    },
+                    coolsilk: {
+                        url: 'http://localhost:7777', user: 'cs', password: 'p',
+                        sessionAuth: { session: { endpoint: '/coolsilk-session' }, cookies },
+                    },
+                },
+            }));
+            writeFileSync(join(projectDir, '.apijack', 'routines', 'authed-where.yaml'),
+                `name: authed-where
+steps:
+  - name: base-url
+    command: authed-where-dispatch
+`);
+            writeFileSync(join(projectDir, '.apijack', 'dispatchers', 'authed-where-dispatch.ts'),
+                `export const requiresAuth = true;
+export default async (args, positional, ctx) => ctx.auth.baseUrl;
+`);
+            const fetched: string[] = [];
+            const originalFetch = globalThis.fetch;
+            globalThis.fetch = (async (url: string | URL | Request) => {
+                fetched.push(String(url));
+
+                return new Response('', { status: 200 });
+            }) as typeof fetch;
+
+            try {
+                const result = await runRoutine('authed-where', { config: 'coolsilk' });
+                expect(result.status).toBe('ok');
+            } finally {
+                globalThis.fetch = originalFetch;
+            }
+
+            expect(fetched).toEqual(['http://localhost:7777/coolsilk-session']);
+        });
+
+        test('rejects an unknown name with the configured environments', async () => {
+            await expect(runRoutine('where', { config: 'nope' }))
+                .rejects.toThrow("Environment 'nope' not found. Available: default, coolsilk");
+        });
     });
 
     test('respects explicit cwd option', async () => {

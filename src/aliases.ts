@@ -85,9 +85,10 @@ function readAliasFile(path: string, errors: string[]): AliasMap {
  * Best-effort longest-prefix resolution of leading argv tokens through the
  * alias map, without validating against the real command tree.
  *
- * Used for early bootstrap reads of argv[2]/argv[3] (auth-skip detection,
- * plugins-check guard, dry-run heuristic) that happen before the Commander
- * tree is built. The full validated rewrite happens later via `rewriteArgv`.
+ * Used for early bootstrap reads of the first two command tokens — the args
+ * after any leading program options (auth-skip detection, plugins-check guard,
+ * dry-run heuristic) — that happen before the Commander tree is built. The full
+ * validated rewrite happens later via `rewriteArgv`.
  *
  * If an alias key collides with a real command, this helper still applies the
  * alias — but the late `rewriteArgv` pass will detect the shadow and skip the
