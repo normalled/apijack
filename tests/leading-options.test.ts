@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import {
     scanLeadingOptions,
+    takeLeadingOption,
     findOptionValue,
     PROGRAM_OPTIONS,
     type LeadingOptionSpec,
@@ -143,6 +144,65 @@ describe('scanLeadingOptions()', () => {
             // Without the row, `--profile` is an unknown boolean and `dev` is
             // taken as the command — the row is what makes the value consumable.
             expect(scanLeadingOptions(['--profile', 'dev', 'routine']).rest).toEqual(['dev', 'routine']);
+        });
+    });
+});
+
+describe('takeLeadingOption()', () => {
+    test('returns the args unchanged when the option is absent', () => {
+        expect(takeLeadingOption(['--quiet', 'routine', 'list'], '--config')).toEqual({
+            found: false,
+            args: ['--quiet', 'routine', 'list'],
+        });
+    });
+
+    test('removes --config <name> and returns the name', () => {
+        expect(takeLeadingOption(['--config', 'coolsilk', 'admin', 'matters', 'delete', '7'], '--config')).toEqual({
+            found: true,
+            value: 'coolsilk',
+            args: ['admin', 'matters', 'delete', '7'],
+        });
+    });
+
+    test('removes --config=<name> from among other leading options', () => {
+        expect(takeLeadingOption(['--quiet', '--config=coolsilk', '-o', 'json', 'routine'], '--config')).toEqual({
+            found: true,
+            value: 'coolsilk',
+            args: ['--quiet', '-o', 'json', 'routine'],
+        });
+    });
+
+    test('leaves a --config after the command for the command itself', () => {
+        expect(takeLeadingOption(['described', 'create-item', '--config', '{"a":1}'], '--config')).toEqual({
+            found: false,
+            args: ['described', 'create-item', '--config', '{"a":1}'],
+        });
+    });
+
+    test('takes only the leading one when the command has its own --config', () => {
+        expect(takeLeadingOption(['--config', 'coolsilk', 'described', 'create-item', '--config', '{}'], '--config')).toEqual({
+            found: true,
+            value: 'coolsilk',
+            args: ['described', 'create-item', '--config', '{}'],
+        });
+    });
+
+    test('the last of repeated leading options wins, and all are removed', () => {
+        expect(takeLeadingOption(['--config', 'a', '--config=b', 'routine'], '--config')).toEqual({
+            found: true,
+            value: 'b',
+            args: ['routine'],
+        });
+    });
+
+    test('reports a leading option with no value as found without a value', () => {
+        expect(takeLeadingOption(['--config'], '--config')).toEqual({ found: true, args: [] });
+    });
+
+    test('does not look past --', () => {
+        expect(takeLeadingOption(['--', '--config', 'x'], '--config')).toEqual({
+            found: false,
+            args: ['--', '--config', 'x'],
         });
     });
 });

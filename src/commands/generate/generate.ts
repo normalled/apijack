@@ -43,13 +43,13 @@ export function registerGenerateCommand(
     cliName: string,
     specPath: string,
     generatedDir: string,
-    configOpts?: { configPath: string },
+    configOpts?: { configPath?: string; environment?: string },
     strategy?: AuthStrategy,
     sessionManager?: SessionManager | null,
 ): void {
     program
         .command('generate')
-        .description("Regenerate CLI from the active environment's OpenAPI spec")
+        .description("Regenerate CLI from the selected (or active) environment's OpenAPI spec")
         .action(async () => {
             const env = getActiveEnvConfig(cliName, configOpts);
             try {

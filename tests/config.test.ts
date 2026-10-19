@@ -9,6 +9,7 @@ import {
     switchEnvironment,
     listEnvironments,
     getActiveEnvConfig,
+    environmentNames,
     updateEnvironmentField,
     loadConfig,
 } from '../src/config';
@@ -143,6 +144,76 @@ describe('config management', () => {
 
         test('returns null when nothing is configured', () => {
             expect(resolveEnvironment('myapp', { configPath })).toBeNull();
+        });
+
+        test('uses a named environment instead of the active one', async () => {
+            await saveEnvironment('myapp', 'remote', {
+                url: 'http://localhost:7070',
+                user: 'remoteuser',
+                password: 'remotepass',
+            }, false, { configPath });
+            await saveEnvironment('myapp', 'dev', {
+                url: 'http://localhost:8080',
+                user: 'devuser',
+                password: 'devpass',
+            }, true, { configPath });
+
+            expect(resolveEnvironment('myapp', { configPath, environment: 'remote' })).toEqual({
+                name: 'remote',
+                auth: { baseUrl: 'http://localhost:7070', username: 'remoteuser', password: 'remotepass' },
+            });
+        });
+
+        test('a named environment wins over the env vars', async () => {
+            await saveEnvironment('testcli', 'remote', {
+                url: 'http://localhost:7070',
+                user: 'remoteuser',
+                password: 'remotepass',
+            }, false, { configPath });
+
+            process.env.TESTCLI_URL = 'https://env.example.com';
+            process.env.TESTCLI_USER = 'envuser';
+            process.env.TESTCLI_PASS = 'envpass';
+
+            expect(resolveEnvironment('testcli', { configPath, environment: 'remote' })).toEqual({
+                name: 'remote',
+                auth: { baseUrl: 'http://localhost:7070', username: 'remoteuser', password: 'remotepass' },
+            });
+        });
+
+        test('returns null for a name config.json does not have, even with env vars set', async () => {
+            await saveEnvironment('testcli', 'dev', {
+                url: 'http://localhost:8080',
+                user: 'devuser',
+                password: 'devpass',
+            }, true, { configPath });
+
+            process.env.TESTCLI_URL = 'https://env.example.com';
+            process.env.TESTCLI_USER = 'envuser';
+            process.env.TESTCLI_PASS = 'envpass';
+
+            expect(resolveEnvironment('testcli', { configPath, environment: 'nope' })).toBeNull();
+        });
+    });
+
+    describe('environmentNames()', () => {
+        test('lists every configured environment', async () => {
+            await saveEnvironment('myapp', 'dev', {
+                url: 'http://localhost:8080',
+                user: 'u',
+                password: 'p',
+            }, true, { configPath });
+            await saveEnvironment('myapp', 'remote', {
+                url: 'http://localhost:7070',
+                user: 'u',
+                password: 'p',
+            }, false, { configPath });
+
+            expect(environmentNames('myapp', { configPath })).toEqual(['dev', 'remote']);
+        });
+
+        test('returns an empty list when there is no config file', () => {
+            expect(environmentNames('myapp', { configPath })).toEqual([]);
         });
     });
 
@@ -341,9 +412,46 @@ describe('config management', () => {
             const env = getActiveEnvConfig('myapp', { configPath });
             expect(env).toBeNull();
         });
+
+        test('returns the named environment, extra fields included, when one is given', async () => {
+            await saveEnvironment('myapp', 'remote', {
+                url: 'http://localhost:7070',
+                user: 'u',
+                password: 'p',
+                sessionAuth: { refreshOn: [401] },
+            }, false, { configPath });
+            await saveEnvironment('myapp', 'dev', {
+                url: 'http://localhost:8080',
+                user: 'u',
+                password: 'p',
+            }, true, { configPath });
+
+            const env = getActiveEnvConfig('myapp', { configPath, environment: 'remote' });
+            expect(env?.url).toBe('http://localhost:7070');
+            expect(env?.sessionAuth).toEqual({ refreshOn: [401] });
+        });
     });
 
     describe('updateEnvironmentField()', () => {
+        test('sets the field on the named environment when one is given', async () => {
+            await saveEnvironment('myapp', 'remote', {
+                url: 'http://localhost:7070',
+                user: 'u',
+                password: 'p',
+            }, false, { configPath });
+            await saveEnvironment('myapp', 'dev', {
+                url: 'http://localhost:8080',
+                user: 'u',
+                password: 'p',
+            }, true, { configPath });
+
+            await updateEnvironmentField('myapp', 'projectId', 7, { configPath, environment: 'remote' });
+
+            const config = await loadConfig('myapp', { configPath });
+            expect(config!.environments.remote.projectId).toBe(7);
+            expect(config!.environments.dev.projectId).toBeUndefined();
+        });
+
         test('sets arbitrary field on active environment', async () => {
             await saveEnvironment('myapp', 'local', {
                 url: 'http://localhost',

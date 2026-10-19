@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
-import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { Command } from 'commander';
@@ -8,6 +8,7 @@ import type { CliOptions, CliContext, CommandRegistrar, DispatcherHandler, Apija
 import { BasicAuthStrategy } from '../src/auth/basic';
 import { configUpdatePasswordAction } from '../src/commands/config/update-password/update-password';
 import { scanLeadingOptions } from '../src/leading-options';
+import { SessionManager } from '../src/session';
 
 const coreManifest = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
@@ -1322,6 +1323,8 @@ steps:
             ['-ojson config list', ['-ojson', 'config', 'list'], 'No environments configured'],
             ['--dry-run routine list', ['--dry-run', 'routine', 'list'], 'No routines found'],
             ['-- routine list', ['--', 'routine', 'list'], 'No routines found'],
+            ['help routine', ['help', 'routine'], 'Manage and run routines'],
+            ['--quiet help routine', ['--quiet', 'help', 'routine'], 'Manage and run routines'],
         ])('%s runs the command without opening the wizard', async (_label, argv, expected) => {
             const { stdout, setupPrompted } = await runCli(argv);
 
@@ -1458,6 +1461,7 @@ steps:
         // Commander keeps the help option out of `program.options`;
         // `visibleOptions` adds it back.
         const registered = new Set([...program!.options, ...program!.createHelp().visibleOptions(program!)]);
+        expect(registered.size).toBeGreaterThan(0);
 
         for (const opt of registered) {
             const takesValue = opt.required || opt.optional;
@@ -1472,5 +1476,409 @@ steps:
                 });
             }
         }
+    });
+});
+
+describe('global --config <name> (via cli.run) (#180)', () => {
+    const DEV_URL = 'http://dev.example.test';
+    const COOLSILK_URL = 'http://coolsilk.example.test';
+    let tmpHome: string;
+    let cliConfigDir: string;
+    let configPath: string;
+    let generatedDir: string;
+    let originalHome: string | undefined;
+    let originalIsTTY: boolean | undefined;
+    let originalFetch: typeof fetch;
+
+    beforeEach(() => {
+        tmpHome = join(tmpdir(), `configFlag-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        cliConfigDir = join(tmpHome, '.testcli');
+        mkdirSync(join(cliConfigDir, 'routines'), { recursive: true });
+        configPath = join(cliConfigDir, 'config.json');
+        generatedDir = join(tmpHome, 'src', 'generated');
+        writeFileSync(configPath, JSON.stringify({
+            active: 'dev',
+            environments: {
+                dev: { url: DEV_URL, user: 'devuser', password: 'devpass' },
+                coolsilk: {
+                    url: COOLSILK_URL,
+                    user: 'csuser',
+                    password: 'cspass',
+                    sessionAuth: { session: { endpoint: '/coolsilk-session' } },
+                },
+            },
+        }));
+
+        originalHome = process.env.HOME;
+        process.env.HOME = tmpHome;
+        originalIsTTY = process.stdin.isTTY;
+        (process.stdin as { isTTY?: boolean }).isTTY = true;
+        originalFetch = globalThis.fetch;
+    });
+
+    afterEach(() => {
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+
+        (process.stdin as { isTTY?: boolean }).isTTY = originalIsTTY;
+        globalThis.fetch = originalFetch;
+        delete process.env.TESTCLI_URL;
+        delete process.env.TESTCLI_USER;
+        delete process.env.TESTCLI_PASS;
+        rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    function activeEnvironment(): string {
+        return (JSON.parse(readFileSync(configPath, 'utf-8')) as { active: string }).active;
+    }
+
+    function sessionFile(env: string): string {
+        return join(cliConfigDir, 'sessions', `${env}.json`);
+    }
+
+    /** A consumer command that prints the base URL of the environment it got. */
+    function registerWhoami(cli: Cli, requiresAuth = false): void {
+        cli.command('whoami', (program, ctx) => {
+            program.command('whoami').action(() => {
+                console.log(`url=${ctx.auth.baseUrl}`);
+            });
+        }, { requiresAuth });
+    }
+
+    /** A generated `described create-item` command with its own --config flag. */
+    function writeGeneratedCommands(): void {
+        mkdirSync(generatedDir, { recursive: true });
+        writeFileSync(
+            join(generatedDir, 'commands.ts'),
+            'export function registerGeneratedCommands(program: any, client: any): void {\n'
+            + '    program.command("described").command("create-item")\n'
+            + '        .option("--config <value>", "Configuration settings")\n'
+            + '        .action((opts: any) => { console.log(`config=${opts.config} url=${client.baseUrl}`); });\n'
+            + '}\n',
+        );
+        writeFileSync(
+            join(generatedDir, 'client.ts'),
+            'export class ApiClient { constructor(public baseUrl: string) {} }\n',
+        );
+    }
+
+    async function runCli(
+        argv: string[],
+        configure?: (cli: Cli) => void,
+        overrides: Partial<CliOptions> = {},
+    ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined; setupPrompted: boolean }> {
+        const cli = createCli(makeOptions({ configPath, generatedDir, ...overrides }));
+        configure?.(cli);
+
+        let stdout = '';
+        let stderr = '';
+        let exitCode: number | undefined;
+        let setupPrompted = false;
+        const origArgv = process.argv;
+        const origLog = console.log;
+        const origErr = console.error;
+        const origStdout = process.stdout.write;
+        const origStderr = process.stderr.write;
+        const origExit = process.exit;
+
+        try {
+            process.argv = ['node', 'testcli', ...argv];
+            console.log = (...args: unknown[]) => {
+                const line = args.join(' ');
+
+                // The wizard would block on stdin next — stop the run here instead.
+                if (line.startsWith('testcli Setup')) {
+                    setupPrompted = true;
+                    throw new Error('__setup__');
+                }
+
+                stdout += line + '\n';
+            };
+            console.error = (...args: unknown[]) => {
+                stderr += args.join(' ') + '\n';
+            };
+            process.stdout.write = ((c: string | Uint8Array) => {
+                stdout += String(c);
+
+                return true;
+            }) as never;
+            process.stderr.write = ((c: string | Uint8Array) => {
+                stderr += String(c);
+
+                return true;
+            }) as never;
+            process.exit = ((code?: number) => {
+                exitCode = code ?? 0;
+                throw new Error('__exit__');
+            }) as never;
+
+            try {
+                await cli.run();
+            } catch (e) {
+                const msg = (e as Error).message;
+
+                if (msg !== '__exit__' && msg !== '__setup__') throw e;
+            }
+        } finally {
+            process.argv = origArgv;
+            console.log = origLog;
+            console.error = origErr;
+            process.stdout.write = origStdout;
+            process.stderr.write = origStderr;
+            process.exit = origExit;
+        }
+
+        return { stdout, stderr, exitCode, setupPrompted };
+    }
+
+    test.each([
+        ['--config <name>', ['--config', 'coolsilk', 'whoami']],
+        ['--config=<name>', ['--config=coolsilk', 'whoami']],
+        ['--config after another leading option', ['--quiet', '--config', 'coolsilk', 'whoami']],
+        ['--config before another leading option', ['--config', 'coolsilk', '-o', 'json', 'whoami']],
+    ])('%s runs the command against that environment', async (_label, argv) => {
+        const { stdout, exitCode } = await runCli(argv, cli => registerWhoami(cli));
+
+        expect(stdout).toBe(`url=${COOLSILK_URL}\n`);
+        expect(exitCode).toBeUndefined();
+    });
+
+    test('CliOptions.environment selects the environment without a flag', async () => {
+        const { stdout } = await runCli(['whoami'], cli => registerWhoami(cli), { environment: 'coolsilk' });
+
+        expect(stdout).toBe(`url=${COOLSILK_URL}\n`);
+    });
+
+    test('a leading --config wins over CliOptions.environment', async () => {
+        const { stdout } = await runCli(['--config', 'dev', 'whoami'], cli => registerWhoami(cli), { environment: 'coolsilk' });
+
+        expect(stdout).toBe(`url=${DEV_URL}\n`);
+    });
+
+    test('without --config the active environment is used', async () => {
+        const { stdout } = await runCli(['whoami'], cli => registerWhoami(cli));
+
+        expect(stdout).toBe(`url=${DEV_URL}\n`);
+    });
+
+    test('--config leaves the active environment unchanged', async () => {
+        await runCli(['--config', 'coolsilk', 'whoami'], cli => registerWhoami(cli));
+
+        expect(activeEnvironment()).toBe('dev');
+    });
+
+    test('--config wins over the <CLI>_URL / _USER / _PASS env vars', async () => {
+        process.env.TESTCLI_URL = 'http://envvars.example.test';
+        process.env.TESTCLI_USER = 'envuser';
+        process.env.TESTCLI_PASS = 'envpass';
+
+        const withoutFlag = await runCli(['whoami'], cli => registerWhoami(cli));
+        const withFlag = await runCli(['--config', 'coolsilk', 'whoami'], cli => registerWhoami(cli));
+
+        expect(withoutFlag.stdout).toBe('url=http://envvars.example.test\n');
+        expect(withFlag.stdout).toBe(`url=${COOLSILK_URL}\n`);
+    });
+
+    test('an unknown name fails with the configured environments, before running anything', async () => {
+        const { stdout, stderr, exitCode } = await runCli(['--config', 'nope', 'whoami'], cli => registerWhoami(cli));
+
+        expect(stderr).toContain("Environment 'nope' not found. Available: dev, coolsilk");
+        expect(stdout).toBe('');
+        expect(exitCode).toBe(1);
+    });
+
+    test('an unknown name with no config.json fails instead of opening the setup wizard', async () => {
+        rmSync(configPath);
+
+        const { stderr, exitCode, setupPrompted } = await runCli(['--config', 'nope', 'widgets', 'list']);
+
+        expect(setupPrompted).toBe(false);
+        expect(stderr).toContain("Environment 'nope' not found. Available: none");
+        expect(exitCode).toBe(1);
+    });
+
+    test('--config with no value is rejected', async () => {
+        const { stderr, exitCode } = await runCli(['--config']);
+
+        expect(stderr).toContain("option '--config <name>' argument missing");
+        expect(exitCode).toBe(1);
+    });
+
+    test('an existing session file of the active environment is left untouched', async () => {
+        SessionManager.forEnvironment(cliConfigDir, { env: 'dev', baseUrl: DEV_URL, username: 'devuser' })
+            .save({ headers: { 'X-Dev': 'kept' } });
+        const before = readFileSync(sessionFile('dev'), 'utf-8');
+
+        await runCli(['--config', 'coolsilk', 'whoami'], cli => registerWhoami(cli, true), {
+            auth: {
+                authenticate: async () => ({ headers: { 'X-Test': '1' } }),
+                restore: async cached => cached,
+            },
+        });
+
+        expect(readFileSync(sessionFile('dev'), 'utf-8')).toBe(before);
+        expect(existsSync(sessionFile('coolsilk'))).toBe(true);
+    });
+
+    test('config update-password defaults to the selected environment', async () => {
+        writeFileSync(configPath, JSON.stringify({
+            active: 'dev',
+            environments: {
+                dev: { url: 'http://localhost:8080', user: 'devuser', password: 'old-dev' },
+                local2: { url: 'http://localhost:8181', user: 'l2user', password: 'old-l2' },
+            },
+        }));
+
+        const { stdout } = await runCli(['--config', 'local2', 'config', 'update-password', '--password', 'new-l2'], undefined, {
+            knownSites: {},
+        });
+
+        const saved = JSON.parse(readFileSync(configPath, 'utf-8')) as {
+            active: string;
+            environments: Record<string, { password: string }>;
+        };
+        expect(stdout).toContain("Updating password for 'local2'");
+        expect(saved.environments.local2.password).toBe('new-l2');
+        expect(saved.environments.dev.password).toBe('old-dev');
+    });
+
+    test('the session is resolved into that environment\'s session file only', async () => {
+        await runCli(['--config', 'coolsilk', 'whoami'], cli => registerWhoami(cli, true), {
+            auth: {
+                authenticate: async () => ({ headers: { 'X-Test': '1' } }),
+                restore: async cached => cached,
+            },
+        });
+
+        expect(existsSync(sessionFile('coolsilk'))).toBe(true);
+        expect(existsSync(sessionFile('dev'))).toBe(false);
+    });
+
+    test('the selected environment\'s sessionAuth drives the handshake', async () => {
+        const fetched: string[] = [];
+        globalThis.fetch = (async (url: string | URL | Request) => {
+            fetched.push(String(url));
+
+            return new Response('', { status: 200 });
+        }) as typeof fetch;
+
+        await runCli(['--config', 'coolsilk', 'whoami'], cli => registerWhoami(cli, true), {
+            sessionAuth: { session: { endpoint: '/session' }, cookies: { extract: ['SESSION'], applyTo: ['POST'] } },
+        });
+
+        expect(fetched).toEqual([`${COOLSILK_URL}/coolsilk-session`]);
+    });
+
+    test('routine run uses the environment for every step, including sub-routines', async () => {
+        writeFileSync(join(cliConfigDir, 'routines', 'outer.yaml'), `name: outer
+steps:
+  - name: here
+    command: where
+  - name: nested
+    command: routine run
+    args-positional:
+      - inner
+`);
+        writeFileSync(join(cliConfigDir, 'routines', 'inner.yaml'), `name: inner
+steps:
+  - name: there
+    command: where
+`);
+
+        const { stdout, exitCode } = await runCli(['--config', 'coolsilk', 'routine', 'run', 'outer', '-s'], (cli) => {
+            cli.dispatcher('where', async (_args, _positional, ctx) => {
+                console.log(ctx.auth.baseUrl);
+
+                return null;
+            });
+        });
+
+        expect(stdout).toBe(`${COOLSILK_URL}\n${COOLSILK_URL}\n`);
+        expect(exitCode).toBeUndefined();
+    });
+
+    test('config clear-session defaults to the selected environment', async () => {
+        for (const env of ['dev', 'coolsilk']) {
+            SessionManager.forEnvironment(cliConfigDir, { env, baseUrl: 'x', username: 'y' }).save({ headers: {} });
+        }
+
+        const { stdout } = await runCli(['--config', 'coolsilk', 'config', 'clear-session']);
+
+        expect(stdout).toContain("Cleared the session for 'coolsilk'.");
+        expect(existsSync(sessionFile('coolsilk'))).toBe(false);
+        expect(existsSync(sessionFile('dev'))).toBe(true);
+    });
+
+    test('generate fetches the spec from the selected environment', async () => {
+        const fetched: string[] = [];
+        globalThis.fetch = (async (url: string | URL | Request) => {
+            fetched.push(String(url));
+            throw new Error('offline');
+        }) as typeof fetch;
+
+        const { stdout } = await runCli(['--config', 'coolsilk', 'generate']);
+
+        expect(stdout).toContain(`Generating from ${COOLSILK_URL} ...`);
+        expect(fetched.every(url => url.startsWith(COOLSILK_URL))).toBe(true);
+        expect(fetched.length).toBeGreaterThan(0);
+    });
+
+    describe('a generated command with its own --config', () => {
+        beforeEach(() => {
+            writeGeneratedCommands();
+        });
+
+        test('keeps its flag when there is no global --config', async () => {
+            const { stdout } = await runCli(['described', 'create-item', '--config', '{"a":1}']);
+
+            expect(stdout).toBe(`config={"a":1} url=${DEV_URL}\n`);
+        });
+
+        test('keeps its flag after a leading global --config', async () => {
+            const { stdout } = await runCli(['--config', 'coolsilk', 'described', 'create-item', '--config', '{"a":1}']);
+
+            expect(stdout).toBe(`config={"a":1} url=${COOLSILK_URL}\n`);
+        });
+    });
+
+    test('the hint is only for --config itself, not a longer unknown flag', async () => {
+        const { stderr, exitCode } = await runCli(['routine', 'list', '--configuration', 'x']);
+
+        expect(stderr).toContain("unknown option '--configuration'");
+        expect(stderr).not.toContain('goes before the command');
+        expect(exitCode).toBe(1);
+    });
+
+    test('a --config=<name> after a command that has none also gets the hint', async () => {
+        const { stderr } = await runCli(['routine', 'list', '--config=coolsilk']);
+
+        expect(stderr).toContain('--config <name> goes before the command');
+    });
+
+    test('a --config after a command that has none points at the leading position', async () => {
+        const { stderr, exitCode } = await runCli(['routine', 'list', '--config', 'coolsilk']);
+
+        expect(stderr).toContain("unknown option '--config'");
+        expect(stderr).toContain('--config <name> goes before the command: testcli --config <name> <command>');
+        expect(exitCode).toBe(1);
+    });
+
+    test('Commander\'s help command lists --config <name> too', async () => {
+        const { stdout } = await runCli(['help']);
+
+        expect(stdout).toContain('--config <name>');
+    });
+
+    test('--help lists --config <name>', async () => {
+        const { stdout } = await runCli(['--help']);
+
+        expect(stdout).toMatch(/^ {2}--config <name> +Use this configured environment instead of the active one$/m);
+    });
+
+    test('--config with no command shows the custom help', async () => {
+        const { stdout, exitCode } = await runCli(['--config', 'coolsilk']);
+
+        expect(stdout).toContain("Run 'testcli <command> --help' for details on any command.");
+        expect(exitCode).toBe(0);
     });
 });

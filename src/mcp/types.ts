@@ -8,6 +8,12 @@ export interface McpContext {
     projectRoot?: string;
     configPath?: string;
     allowedCidrs?: string[];
+    /**
+     * Set when the server was started with `<cli> --config <name> mcp`. Every CLI
+     * call it spawns carries `--config <name>` (via cliInvocation); in-process
+     * tools must use this environment too, not config.json's active one.
+     */
+    environment?: string;
 }
 
 export interface ToolResult {

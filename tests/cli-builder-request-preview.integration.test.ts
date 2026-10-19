@@ -65,6 +65,7 @@ describe('request-preview -o forms (via cli.run) (#184)', () => {
             active: 'default',
             environments: {
                 default: { url: 'http://localhost:9999', user: 'u', password: 'p' },
+                staging: { url: 'http://localhost:7777', user: 's', password: 'q' },
             },
         }));
 
@@ -238,6 +239,19 @@ describe('request-preview -o forms (via cli.run) (#184)', () => {
         expect(requests).toEqual([]);
         expect(exitCode).toBe(1);
         expect(stderr).toContain(`"-o ${mode}"`);
+    });
+
+    test.each([
+        ['--config staging pets list -ocurl', ['--config', 'staging', 'pets', 'list', '-ocurl'], 'curl \'http://localhost:7777/pets\''],
+        ['--config staging --dry-run pets list', ['--config', 'staging', '--dry-run', 'pets', 'list'], 'http://localhost:7777/pets'],
+        ['--config staging pets list -o curl-with-creds', ['--config', 'staging', 'pets', 'list', '-o', 'curl-with-creds'], `-H 'Authorization: Basic ${btoa('s:q')}'`],
+    ])('%s previews against the selected environment (#180)', async (_label, argv, expected) => {
+        const { stdout, exitCode } = await runCli(argv);
+
+        expect(stdout).toContain(expected);
+        expect(stdout).not.toContain('localhost:9999');
+        expect(requests).toEqual([]);
+        expect(exitCode).toBeUndefined();
     });
 
     test('-o=json leaves program.opts().o as json, like -o json', async () => {
