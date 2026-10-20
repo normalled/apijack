@@ -85,14 +85,14 @@ describe('loadProjectConfig()', () => {
     test('loads display branding fields (description, version)', () => {
         mkdirSync(testRoot, { recursive: true });
         writeFileSync(join(testRoot, '.apijack.json'), JSON.stringify({
-            name: 'rrc',
-            description: 'RRCloud CLI',
+            name: 'acme',
+            description: 'Acme CLI',
             version: '2.5.0',
         }));
 
         const result = loadProjectConfig(join(testRoot, '.apijack.json'));
-        expect(result!.name).toBe('rrc');
-        expect(result!.description).toBe('RRCloud CLI');
+        expect(result!.name).toBe('acme');
+        expect(result!.description).toBe('Acme CLI');
         expect(result!.version).toBe('2.5.0');
     });
 });
