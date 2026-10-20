@@ -138,7 +138,7 @@ Summarize:
 ./scripts/teardown-petstore.sh
 ```
 
-Kills the server on port 3459, removes the temp clone, and deletes `~/.apijack/session.json` and `~/.apijack/routines/smoke-test.yaml`. Idempotent.
+Kills the server on port 3459, removes the temp clone, and deletes the `petstore` session (`~/.apijack/sessions/petstore.json`, plus the pre-#179 `~/.apijack/session.json`) and `~/.apijack/routines/smoke-test.yaml`. Idempotent.
 
 Optionally remove the global install:
 

@@ -13,6 +13,7 @@ import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProje
 import { loadProjectSettings } from '../src/settings';
 import { checkForUpdate } from '../src/updater';
 import { getActiveEnvConfig } from '../src/config';
+import { takeLeadingOption } from '../src/leading-options';
 import pkg from '../package.json';
 
 const VERSION = pkg.version;
@@ -59,6 +60,14 @@ if (projectRoot) {
     }
 }
 
+// 3b. A leading --config <name> picks the environment for this invocation.
+//     createCli takes it out of argv and validates it; here it only decides whose
+//     generated code, auth type and sessionAuth to load.
+const envConfigOpts = {
+    configPath: join(configDir, 'config.json'),
+    environment: takeLeadingOption(process.argv.slice(2), '--config').value || undefined,
+};
+
 // 4. Resolve generated dir
 let generatedDir: string;
 
@@ -67,7 +76,7 @@ if (projectConfig?.generatedDir && projectRoot) {
 } else if (projectRoot) {
     generatedDir = resolve(projectRoot, '.apijack', 'generated');
 } else {
-    const env = getActiveEnvConfig(CLI_NAME, { configPath: join(configDir, 'config.json') });
+    const env = getActiveEnvConfig(CLI_NAME, envConfigOpts);
     const hostname = env?.url ? new URL(env.url).hostname : 'default';
     generatedDir = join(globalDir, 'apis', hostname, 'generated');
 }
@@ -103,7 +112,7 @@ if (projectRoot) {
 
 // Fall back to config-based auth type
 if (!authResolved) {
-    const env = getActiveEnvConfig(CLI_NAME, { configPath: join(configDir, 'config.json') });
+    const env = getActiveEnvConfig(CLI_NAME, envConfigOpts);
 
     if (env) {
         const authType = (env as Record<string, unknown>).authType as string | undefined;
@@ -122,7 +131,7 @@ if (!authResolved) {
 let sessionAuth: SessionAuthConfig | undefined;
 let onChallengeInjectedFrom: string | undefined;
 {
-    const env = getActiveEnvConfig(CLI_NAME, { configPath: join(configDir, 'config.json') });
+    const env = getActiveEnvConfig(CLI_NAME, envConfigOpts);
 
     if (env) {
         sessionAuth = (env as Record<string, unknown>).sessionAuth as SessionAuthConfig | undefined;

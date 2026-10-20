@@ -96,8 +96,10 @@ Usable anywhere a routine value is resolved (args, conditions, variables):
 <cli> routine list --tree       # Show full tree structure
 <cli> routine run <name>        # Execute a routine
 <cli> routine run <name> --set key=value  # Override variables
+<cli> --config <env> routine run <name>   # Run against another configured environment
 <cli> routine run <name> --dry-run        # Preview without executing
 <cli> routine run <name> --json           # Emit RoutineResult as JSON to stdout
+<cli> routine run <name> -s / --quiet     # Print only what the routine's commands print (failures still on stderr)
 <cli> routine validate <name>   # Validate YAML structure
 <cli> routine test <name>       # Run spec (test) file
 <cli> routine init              # Install built-in routines
@@ -112,7 +114,9 @@ Two surfaces, one engine:
 - **`cli.runRoutine(name, opts?)`** — method on the `Cli` returned by `createCli`. Use from a project that already has a `bin/<cli>.ts`.
 - **`runRoutine(name, opts?)`** — top-level export from `@apijack/core` for projects on the shared `apijack` binary (no bin file).
 
-Both resolve with a `RoutineResult` (status, output, steps, durationMs, ...) on success and on step failure. Engine errors (routine not found, YAML invalid, no active env config) throw. Useful for Playwright/Vitest fixtures that seed via routines.
+Both resolve with a `RoutineResult` (status, output, steps, durationMs, ...) on success and on step failure. Engine errors (routine not found, YAML invalid, no active env config, unknown environment) throw. Useful for Playwright/Vitest fixtures that seed via routines.
+
+`runRoutine(name, { config: '<name>' })` runs against a named environment from `config.json` instead of the active one, using (and clearing) that environment's session.
 
 ## Plugin System
 
@@ -202,6 +206,18 @@ apijack supports pluggable authentication:
 
 Generated OpenAPI commands resolve the session automatically. Consumer-registered custom commands and dispatchers opt in — see Project Extensions below.
 
+### Sessions (one per environment)
+
+Each environment in `config.json` keeps its own cached session at `<configDir>/sessions/<env>.json`, where `<configDir>` is the directory holding `config.json`: `<project>/.apijack/` in project mode, `~/.<cli>/` by default, or next to a custom `configPath`. The environment name is percent-encoded in the filename (`my env` → `my%20env.json`). Each file records the environment, `baseUrl` and username it was minted for. A cached session recorded for a different `baseUrl` or username is ignored, and the CLI logs in again. Credentials from `<CLI>_URL` / `_USER` / `_PASS` get a session file of their own.
+
+- `config switch <name>` keeps every environment's session, so switching away and back doesn't log you out.
+- Saving an environment's credentials (`setup` / `login`, `config import`, `config update-password`, the MCP `setup` tool) clears that environment's session, so the next command logs in with the new credentials. Re-running `setup` with unchanged credentials costs one extra login.
+- Editing credentials in `config.json` by hand bypasses that. A changed `url` or `user` is still caught, but a changed `password` isn't, so run `config clear-session` afterwards.
+- `config clear-session [name]` deletes the active (or named) environment's session; `--all` deletes them all.
+- `routine run` reuses the environment's cached session like any other command. Programmatic `cli.runRoutine()` / `runRoutine()` still clear it before running, so fixtures start from a fresh login.
+- Creating `sessions/` also writes `sessions/.gitignore` containing `*`, so session tokens stay out of git even in projects that only ignore the old `.apijack/session.json`. The directory is created owner-only (`0700`) and session files are written `0600`.
+- The single `session.json` used before per-environment sessions is no longer read or written; it's safe to delete.
+
 ### Stale-session refresh and retry (opt-in)
 
 `SessionAuthStrategy`'s cached cookies can go stale on the server side (idle timeout) without the client knowing — the next call ships the dead cookie and the server returns 401 (or 403 in some Spring configs). To recover transparently, opt in by setting `refreshOn` on the session config:
@@ -272,6 +288,7 @@ Resolution rules:
 - Argv is rewritten at CLI bootstrap, before Commander parses. `mycli cs 42 --foo bar` becomes `mycli customers get-customer-order-summary 42 --foo bar`.
 - Single-token aliases (`cs`) and multi-token aliases (`customers summary`) use the same mechanism.
 - Trailing positional args and flags pass through unchanged.
+- Leading program options are skipped before matching: `mycli --quiet cs 42` resolves `cs` too. For the same reason, an alias key can't start with `-`; such entries are skipped with a startup error.
 - Longest-prefix wins when multiple aliases could match.
 - An alias that shadows a real command path emits a startup warning and the real command keeps winning.
 - An expansion that doesn't resolve to a known command emits a startup error; the CLI continues without that alias applied.
@@ -316,11 +333,28 @@ Module-level `requiresAuth` overrides the settings default. On `CliContext`:
 | `setup` / `login` | Interactive credential configuration |
 | `config list` | List configured environments |
 | `config switch <name>` | Switch active environment |
-| `generate` | Regenerate CLI from the active environment's OpenAPI spec |
+| `config clear-session [name] [--all]` | Delete the named, selected or active environment's cached session; `--all` deletes every environment's |
+| `--config <name> <command>` | Run one command against another configured environment, without switching (goes before the command) |
+| `generate` | Regenerate CLI from the selected (or active) environment's OpenAPI spec |
 | `routine list` | List available routines |
 | `routine run <name>` | Execute a routine |
 | `routine validate <name>` | Validate routine YAML |
 | `routine test <name>` | Run a routine's spec/test file |
+
+### Running one command against another environment
+
+A leading `--config <name>` runs a single invocation against any environment in `config.json`, without changing the active one:
+
+```bash
+<cli> --config staging admin matters delete 7
+<cli> --config staging routine run cleanup --set matterId=2   # every step and sub-routine uses staging
+```
+
+- Uses that environment's URL, credentials, auth type, `sessionAuth` / `refreshOn` and its own session file. It wins over `<CLI>_URL` / `_USER` / `_PASS`.
+- It goes before the command; `--config=<name>` works too. A `--config` after the command belongs to that command (e.g. a generated flag for an API field named `config`); a command without one rejects it with a hint to move it.
+- An unknown name fails with the list of configured environments.
+- `<cli> --config <name> mcp` passes the environment on to every CLI call the MCP server makes.
+- Programmatic: `runRoutine(name, { config: '<name>' })`, or `createCli({ environment: '<name>', ... })` (a leading `--config` still wins).
 
 ## MCP Server
 

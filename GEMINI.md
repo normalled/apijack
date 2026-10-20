@@ -86,7 +86,10 @@ steps:
 <cli> routine list --tree       # Show full tree structure
 <cli> routine run <name>        # Execute a routine
 <cli> routine run <name> --set key=value  # Override variables
+<cli> --config <env> routine run <name>   # Run against another configured environment
 <cli> routine run <name> --dry-run        # Preview without executing
+<cli> routine run <name> --json           # Emit RoutineResult as JSON to stdout
+<cli> routine run <name> -s / --quiet     # Print only what the routine's commands print (failures still on stderr)
 <cli> routine validate <name>   # Validate YAML structure
 <cli> routine test <name>       # Run spec (test) file
 <cli> routine init              # Install built-in routines
@@ -127,11 +130,28 @@ apijack supports pluggable authentication:
 | `setup` / `login` | Interactive credential configuration |
 | `config list` | List configured environments |
 | `config switch <name>` | Switch active environment |
-| `generate` | Regenerate CLI from the active environment's OpenAPI spec |
+| `config clear-session [name] [--all]` | Delete the named, selected or active environment's cached session; `--all` deletes every environment's |
+| `--config <name> <command>` | Run one command against another configured environment, without switching (goes before the command) |
+| `generate` | Regenerate CLI from the selected (or active) environment's OpenAPI spec |
 | `routine list` | List available routines |
 | `routine run <name>` | Execute a routine |
 | `routine validate <name>` | Validate routine YAML |
 | `routine test <name>` | Run a routine's spec/test file |
+
+### Running one command against another environment
+
+A leading `--config <name>` runs a single invocation against any environment in `config.json`, without changing the active one:
+
+```bash
+<cli> --config staging admin matters delete 7
+<cli> --config staging routine run cleanup --set matterId=2   # every step and sub-routine uses staging
+```
+
+- Uses that environment's URL, credentials, auth type, `sessionAuth` / `refreshOn` and its own session file. It wins over `<CLI>_URL` / `_USER` / `_PASS`.
+- It goes before the command; `--config=<name>` works too. A `--config` after the command belongs to that command (e.g. a generated flag for an API field named `config`); a command without one rejects it with a hint to move it.
+- An unknown name fails with the list of configured environments.
+- `<cli> --config <name> mcp` passes the environment on to every CLI call the MCP server makes.
+- Programmatic: `runRoutine(name, { config: '<name>' })`, or `createCli({ environment: '<name>', ... })` (a leading `--config` still wins).
 
 ## MCP Server
 

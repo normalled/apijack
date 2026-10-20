@@ -1,9 +1,10 @@
 import { Command } from 'commander';
-import { listEnvironments, switchEnvironment, saveEnvironment, loadConfig, verifyCredentials } from '../../config';
+import { listEnvironments, switchEnvironment, saveEnvironment, loadConfig, verifyCredentials, type ResolvedEnvironment } from '../../config';
 import { SessionManager } from '../../session';
 import { prompt, hiddenPrompt } from '../../prompt';
 import { configListAction } from './list/list';
 import { configSwitchAction } from './switch/switch';
+import { configClearSessionAction } from './clear-session/clear-session';
 import { configImportAction } from './import/import';
 import { configUpdatePasswordAction } from './update-password/update-password';
 
@@ -16,6 +17,13 @@ export function registerConfigCommand(
         allowedCidrs?: string[];
         /** Display name for user-facing hints. Defaults to cliName. */
         displayName?: string;
+        /** Per-environment session store; registers `config clear-session` when set. */
+        sessions?: {
+            /** Directory whose sessions/ subdirectory holds one session file per environment. */
+            configDir: string;
+            /** The environment the next command would use. */
+            currentEnvironment: () => ResolvedEnvironment | null;
+        };
     },
 ): void {
     const configOpts = opts?.configPath ? { configPath: opts.configPath } : undefined;
@@ -48,11 +56,9 @@ export function registerConfigCommand(
         .command('switch <name>')
         .description('Switch active environment')
         .action(async (name: string) => {
-            const sessionMgr = new SessionManager(cliName);
             const result = await configSwitchAction({
                 name,
                 switchEnv: n => switchEnvironment(cliName, n, configOpts),
-                invalidateSession: () => sessionMgr.invalidate(),
                 listEnvs: () => listEnvironments(cliName, configOpts),
             });
 
@@ -63,6 +69,45 @@ export function registerConfigCommand(
 
             console.log(`Switched to '${name}'`);
         });
+
+    if (opts?.sessions) {
+        const { configDir, currentEnvironment } = opts.sessions;
+        config
+            .command('clear-session [name]')
+            .description('Delete a cached session so the next command logs in again (defaults to the selected or active environment)')
+            .option('--all', 'Delete every environment\'s cached session')
+            .action(async (name: string | undefined, cmdOpts: { all?: boolean }) => {
+                const result = await configClearSessionAction({
+                    name,
+                    all: cmdOpts.all,
+                    currentEnvironment,
+                    listEnvs: () => listEnvironments(cliName, configOpts),
+                    clear: env => SessionManager.clear(configDir, env),
+                    clearAll: () => SessionManager.clearAll(configDir),
+                });
+
+                if (!result.ok) {
+                    if (result.reason === 'name-with-all') {
+                        console.error('Pass an environment name or --all, not both.');
+                    } else if (result.reason === 'unknown-env') {
+                        console.error(`Environment '${name}' not found. Available: ${result.available.join(', ') || 'none'}`);
+                    } else {
+                        console.error(`No environments configured. Run '${displayName} setup' to add one.`);
+                    }
+
+                    process.exit(1);
+                }
+
+                if (result.scope === 'all') {
+                    console.log(result.cleared ? 'Cleared every environment\'s session.' : 'No cached sessions.');
+
+                    return;
+                }
+
+                const target = result.env === null ? `the ${cliName.toUpperCase()}_URL credentials` : `'${result.env}'`;
+                console.log(result.cleared ? `Cleared the session for ${target}.` : `No cached session for ${target}.`);
+            });
+    }
 
     if (opts?.knownSites) {
         const knownSites = opts.knownSites;
@@ -139,7 +184,7 @@ export function registerConfigCommand(
 
         config
             .command('update-password [name]')
-            .description('Update password for an environment (defaults to active)')
+            .description('Update password for an environment (defaults to the selected or active one)')
             .option('--password <password>', 'New password')
             .action(async (name: string | undefined, cmdOpts: { password?: string }) => {
                 // Validate environment exists before prompting for password
@@ -150,7 +195,8 @@ export function registerConfigCommand(
                     process.exit(1);
                 }
 
-                const envName = name ?? cfg.active;
+                // Under a leading --config, the selected environment; else the active one.
+                const envName = name ?? opts?.sessions?.currentEnvironment()?.name ?? cfg.active;
 
                 if (!cfg.environments[envName]) {
                     console.error(`Environment '${envName}' not found.`);

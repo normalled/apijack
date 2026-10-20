@@ -10,7 +10,7 @@ Connect apijack to any API with an OpenAPI spec to generate a full CLI.
 ## Quick Setup
 
 ```bash
-apijack setup              # Interactive: URL, credentials, auth detection
+apijack setup              # Interactive: URL + credentials (Basic auth by default)
 apijack generate           # Pull spec, generate types/client/commands
 apijack --help             # See generated commands
 ```
@@ -20,8 +20,9 @@ apijack --help             # See generated commands
 `apijack setup` prompts for:
 - **Environment name** (e.g. "dev", "staging")
 - **API base URL** (e.g. "http://localhost:8080")
-- **Credentials** (username + password, bearer token, or API key)
-- **Auth type** is auto-detected from the OpenAPI security schemes
+- **Credentials** (username + password)
+
+Auth is Basic by default and is **not** read from the OpenAPI spec's `securitySchemes`. To use another strategy, add a `.apijack/auth.ts` exporting an `AuthStrategy`, or set `authType` (`bearer` or `apiKey`, plus `authHeader` / `apiKey` for the latter) on the environment entry in `config.json`.
 
 Credentials are stored in `~/.apijack/config.json` for dev URLs. Production URLs require environment variables:
 
@@ -48,6 +49,8 @@ The MCP setup tool only accepts dev/staging URLs. Production APIs must use env v
 apijack setup                    # Add another environment
 apijack config list              # Show all environments
 apijack config switch staging    # Switch active environment
+apijack config clear-session     # Log the active environment out (--all for every environment)
+apijack --config staging <cmd>   # Run one command against staging without switching
 apijack generate                 # Regenerate from new environment's spec
 ```
 
@@ -78,4 +81,5 @@ apijack plugin config add-cidr 10.0.0.0/8
 - **"No environments configured"** — run `apijack setup` or use the MCP `setup` tool
 - **"Command map not available"** — run `apijack generate` after setup
 - **"Production API detected"** — use env vars or add the network to allowed CIDRs
-- **Auth failures after setup** — try `apijack config switch <env>` to verify active environment, then `apijack generate` to refresh
+- **Edited `config.json` by hand** — run `apijack config clear-session` (or `apijack config clear-session <env>` for another environment) so the next command logs in with the new credentials
+- **Auth failures after setup** — try `apijack config switch <env>` to verify active environment, `apijack config clear-session` to force a fresh login, then `apijack generate` to refresh

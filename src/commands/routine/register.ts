@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, cpSync, readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import type { CommandDispatcher, CustomResolver } from '../../types';
 import type { PluginRegistry } from '../../plugin/registry';
-import { SessionManager } from '../../session';
 import { loadRoutineFile, loadSpecFile, listRoutines, validateRoutine, formatRoutineTree, formatRoutineList } from '../../routine/loader';
 import { executeRoutine, type RoutineResult } from '../../routine/executor';
 import { routineListAction } from './list/list';
@@ -92,7 +91,17 @@ export function registerRoutineCommand(
         .option('--set <pairs...>', 'Override variables (key=value)')
         .option('--dry-run', 'Print resolved commands without executing')
         .option('--json', 'Emit RoutineResult as JSON to stdout (silences progress output)')
-        .action(async (name: string, opts: { set?: string[]; dryRun?: boolean; json?: boolean }) => {
+        .option('-s, --quiet', 'Print only what the routine itself prints (no banner, step lines, or summary)')
+        .action(async (name: string, opts: { set?: string[]; json?: boolean }, cmd: Command) => {
+            // The program registers its own --dry-run (and --quiet, for the 'quiet'
+            // output mode), and Commander lets those swallow the same flags placed
+            // after `routine run` — read both with globals so either position works.
+            const { quiet, dryRun } = cmd.optsWithGlobals<{ quiet?: boolean; dryRun?: boolean }>();
+
+            if (quiet && opts.json) {
+                cmd.error("error: option '-s, --quiet' cannot be used with option '--json'");
+            }
+
             if (!dispatch) {
                 if (opts.json) {
                     const failure: RoutineResult = {
@@ -122,8 +131,6 @@ export function registerRoutineCommand(
                 if (eq > 0) overrides[s.slice(0, eq)] = s.slice(eq + 1);
             }
 
-            const sessionMgr = new SessionManager(cliName);
-
             if (opts.json) {
                 // JSON mode — silent, structured output.
                 try {
@@ -134,11 +141,10 @@ export function registerRoutineCommand(
                         executeRoutine,
                         dispatch,
                         overrides,
-                        dryRun: opts.dryRun,
+                        dryRun,
                         silent: true,
                         customResolvers,
                         pluginRegistry,
-                        invalidateSession: () => sessionMgr.invalidate(),
                     });
 
                     // Strip fields routineRunAction appends for the CLI banner — the
@@ -167,6 +173,32 @@ export function registerRoutineCommand(
                 return;
             }
 
+            if (quiet) {
+                // Quiet mode — nothing of our own on stdout, so only what the
+                // routine's commands print reaches it. Not silent: the executor
+                // still reports failed steps and asserts on stderr.
+                try {
+                    const def = loadRoutineFile(name, routinesDir, builtinsMap);
+                    const result = await routineRunAction({
+                        loadRoutine: () => def,
+                        validateRoutine,
+                        executeRoutine,
+                        dispatch,
+                        overrides,
+                        dryRun,
+                        customResolvers,
+                        pluginRegistry,
+                    });
+
+                    if (!result.success) process.exit(1);
+                } catch (err) {
+                    console.error(err instanceof Error ? err.message : String(err));
+                    process.exit(1);
+                }
+
+                return;
+            }
+
             // Default mode — colored progress output (unchanged from before).
             try {
                 const def = loadRoutineFile(name, routinesDir, builtinsMap);
@@ -180,10 +212,9 @@ export function registerRoutineCommand(
                     executeRoutine,
                     dispatch,
                     overrides,
-                    dryRun: opts.dryRun,
+                    dryRun,
                     customResolvers,
                     pluginRegistry,
-                    invalidateSession: () => sessionMgr.invalidate(),
                     onStep: (step, i, total) => {
                         console.log(`\x1b[36m[${i + 1}/${total}]\x1b[0m ${step.name}`);
                     },

@@ -95,6 +95,17 @@ export const setupTool = defineTool({
             );
         }
 
+        // A pinned server's `generate` would regenerate the pinned environment's
+        // spec, not the one just set up (and, in project mode, overwrite the
+        // shared generated dir with it).
+        if (ctx.environment !== undefined) {
+            return textResult(
+                `Environment "${params.name}" configured (${params.url}) and now the active environment\n`
+                + `Skipped generate: this MCP server is pinned to environment '${ctx.environment}'. `
+                + `To generate for "${params.name}", run generate without --config.`,
+            );
+        }
+
         // Auto-generate CLI after successful setup
         try {
             const { stdout: genOut, stderr: genErr, exitCode: genCode } = await runCli(

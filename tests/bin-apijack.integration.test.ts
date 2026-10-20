@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, beforeEach, afterAll } from 'bun:test';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -7,7 +7,7 @@ const repoRoot = join(import.meta.dir, '..');
 const binPath = join(repoRoot, 'bin', 'apijack.ts');
 const projectRoot = join(tmpdir(), `apijack-bin-integration-${Date.now()}-${process.pid}`);
 const fakeHome = join(projectRoot, '.home');
-const sessionFile = join(projectRoot, '.apijack', 'session.json');
+const sessionsDir = join(projectRoot, '.apijack', 'sessions');
 
 interface RunResult {
     stdout: string;
@@ -156,7 +156,7 @@ steps:
 beforeEach(() => {
     // SessionManager persists the resolved session to disk; clear it so
     // each test exercises the project's auth.ts strategy from scratch.
-    if (existsSync(sessionFile)) rmSync(sessionFile);
+    rmSync(sessionsDir, { recursive: true, force: true });
 });
 
 afterAll(() => {

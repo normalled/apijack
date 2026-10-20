@@ -53,7 +53,7 @@ describe('custom command requiresAuth + ctx.saveSession / ctx.resolveSession', (
         testConfigDir = join(tmpdir(), 'apijack-ctx-test-' + Date.now() + '-' + Math.random().toString(36).slice(2));
         mkdirSync(testConfigDir, { recursive: true });
         configPath = join(testConfigDir, 'config.json');
-        sessionPath = join(testConfigDir, 'session.json');
+        sessionPath = join(testConfigDir, 'sessions', 'default.json');
 
         writeFileSync(
             configPath,
@@ -246,10 +246,11 @@ describe('custom command requiresAuth + ctx.saveSession / ctx.resolveSession', (
 
         expect(existsSync(sessionPath)).toBe(true);
         const persisted = JSON.parse(readFileSync(sessionPath, 'utf-8'));
-        expect(persisted.headers.Authorization).toBe('Bearer new-token');
+        expect(persisted.session.headers.Authorization).toBe('Bearer new-token');
     });
 
     test('ctx.saveSession() with null ctx.session invalidates the session file', async () => {
+        mkdirSync(join(testConfigDir, 'sessions'), { recursive: true });
         writeFileSync(sessionPath, JSON.stringify({ headers: { Authorization: 'old' } }));
 
         const cli = createCli(makeOptions({ configPath }));

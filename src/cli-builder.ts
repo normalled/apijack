@@ -9,7 +9,7 @@ import type {
     CustomResolver,
     ApijackPlugin,
 } from './types';
-import { resolveAuth, verifyCredentials, saveEnvironment, getActiveEnvConfig } from './config';
+import { resolveEnvironment, verifyCredentials, saveEnvironment, getActiveEnvConfig, environmentNames, type ResolvedEnvironment } from './config';
 import { SessionManager } from './session';
 import { formatOutput, type OutputMode } from './output';
 import { formatDryRun, formatCurl, type CapturedRequest } from './output-request';
@@ -37,6 +37,7 @@ import type { RoutineResult } from './routine/executor';
 import { executeRoutine } from './routine/executor';
 import { loadRoutineFile, validateRoutine } from './routine/loader';
 import { loadAliases, collectCommandPaths, rewriteArgv, resolveLeadingTokens } from './aliases';
+import { scanLeadingOptions, takeLeadingOption, findOptionValue, stripShortOptionEquals } from './leading-options';
 
 const coreManifest = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf-8'),
@@ -91,6 +92,9 @@ function showCustomHelp(
     for (const opt of program.options) {
         console.log(`  ${opt.flags.padEnd(30)} ${opt.description}`);
     }
+
+    // Not a Commander option: run() takes it out of argv before parsing.
+    console.log(`  ${'--config <name>'.padEnd(30)} Use this configured environment instead of the active one`);
 
     console.log(`  ${'-h, --help'.padEnd(30)} display help for command`);
 
@@ -148,6 +152,28 @@ export function createCli(options: CliOptions): Cli {
     const defaultRequiresAuth = options.customCommandDefaults?.requiresAuth ?? false;
     const effectiveRequiresAuth = (explicit: boolean | undefined): boolean =>
         explicit ?? defaultRequiresAuth;
+    // The environment this invocation uses: a leading `--config <name>` (run() sets
+    // it), else options.environment, else the env vars / config.json's active one.
+    // It selects the credentials, the session file, and the env-level
+    // sessionAuth / refreshOn settings.
+    let selectedEnvironment = options.environment;
+    const envOpts = () => ({ ...configOpts, environment: selectedEnvironment });
+    const currentEnvironment = (): ResolvedEnvironment | null => resolveEnvironment(cliName, envOpts());
+    const unknownEnvironmentError = (): string | null => {
+        if (selectedEnvironment === undefined) return null;
+
+        const names = environmentNames(cliName, configOpts);
+
+        return names.includes(selectedEnvironment)
+            ? null
+            : `Environment '${selectedEnvironment}' not found. Available: ${names.join(', ') || 'none'}`;
+    };
+    const sessionManagerFor = (environment: ResolvedEnvironment): SessionManager =>
+        SessionManager.forEnvironment(configDir, {
+            env: environment.name,
+            baseUrl: environment.auth.baseUrl,
+            username: environment.auth.username,
+        });
 
     let routineRuntime: {
         ctx: CliContext;
@@ -187,20 +213,26 @@ export function createCli(options: CliOptions): Cli {
             }
         }
 
-        // 2. Resolve auth from active env config.
-        const resolved = resolveAuth(cliName, configOpts);
+        // 2. Resolve auth from the selected (or active) env config.
+        const unknownEnvironment = unknownEnvironmentError();
 
-        if (!resolved) {
+        if (unknownEnvironment) throw new Error(unknownEnvironment);
+
+        const environment = currentEnvironment();
+
+        if (!environment) {
             throw new Error(`No active env config. Run '${displayName} setup' to configure credentials.`);
         }
 
+        const resolved = environment.auth;
+
         // 3. Compute auth strategy + sessionMgr.
-        const envConfig = getActiveEnvConfig(cliName, configOpts);
+        const envConfig = getActiveEnvConfig(cliName, envOpts());
         const { mergedSessionAuth, refreshOn } = resolveRefreshWiring(options, envConfig);
         const strategy = mergedSessionAuth
             ? new SessionAuthStrategy(options.auth, mergedSessionAuth)
             : options.auth;
-        const sessionMgr = new SessionManager(cliName, join(configDir, 'session.json'));
+        const sessionMgr = sessionManagerFor(environment);
 
         // 4. Import generated client (best-effort — same as cli.run()).
         let ApiClientClass: (new (...args: unknown[]) => Record<string, unknown>) | null = null;
@@ -401,7 +433,36 @@ export function createCli(options: CliOptions): Cli {
                 process.stderr.write(`${displayName}: aliases: ${err}\n`);
             }
 
-            const effectiveArgs = resolveLeadingTokens(process.argv.slice(2), aliasMap);
+            // A leading `--config <name>` picks the environment for this one
+            // invocation. Take it out of argv so Commander never sees it: a
+            // generated command may have a --config option of its own.
+            const configFlag = takeLeadingOption(process.argv.slice(2), '--config');
+
+            if (configFlag.found) {
+                if (!configFlag.value) {
+                    console.error("error: option '--config <name>' argument missing");
+                    process.exit(1);
+                }
+
+                selectedEnvironment = configFlag.value;
+                process.argv = [...process.argv.slice(0, 2), ...configFlag.args];
+            }
+
+            const unknownEnvironment = unknownEnvironmentError();
+
+            if (unknownEnvironment) {
+                console.error(unknownEnvironment);
+                process.exit(1);
+            }
+
+            // Leading program options (`--quiet`, `-o json`, ...) come before the
+            // command token, so skip them before any check that reads the command.
+            const {
+                options: leadingOptions,
+                leading: leadingArgs,
+                rest: commandArgs,
+            } = scanLeadingOptions(process.argv.slice(2));
+            const effectiveArgs = resolveLeadingTokens(commandArgs, aliasMap);
             const effectiveArgv2 = effectiveArgs[0];
             const effectiveArgv3 = effectiveArgs[1];
 
@@ -445,6 +506,18 @@ export function createCli(options: CliOptions): Cli {
                 .description(options.description)
                 .version(options.version);
 
+            // A --config after the command isn't the global one, which goes first
+            // (and was taken out of argv above). Say so when a command rejects it.
+            // Set before any subcommand exists so they all inherit it.
+            program.addHelpText('after', '\nGlobal option (put it before the command):\n  --config <name>  Use this configured environment instead of the active one');
+            program.configureOutput({
+                outputError: (str, write) => write(
+                    /unknown option '--config(=[^']*)?'/.test(str)
+                        ? `${str}(--config <name> goes before the command: ${displayName} --config <name> <command> ...)\n`
+                        : str,
+                ),
+            });
+
             // 2. Register output mode flags
             if (options.outputModes?.includes('table')) {
                 program.option('--table', 'Output as table');
@@ -457,6 +530,8 @@ export function createCli(options: CliOptions): Cli {
             program.option(
                 '-o <format>',
                 `Output format (${(options.outputModes || ['json', 'table', 'quiet']).join(', ')}, routine-step, curl, curl-with-creds)`,
+                // `-o=curl` as `curl`, matching the request-preview detection below.
+                stripShortOptionEquals,
             );
             program.option('--dry-run', 'Preview the API request without executing');
 
@@ -472,6 +547,7 @@ export function createCli(options: CliOptions): Cli {
                 knownSites: options.knownSites,
                 allowedCidrs: options.allowedCidrs,
                 displayName,
+                sessions: { configDir, currentEnvironment },
             });
             registerUpgradeCommand(program, options.version);
             registerMcpCommand(
@@ -479,15 +555,18 @@ export function createCli(options: CliOptions): Cli {
                 cliName,
                 resolve(options.generatedDir || 'src/generated'),
                 join(homedir(), '.' + options.name, 'routines'),
+                { environment: () => selectedEnvironment, configPath: options.configPath },
             );
             registerPluginCommand(program, cliName, options.version);
             registerPluginsCommand(program, pluginRegistry, options.version);
 
             // 4. Resolve auth
-            let resolved = resolveAuth(cliName, configOpts);
+            let environment = currentEnvironment();
+            let resolved = environment?.auth ?? null;
 
             const cmd = effectiveArgv2;
             const skipAuthCommands = new Set([
+                'help',
                 'login',
                 'setup',
                 'config',
@@ -498,8 +577,8 @@ export function createCli(options: CliOptions): Cli {
                 'plugin',
                 'plugins',
             ]);
-            const isHelpOrVersion = cmd === '--help' || cmd === '-h'
-                || cmd === '--version' || cmd === '-V'
+            const isVersion = leadingOptions.some(o => o.flag === '--version' || o.flag === '-V');
+            const isHelpOrVersion = isVersion
                 || process.argv.includes('--help') || process.argv.includes('-h');
 
             if (
@@ -538,7 +617,8 @@ export function createCli(options: CliOptions): Cli {
                     process.exit(2);
                 }
 
-                resolved = resolveAuth(cliName, configOpts);
+                environment = currentEnvironment();
+                resolved = environment?.auth ?? null;
             }
 
             // 5. Compute auth strategy (no network — just config)
@@ -547,13 +627,13 @@ export function createCli(options: CliOptions): Cli {
             let strategy = options.auth;
             let sessionMgr: SessionManager | null = null;
 
-            if (resolved) {
-                const envConfig = getActiveEnvConfig(cliName, configOpts);
+            if (environment) {
+                const envConfig = getActiveEnvConfig(cliName, envOpts());
                 ({ mergedSessionAuth, refreshOn } = resolveRefreshWiring(options, envConfig));
                 strategy = mergedSessionAuth
                     ? new SessionAuthStrategy(options.auth, mergedSessionAuth)
                     : options.auth;
-                sessionMgr = new SessionManager(cliName, join(configDir, 'session.json'));
+                sessionMgr = sessionManagerFor(environment);
             }
 
             // 5b. Register generate (depends on strategy + sessionMgr from step 5)
@@ -562,7 +642,7 @@ export function createCli(options: CliOptions): Cli {
                 cliName,
                 options.specPath,
                 generatedDir,
-                configOpts,
+                envOpts(),
                 strategy,
                 sessionMgr,
             );
@@ -588,9 +668,10 @@ export function createCli(options: CliOptions): Cli {
                 }
             }
 
-            // 7. Detect request-preview output modes
-            const oIdx = process.argv.indexOf('-o');
-            const oVal = oIdx >= 0 ? process.argv[oIdx + 1] : undefined;
+            // 7. Detect request-preview output modes. Read `-o` the way Commander
+            // does (`-o curl`, `-ocurl`, before or after the command, last wins),
+            // or `-ocurl` would miss the preview and send the request.
+            const oVal = findOptionValue(process.argv.slice(2), '-o');
             const isDryRun = process.argv.includes('--dry-run') && effectiveArgv2 !== 'routine';
             const isCurl = oVal === 'curl';
             const isCurlWithCreds = oVal === 'curl-with-creds';
@@ -598,6 +679,20 @@ export function createCli(options: CliOptions): Cli {
             const isRequestPreview = isDryRun || isCurl || isCurlWithCreds;
             // Skip auth resolution for preview/inspection modes. curl-with-creds still resolves.
             const skipAuthResolution = isRoutineStep || isDryRun || isCurl || isHelpOrVersion;
+
+            // Commander can still find a preview `-o` the lookup missed, e.g. inside
+            // `-vocurl` with a consumer-registered `-v`. Fail before any action
+            // (registered first, so before the requiresAuth hook) rather than send.
+            program.hook('preAction', () => {
+                const parsed = program.opts().o as string | undefined;
+
+                if (
+                    parsed !== oVal
+                    && (parsed === 'curl' || parsed === 'curl-with-creds' || parsed === 'routine-step')
+                ) {
+                    program.error(`error: -o ${parsed} was not recognized early enough to preview safely; pass it as a separate "-o ${parsed}" token`);
+                }
+            });
 
             // Shared session resolver — lazy, runs on first API request or explicit consumer call
             const resolveSession = async (): Promise<void> => {
@@ -933,16 +1028,17 @@ export function createCli(options: CliOptions): Cli {
                 });
             }
 
-            // 12. Custom help — intercept no-args and --help
-            const userArgs = process.argv.slice(2);
+            // 12. Custom help — intercept no command (past any leading program
+            // options) and --help. --version, and any option this program would
+            // reject, go to Commander.
+            const isHelpFlag = (flag: string) => flag === '--help' || flag === '-h';
+            const leadingAccepted = leadingOptions.every(o =>
+                o.known
+                && (isHelpFlag(o.flag) || program.options.some(opt => opt.short === o.flag || opt.long === o.flag)),
+            );
 
-            if (
-                userArgs.length === 0
-                || (userArgs.length === 1
-                    && (userArgs[0] === '--help' || userArgs[0] === '-h'))
-            ) {
-                const showAll
-                    = userArgs[0] === '--help' || userArgs[0] === '-h';
+            if (commandArgs.length === 0 && !isVersion && leadingAccepted) {
+                const showAll = leadingOptions.some(o => isHelpFlag(o.flag));
                 const customCommandNames = new Set(consumerCommands.map(c => c.name));
                 showCustomHelp(program, displayName, showAll, customCommandNames);
                 process.exit(0);
@@ -960,7 +1056,7 @@ export function createCli(options: CliOptions): Cli {
             if (Object.keys(aliasMap).length > 0) {
                 const realPaths = collectCommandPaths(program);
                 const { rewrittenArgs, warnings, errors } = rewriteArgv(
-                    process.argv.slice(2),
+                    commandArgs,
                     aliasMap,
                     realPaths,
                     // Set iff generated-command registration actually ran, so this
@@ -976,7 +1072,8 @@ export function createCli(options: CliOptions): Cli {
                     process.stderr.write(`${displayName}: aliases: ${e}\n`);
                 }
 
-                process.argv = [...process.argv.slice(0, 2), ...rewrittenArgs];
+                // Leading program options stay in front of the expansion.
+                process.argv = [...process.argv.slice(0, 2), ...leadingArgs, ...rewrittenArgs];
             }
 
             // 14. Parse and execute
