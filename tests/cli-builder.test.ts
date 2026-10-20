@@ -362,22 +362,22 @@ describe('built-in commands', () => {
         const cli = createCli(
             makeOptions({
                 name: 'apijack',           // storage identity (unchanged)
-                programName: 'rrc',        // display-only branding
-                description: 'RRCloud CLI',
+                programName: 'acme',       // display-only branding
+                description: 'Acme CLI',
             }),
         );
         cli.command('extra', (program) => {
             program.command('extra').description('extra command');
         });
 
-        process.argv = ['node', 'rrc'];
+        process.argv = ['node', 'acme'];
 
         const output = await captureOutput(() => cli.run());
 
         // Display strings show the override.
-        expect(output).toContain('Usage: rrc');
-        expect(output).toContain('RRCloud CLI');
-        expect(output).toContain("Run 'rrc <command> --help'");
+        expect(output).toContain('Usage: acme');
+        expect(output).toContain('Acme CLI');
+        expect(output).toContain("Run 'acme <command> --help'");
         // The bare "apijack" identity should NOT appear in user-facing branding.
         expect(output).not.toMatch(/Usage: apijack/);
         expect(output).not.toMatch(/Run 'apijack /);
