@@ -92,6 +92,7 @@ steps:
 <cli> routine run <name> -s / --quiet     # Print only what the routine's commands print (failures still on stderr)
 <cli> routine validate <name>   # Validate YAML structure
 <cli> routine test <name>       # Run spec (test) file
+<cli> routine dir               # Print the routines directory
 <cli> routine init              # Install built-in routines
 ```
 
@@ -137,6 +138,9 @@ apijack supports pluggable authentication:
 | `routine run <name>` | Execute a routine |
 | `routine validate <name>` | Validate routine YAML |
 | `routine test <name>` | Run a routine's spec/test file |
+| `routine dir` | Print the directory routine files are read from |
+| `skills install` / `update` / `status` / `uninstall` | Manage the CLI's Claude Code skills (see Claude Code Skills) |
+| `plugin` | (deprecated) Register the Claude Code plugin for the MCP server |
 
 ### Turning off built-in commands
 
@@ -168,6 +172,26 @@ A leading `--config <name>` runs a single invocation against any environment in 
 - An unknown name fails with the list of configured environments.
 - `<cli> --config <name> mcp` passes the environment on to every CLI call the MCP server makes.
 - Programmatic: `runRoutine(name, { config: '<name>' })`, or `createCli({ environment: '<name>', ... })` (a leading `--config` still wins).
+
+## Claude Code Skills
+
+`<cli> skills install` copies the CLI's Claude Code skills into `~/.claude/skills/` (or `$CLAUDE_CONFIG_DIR/skills/`) as personal skills, one directory per skill named `<cli>-<skill>`. `setup` offers to do it. After that, if the CLI's skills change, a one-line notice says to run `<cli> skills update`. It's shown at most once a day, only in an interactive terminal, and never with `--json`, `-o` or `--quiet`, or during `routine run`.
+
+- apijack ships `write-routine` (routine authoring through CLI commands) for every CLI, plus `setup-api` for the bare `apijack` CLI.
+- A CLI adds its own skills in `.apijack/skills/<name>/SKILL.md`, or passes `createCli({ skillsDir })` in a project with its own `bin/<cli>.ts`. On the shared binary, project skills need `name` set in `.apijack.json`; without it they're ignored with a warning.
+- A CLI skill with a built-in's name replaces it. `"skills": { "builtin": false }` in `.apijack/settings.json` (or `createCli({ builtinSkills: false })`) drops the built-ins.
+- `{{cli}}` in a skill's `.md` files becomes the CLI's name when installed.
+- On the shared binary, that name is `.apijack.json` `name`, so set it to the command your users actually type. It also prefixes the installed skill directories.
+- `install`, `update` and `uninstall` only touch directories this CLI installed, which carry a `.apijack-skill.json` marker. `install --force` overwrites a directory it didn't install.
+
+| Command | Description |
+|---------|-------------|
+| `skills install [names...] [--force]` | Install or refresh all skills, or only the named ones |
+| `skills update` | Refresh changed skills, add ones the CLI started shipping, remove ones it stopped shipping |
+| `skills status [--json]` | Each skill's status: `not installed`, `up to date`, `outdated`, `conflict` or `orphaned` |
+| `skills uninstall` | Remove every skill this CLI installed |
+
+`plugin` (the old Claude Code plugin, which registers the MCP server) is deprecated. It's left out of the bare command listing, marked `(deprecated)` in `--help`, and `plugin install` no longer copies skills.
 
 ## MCP Server
 
