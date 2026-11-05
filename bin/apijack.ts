@@ -13,6 +13,7 @@ import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProje
 import { loadProjectSettings } from '../src/settings';
 import { checkForUpdate } from '../src/updater';
 import { shouldReinstallPlugin } from '../src/post-update';
+import { commandGates } from '../src/command-gates';
 import { getPluginPaths } from '../src/plugin/paths';
 import { getActiveEnvConfig } from '../src/config';
 import { takeLeadingOption } from '../src/leading-options';
@@ -150,13 +151,9 @@ const projectSettings = projectRoot
 // 8b. Check for updates (throttled). Runs after the settings load so a
 //     project that turned off `mcp` / `plugin` doesn't get `plugin install`
 //     re-run after updating.
-const disableCommands = projectSettings.disableCommands ?? [];
-const mcpEnabled = !disableCommands.includes('mcp');
-
 await checkForUpdate(VERSION, globalDir, {
     reinstallPlugin: shouldReinstallPlugin({
-        mcpEnabled,
-        pluginEnabled: mcpEnabled && !disableCommands.includes('plugin'),
+        ...commandGates(projectSettings.disableCommands),
         marketplaceDir: getPluginPaths(VERSION).marketplaceDir,
     }),
 });
