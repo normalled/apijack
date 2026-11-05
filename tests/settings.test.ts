@@ -131,6 +131,43 @@ describe('loadProjectSettings()', () => {
             expect(warnSpy.mock.calls[0][0]).toContain('an object');
         });
 
+        test('reads disableCommands', () => {
+            mkdirSync(testRoot, { recursive: true });
+            writeFileSync(join(testRoot, 'settings.json'), JSON.stringify({ disableCommands: ['mcp'] }));
+
+            const settings = loadProjectSettings(testRoot);
+
+            expect(settings.disableCommands).toEqual(['mcp']);
+            expect(warnSpy).not.toHaveBeenCalled();
+        });
+
+        test('drops unknown disableCommands entries and keeps valid ones', () => {
+            mkdirSync(testRoot, { recursive: true });
+            writeFileSync(
+                join(testRoot, 'settings.json'),
+                JSON.stringify({ disableCommands: ['mcp', 'upgrade', 'plugin'] }),
+            );
+
+            const settings = loadProjectSettings(testRoot);
+
+            expect(settings.disableCommands).toEqual(['mcp', 'plugin']);
+            expect(warnSpy).toHaveBeenCalledWith(
+                "[apijack] .apijack/settings.json: 'disableCommands[1]' must be one of 'mcp', 'plugin' — ignoring",
+            );
+        });
+
+        test('strips disableCommands when not an array and warns', () => {
+            mkdirSync(testRoot, { recursive: true });
+            writeFileSync(join(testRoot, 'settings.json'), JSON.stringify({ disableCommands: 'mcp' }));
+
+            const settings = loadProjectSettings(testRoot);
+
+            expect(settings.disableCommands).toBeUndefined();
+            expect(warnSpy).toHaveBeenCalledWith(
+                "[apijack] .apijack/settings.json: 'disableCommands' must be an array of command names — ignoring",
+            );
+        });
+
         test('leaves a valid settings file unchanged with no warnings, including unknown keys', () => {
             mkdirSync(testRoot, { recursive: true });
             const valid = {

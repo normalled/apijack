@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { defaultSpawnCli, refreshAfterUpdate } from '../../post-update';
 
 export interface UpgradeInput {
     currentVersion: string;
@@ -42,7 +43,11 @@ async function bunInstallGlobal(version: string): Promise<number> {
     return proc.exited;
 }
 
-export function registerUpgradeCommand(program: Command, version: string): void {
+export function registerUpgradeCommand(
+    program: Command,
+    version: string,
+    opts?: { reinstallPlugin?: () => boolean },
+): void {
     program
         .command('upgrade')
         .description('Check for and install the latest version')
@@ -62,13 +67,10 @@ export function registerUpgradeCommand(program: Command, version: string): void 
 
                 console.log(`v${result.previousVersion} → v${result.newVersion}`);
 
-                // Update plugin registration
-                const pluginProc = Bun.spawn([...process.argv.slice(0, 2), 'plugin', 'install'], {
-                    stdout: 'inherit',
-                    stderr: 'inherit',
-                    env: { ...process.env, APIJACK_SKIP_UPDATE: '1' },
+                await refreshAfterUpdate({
+                    reinstallPlugin: opts?.reinstallPlugin?.() ?? false,
+                    spawnCli: defaultSpawnCli(),
                 });
-                await pluginProc.exited;
 
                 console.log(`Upgraded to v${result.newVersion}.`);
             } catch (err) {

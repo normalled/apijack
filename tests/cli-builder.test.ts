@@ -442,6 +442,136 @@ describe('built-in commands', () => {
     });
 });
 
+describe('disableCommands', () => {
+    let originalArgv: string[];
+    let originalExit: typeof process.exit;
+
+    beforeEach(() => {
+        originalArgv = process.argv;
+        originalExit = process.exit;
+        (process as any).exit = (code?: number) => {
+            throw new Error(`process.exit(${code ?? 0})`);
+        };
+    });
+
+    afterEach(() => {
+        process.argv = originalArgv;
+        (process as any).exit = originalExit;
+    });
+
+    async function runWith(argv: string[], overrides: Partial<CliOptions> = {}): Promise<string> {
+        const cli = createCli(makeOptions(overrides));
+        process.argv = ['node', 'testcli', ...argv];
+        const origErrWrite = process.stderr.write;
+        const errs: string[] = [];
+        process.stderr.write = (chunk: any) => {
+            errs.push(typeof chunk === 'string' ? chunk : chunk.toString());
+
+            return true;
+        };
+
+        try {
+            const out = await captureOutput(() => cli.run());
+
+            return out + '\n' + errs.join('');
+        } finally {
+            process.stderr.write = origErrWrite;
+        }
+    }
+
+    test('mcp and plugin are listed by default', async () => {
+        const output = await runWith(['--help']);
+
+        expect(output).toMatch(/^\s+mcp\s/m);
+        expect(output).toMatch(/^\s+plugin\s/m);
+    });
+
+    test("disableCommands: ['mcp'] removes mcp and plugin", async () => {
+        const output = await runWith(['--help'], { disableCommands: ['mcp'] });
+
+        expect(output).not.toMatch(/^\s+mcp\s/m);
+        expect(output).not.toMatch(/^\s+plugin\s/m);
+        expect(output).toMatch(/^\s+plugins\s/m);
+    });
+
+    test("disableCommands: ['plugin'] removes only plugin", async () => {
+        const output = await runWith(['--help'], { disableCommands: ['plugin'] });
+
+        expect(output).toMatch(/^\s+mcp\s/m);
+        expect(output).not.toMatch(/^\s+plugin\s/m);
+    });
+
+    function apiGroupNamedMcp(): { generatedDir: string; cleanup: () => void } {
+        const root = join(tmpdir(), `disable-api-mcp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        const generatedDir = join(root, 'generated');
+        mkdirSync(generatedDir, { recursive: true });
+        writeFileSync(
+            join(generatedDir, 'commands.ts'),
+            'export function registerGeneratedCommands(program: any): void {\n'
+            + '    program.command("mcp").description("API mcp group");\n'
+            + '}\n',
+        );
+        writeFileSync(join(generatedDir, 'client.ts'), 'export class ApiClient {}\n');
+
+        return { generatedDir, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+    }
+
+    test('an API group named mcp is listed as an API command when the built-in is off', async () => {
+        const api = apiGroupNamedMcp();
+
+        try {
+            const output = await runWith(['--help'], { disableCommands: ['mcp'], generatedDir: api.generatedDir });
+            const coreSection = output.split('Commands:')[1]?.split('API Commands')[0] ?? '';
+
+            expect(coreSection).not.toMatch(/^\s+mcp\s/m);
+            expect(output).toMatch(/API Commands \(1\):\n\s+mcp/);
+        } finally {
+            api.cleanup();
+        }
+    });
+
+    test('an API group named mcp gets the first-run setup when the built-in is off', async () => {
+        const api = apiGroupNamedMcp();
+        const root = join(tmpdir(), `disable-api-mcp-cfg-${Date.now()}`);
+        const origLog = console.log;
+        const origIsTTY = process.stdin.isTTY;
+        let setupPrompted = false;
+
+        (process.stdin as { isTTY?: boolean }).isTTY = true;
+        console.log = (...args: unknown[]) => {
+            if (String(args[0]).startsWith('testcli Setup')) {
+                setupPrompted = true;
+                throw new Error('__setup__');
+            }
+        };
+
+        try {
+            const cli = createCli(makeOptions({
+                disableCommands: ['mcp'],
+                generatedDir: api.generatedDir,
+                configPath: join(root, 'config.json'),
+            }));
+            process.argv = ['node', 'testcli', 'mcp'];
+            await cli.run().catch((e: Error) => {
+                if (e.message !== '__setup__') throw e;
+            });
+        } finally {
+            console.log = origLog;
+            (process.stdin as { isTTY?: boolean }).isTTY = origIsTTY;
+            api.cleanup();
+            rmSync(root, { recursive: true, force: true });
+        }
+
+        expect(setupPrompted).toBe(true);
+    });
+
+    test('a disabled command is unknown to Commander', async () => {
+        const output = await runWith(['mcp'], { disableCommands: ['mcp'] });
+
+        expect(output).toContain("unknown command 'mcp'");
+    });
+});
+
 describe('displayName threaded through subcommand registrar hints (#91)', () => {
     let originalArgv: string[];
     let originalExit: typeof process.exit;

@@ -208,3 +208,21 @@ describe('bin/apijack.ts boot-time .apijack/* registration', () => {
         expect(result.stdout).toContain('AUTH_HEADER=AUTHED_BY_FIXTURE');
     });
 });
+
+describe('bin/apijack.ts .apijack/settings.json disableCommands', () => {
+    const settingsPath = join(projectRoot, '.apijack', 'settings.json');
+
+    test('settings.json disableCommands reaches createCli: mcp and plugin are gone from --help', async () => {
+        writeFileSync(settingsPath, JSON.stringify({ disableCommands: ['mcp'] }));
+
+        try {
+            const result = await runBin(['--help']);
+            expect(result.exitCode).toBe(0);
+            expect(result.stdout).not.toMatch(/^\s+mcp\s/m);
+            expect(result.stdout).not.toMatch(/^\s+plugin\s/m);
+            expect(result.stdout).toMatch(/^\s+plugins\s/m);
+        } finally {
+            rmSync(settingsPath, { force: true });
+        }
+    });
+});

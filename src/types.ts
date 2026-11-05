@@ -54,7 +54,15 @@ export interface CliOptions {
      *  Prompt default only — it does not participate in the NAME_URL / saved-config
      *  resolution chain used for non-interactive runs. */
     defaultUrl?: string;
+    /** Optional built-in commands this CLI doesn't register. `mcp` also removes
+     *  `plugin`, which registers the MCP server with Claude Code. */
+    disableCommands?: DisableableCommand[];
 }
+
+/** Built-in commands a CLI can turn off via `disableCommands`. */
+export type DisableableCommand = 'mcp' | 'plugin';
+
+export const DISABLEABLE_COMMANDS: readonly DisableableCommand[] = ['mcp', 'plugin'];
 
 export type CommandRegistrar<R extends boolean = false> = R extends true
     ? (program: Command, ctx: AuthedCliContext) => void

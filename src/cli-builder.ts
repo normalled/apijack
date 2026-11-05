@@ -25,6 +25,9 @@ import { registerSetupCommand, setupAction, setupUrlDefault } from './commands/s
 import { registerConfigCommand } from './commands/config/register';
 import { registerGenerateCommand } from './commands/generate/generate';
 import { registerUpgradeCommand } from './commands/upgrade/upgrade';
+import { shouldReinstallPlugin } from './post-update';
+import { commandGates } from './command-gates';
+import { getPluginPaths } from './plugin/paths';
 import { registerMcpCommand } from './commands/mcp/mcp';
 import { registerRoutineCommand, loadBuiltinRoutines } from './commands/routine/register';
 import { prompt, hiddenPrompt } from './prompt';
@@ -65,23 +68,14 @@ export interface RunRoutineOptions {
     dryRun?: boolean;
 }
 
-const CORE_COMMANDS = new Set([
-    'setup',
-    'login',
-    'config',
-    'generate',
-    'routine',
-    'upgrade',
-    'mcp',
-    'plugin',
-    'plugins',
-]);
-
 function showCustomHelp(
     program: Command,
     displayName: string,
     showAll: boolean,
     customCommandNames: Set<string>,
+    /** The built-in Command instances, so an API group that happens to share a
+     *  built-in's name (e.g. `mcp` once the built-in is off) isn't listed as one. */
+    builtinCommands: ReadonlySet<Command>,
 ): void {
     console.log(`Usage: ${program.name()} [options] [command]\n`);
     console.log(`${program.description()}\n`);
@@ -99,10 +93,10 @@ function showCustomHelp(
     console.log(`  ${'-h, --help'.padEnd(30)} display help for command`);
 
     // Core commands
-    const core = program.commands.filter(c => CORE_COMMANDS.has(c.name()));
-    const custom = program.commands.filter(c => customCommandNames.has(c.name()));
+    const core = program.commands.filter(c => builtinCommands.has(c));
+    const custom = program.commands.filter(c => !builtinCommands.has(c) && customCommandNames.has(c.name()));
     const api = program.commands.filter(
-        c => !CORE_COMMANDS.has(c.name()) && !customCommandNames.has(c.name()) && c.name() !== 'help',
+        c => !builtinCommands.has(c) && !customCommandNames.has(c.name()) && c.name() !== 'help',
     );
 
     if (core.length > 0) {
@@ -149,6 +143,7 @@ export function createCli(options: CliOptions): Cli {
         : join(homedir(), `.${cliName}`);
     const routinesDir = join(configDir, 'routines');
     const generatedDir = options.generatedDir ?? join(process.cwd(), 'src', 'generated');
+    const { mcpEnabled, pluginEnabled } = commandGates(options.disableCommands);
     const defaultRequiresAuth = options.customCommandDefaults?.requiresAuth ?? false;
     const effectiveRequiresAuth = (explicit: boolean | undefined): boolean =>
         explicit ?? defaultRequiresAuth;
@@ -535,30 +530,55 @@ export function createCli(options: CliOptions): Cli {
             );
             program.option('--dry-run', 'Preview the API request without executing');
 
-            // 3. Register built-in commands
-            registerSetupCommand(program, cliName, {
-                allowedCidrs: options.allowedCidrs,
-                configPath: options.configPath,
-                displayName,
-                defaultUrl: options.defaultUrl,
+            // 3. Register built-in commands. Track the Command instances so help
+            // can tell them apart from API groups and project commands.
+            const builtinCommands = new Set<Command>();
+            const markBuiltins = (register: () => void): void => {
+                const before = new Set(program.commands);
+                register();
+
+                for (const c of program.commands) {
+                    if (!before.has(c)) builtinCommands.add(c);
+                }
+            };
+            markBuiltins(() => {
+                registerSetupCommand(program, cliName, {
+                    allowedCidrs: options.allowedCidrs,
+                    configPath: options.configPath,
+                    displayName,
+                    defaultUrl: options.defaultUrl,
+                });
+                registerConfigCommand(program, cliName, {
+                    configPath: options.configPath,
+                    knownSites: options.knownSites,
+                    allowedCidrs: options.allowedCidrs,
+                    displayName,
+                    sessions: { configDir, currentEnvironment },
+                });
+                registerUpgradeCommand(program, options.version, {
+                    reinstallPlugin: () => shouldReinstallPlugin({
+                        mcpEnabled,
+                        pluginEnabled,
+                        marketplaceDir: getPluginPaths(options.version).marketplaceDir,
+                    }),
+                });
+
+                if (mcpEnabled) {
+                    registerMcpCommand(
+                        program,
+                        cliName,
+                        resolve(options.generatedDir || 'src/generated'),
+                        join(homedir(), '.' + options.name, 'routines'),
+                        { environment: () => selectedEnvironment, configPath: options.configPath },
+                    );
+                }
+
+                if (pluginEnabled) {
+                    registerPluginCommand(program, cliName, options.version);
+                }
+
+                registerPluginsCommand(program, pluginRegistry, options.version);
             });
-            registerConfigCommand(program, cliName, {
-                configPath: options.configPath,
-                knownSites: options.knownSites,
-                allowedCidrs: options.allowedCidrs,
-                displayName,
-                sessions: { configDir, currentEnvironment },
-            });
-            registerUpgradeCommand(program, options.version);
-            registerMcpCommand(
-                program,
-                cliName,
-                resolve(options.generatedDir || 'src/generated'),
-                join(homedir(), '.' + options.name, 'routines'),
-                { environment: () => selectedEnvironment, configPath: options.configPath },
-            );
-            registerPluginCommand(program, cliName, options.version);
-            registerPluginsCommand(program, pluginRegistry, options.version);
 
             // 4. Resolve auth
             let environment = currentEnvironment();
@@ -573,9 +593,11 @@ export function createCli(options: CliOptions): Cli {
                 'routine',
                 'generate',
                 'upgrade',
-                'mcp',
-                'plugin',
                 'plugins',
+                // Only while the built-in exists: with it off, an API group of
+                // that name is an ordinary API command and needs auth.
+                ...(mcpEnabled ? ['mcp'] : []),
+                ...(pluginEnabled ? ['plugin'] : []),
             ]);
             const isVersion = leadingOptions.some(o => o.flag === '--version' || o.flag === '-V');
             const isHelpOrVersion = isVersion
@@ -637,7 +659,7 @@ export function createCli(options: CliOptions): Cli {
             }
 
             // 5b. Register generate (depends on strategy + sessionMgr from step 5)
-            registerGenerateCommand(
+            markBuiltins(() => registerGenerateCommand(
                 program,
                 cliName,
                 options.specPath,
@@ -645,7 +667,7 @@ export function createCli(options: CliOptions): Cli {
                 envOpts(),
                 strategy,
                 sessionMgr,
-            );
+            ));
 
             // 6. Import generated commands (ALWAYS — no auth needed)
             let commandsModule: Record<string, unknown> | null = null;
@@ -944,7 +966,7 @@ export function createCli(options: CliOptions): Cli {
             }
 
             // 12. Register routine commands
-            registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir, customResolvers, pluginRegistry, displayName);
+            markBuiltins(() => registerRoutineCommand(program, cliName, routinesDir, dispatch, options.builtinRoutinesDir, customResolvers, pluginRegistry, displayName));
 
             // 13. Handle -o routine-step
             if (isRoutineStep) {
@@ -1040,7 +1062,7 @@ export function createCli(options: CliOptions): Cli {
             if (commandArgs.length === 0 && !isVersion && leadingAccepted) {
                 const showAll = leadingOptions.some(o => isHelpFlag(o.flag));
                 const customCommandNames = new Set(consumerCommands.map(c => c.name));
-                showCustomHelp(program, displayName, showAll, customCommandNames);
+                showCustomHelp(program, displayName, showAll, customCommandNames, builtinCommands);
                 process.exit(0);
             }
 

@@ -13,6 +13,7 @@ export type {
     CustomResolver,
     CustomResolverHelpers,
     ApijackPlugin,
+    DisableableCommand,
 } from './types';
 export {
     PluginNamespaceError,

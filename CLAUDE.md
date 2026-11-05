@@ -268,7 +268,7 @@ The `.apijack/` directory at a project root is auto-loaded when the CLI runs ins
 | `.apijack/auth.ts` | Project-level `AuthStrategy` and optional `onChallenge` |
 | `.apijack/plugins.ts` | Project-level plugin registrations (`default: ApijackPlugin[]` — each entry passed to `cli.use(...)`) |
 | `.apijack/routines/*.yaml` | Routines available via `routine run <name>` |
-| `.apijack/settings.json` | Framework defaults (see below; also `auth.refreshOn` — see "Stale-session refresh and retry" above) |
+| `.apijack/settings.json` | Framework defaults (see below; also `auth.refreshOn` — see "Stale-session refresh and retry" above, and `disableCommands` — see "Turning off built-in commands") |
 | `.apijack/aliases.json` | Project-local command aliases (see below) |
 
 ### Command aliases
@@ -341,6 +341,22 @@ Module-level `requiresAuth` overrides the settings default. On `CliContext`:
 | `routine validate <name>` | Validate routine YAML |
 | `routine test <name>` | Run a routine's spec/test file |
 
+### Turning off built-in commands
+
+A CLI can leave out the optional `mcp` and `plugin` commands:
+
+```json
+// .apijack/settings.json
+{ "disableCommands": ["mcp"] }
+```
+
+A project with its own `bin/<cli>.ts` passes `createCli({ disableCommands: ['mcp'], /* ... */ })` instead.
+
+- Turning off `mcp` also turns off `plugin`, which registers the MCP server with Claude Code.
+- With `plugin` off (directly or through `mcp`), updates (`upgrade` and the startup update prompt) no longer re-run `plugin install`.
+- A turned-off command isn't registered: it's missing from help, and running it is an unknown-command error.
+- Only `mcp` and `plugin` can be turned off. Any other value is dropped with a warning.
+
 ### Running one command against another environment
 
 A leading `--config <name>` runs a single invocation against any environment in `config.json`, without changing the active one:
@@ -359,6 +375,8 @@ A leading `--config <name>` runs a single invocation against any environment in 
 ## MCP Server
 
 Run `<cli> mcp` to start a Model Context Protocol server, exposing all CLI commands as MCP tools for use with AI agents and editors.
+
+A CLI can turn it off with `disableCommands` — see "Turning off built-in commands" above.
 
 ## Claude Code Integration
 
