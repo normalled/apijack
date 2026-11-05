@@ -11,6 +11,9 @@ export interface InstallOptions {
     sourceDir: string;
     cliInvocation: string[];
     generatedDir: string;
+    /** Remove the skills earlier versions copied into the plugin. Default true;
+     *  false keeps them (e.g. when installing them the new way just failed). */
+    clearSkills?: boolean;
     /** Overridable for tests. Defaults to spawning the real `claude` CLI. */
     runClaude?: ClaudeRunner;
     /** Overridable for tests. Defaults to checking the real `claude` CLI on PATH. */
@@ -72,17 +75,12 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
             cpSync(bundleSrc, join(distDir, 'mcp-server.bundle.js'));
         }
 
-        // 3. Copy skills (clear first to remove stale entries from previous versions)
+        // 3. Skills now install as personal skills (`<cli> skills install`). Clear
+        //    the ones earlier versions copied here so they aren't loaded twice.
         const skillsDst = join(pluginDir, 'skills');
 
-        if (existsSync(skillsDst)) {
+        if (opts.clearSkills !== false && existsSync(skillsDst)) {
             rmSync(skillsDst, { recursive: true, force: true });
-        }
-
-        const skillsSrc = join(sourceDir, 'skills');
-
-        if (existsSync(skillsSrc)) {
-            cpSync(skillsSrc, skillsDst, { recursive: true });
         }
 
         // 4. Write runtime config for the MCP entry point

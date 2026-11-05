@@ -10,14 +10,14 @@ Connect apijack to any API with an OpenAPI spec to generate a full CLI.
 ## Quick Setup
 
 ```bash
-apijack setup              # Interactive: URL + credentials (Basic auth by default)
-apijack generate           # Pull spec, generate types/client/commands
-apijack --help             # See generated commands
+{{cli}} setup              # Interactive: URL + credentials (Basic auth by default)
+{{cli}} generate           # Pull spec, generate types/client/commands
+{{cli}} --help             # See generated commands
 ```
 
 ## Setup Details
 
-`apijack setup` prompts for:
+`{{cli}} setup` prompts for:
 - **Environment name** (e.g. "dev", "staging")
 - **API base URL** (e.g. "http://localhost:8080")
 - **Credentials** (username + password)
@@ -32,31 +32,22 @@ export APIJACK_USER=user@example.com
 export APIJACK_PASS=secret
 ```
 
-### MCP Setup Tool
-
-When running as a Claude Code plugin, use the `setup` MCP tool instead of the interactive CLI:
-
-```
-Use the apijack setup tool to configure environment "dev" at http://localhost:8080
-with username admin and password admin123
-```
-
-The MCP setup tool only accepts dev/staging URLs. Production APIs must use env vars.
+`{{cli}} setup` is interactive (it reads the password without echoing it), so it needs a real terminal. Ask the user to run `{{cli}} setup` in their own terminal, or use the environment variables above.
 
 ## Multi-Environment
 
 ```bash
-apijack setup                    # Add another environment
-apijack config list              # Show all environments
-apijack config switch staging    # Switch active environment
-apijack config clear-session     # Log the active environment out (--all for every environment)
-apijack --config staging <cmd>   # Run one command against staging without switching
-apijack generate                 # Regenerate from new environment's spec
+{{cli}} setup                    # Add another environment
+{{cli}} config list              # Show all environments
+{{cli}} config switch staging    # Switch active environment
+{{cli}} config clear-session     # Log the active environment out (--all for every environment)
+{{cli}} --config staging <cmd>   # Run one command against staging without switching
+{{cli}} generate                 # Regenerate from new environment's spec
 ```
 
 ## What Generate Produces
 
-`apijack generate` creates four files from the OpenAPI spec:
+`{{cli}} generate` creates four files from the OpenAPI spec:
 
 | File | Contents |
 |------|----------|
@@ -69,17 +60,16 @@ After generating, all API operations are available as CLI commands.
 
 ## Internal Networks
 
-Allow credential storage for internal IPs:
+Allow credential storage for internal IPs by listing their ranges in the project's `.apijack.json`:
 
-```bash
-apijack plugin config add-cidr 192.168.1.0/24
-apijack plugin config add-cidr 10.0.0.0/8
+```json
+{ "allowedCidrs": ["192.168.1.0/24", "10.0.0.0/8"] }
 ```
 
 ## Troubleshooting
 
-- **"No environments configured"** — run `apijack setup` or use the MCP `setup` tool
-- **"Command map not available"** — run `apijack generate` after setup
+- **"No environments configured"** — run `{{cli}} setup`
+- **"Command map not available"** — run `{{cli}} generate` after setup
 - **"Production API detected"** — use env vars or add the network to allowed CIDRs
-- **Edited `config.json` by hand** — run `apijack config clear-session` (or `apijack config clear-session <env>` for another environment) so the next command logs in with the new credentials
-- **Auth failures after setup** — try `apijack config switch <env>` to verify active environment, `apijack config clear-session` to force a fresh login, then `apijack generate` to refresh
+- **Edited `config.json` by hand** — run `{{cli}} config clear-session` (or `{{cli}} config clear-session <env>` for another environment) so the next command logs in with the new credentials
+- **Auth failures after setup** — try `{{cli}} config switch <env>` to verify active environment, `{{cli}} config clear-session` to force a fresh login, then `{{cli}} generate` to refresh

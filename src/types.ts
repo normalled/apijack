@@ -57,6 +57,10 @@ export interface CliOptions {
     /** Optional built-in commands this CLI doesn't register. `mcp` also removes
      *  `plugin`, which registers the MCP server with Claude Code. */
     disableCommands?: DisableableCommand[];
+    /** Directory of this CLI's own Claude Code skills (`<name>/SKILL.md`), installed by `skills install`. */
+    skillsDir?: string;
+    /** Ship apijack's built-in skills alongside `skillsDir`. Default true. */
+    builtinSkills?: boolean;
 }
 
 /** Built-in commands a CLI can turn off via `disableCommands`. */

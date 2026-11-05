@@ -32,6 +32,13 @@ const projectConfig = projectConfigPath ? loadProjectConfig(projectConfigPath) :
 const configDir = resolveConfigDir(projectConfigPath);
 const projectRoot = projectConfigPath ? dirname(projectConfigPath) : null;
 
+// 3a. A project name with no letter or digit would brand help, prompts and
+//     skill names with nothing — fail with a message that points at the file.
+if (projectConfig?.name !== undefined && !/[\p{L}\p{N}]/u.test(projectConfig.name)) {
+    console.error("[apijack] .apijack.json 'name' must contain at least one letter or digit");
+    process.exit(1);
+}
+
 // Load .env from project root (Bun auto-loads from cwd, which may differ when invoked via symlink)
 if (projectRoot) {
     const envPath = join(projectRoot, '.env');
@@ -158,6 +165,22 @@ await checkForUpdate(VERSION, globalDir, {
     }),
 });
 
+// 8c. Project skills (.apijack/skills/, settings.json `skills`). They install
+//     under the display name, so a project without `name` would share the bare
+//     `apijack` identity with every other unnamed project — ignore them until
+//     it sets one.
+const projectSkillsDir = projectRoot ? join(projectRoot, '.apijack', 'skills') : null;
+const hasProjectSkills = projectSkillsDir !== null && existsSync(projectSkillsDir);
+let skillsDir: string | undefined;
+let builtinSkills: boolean | undefined;
+
+if ((hasProjectSkills || projectSettings.skills !== undefined) && !projectConfig?.name) {
+    console.warn("[apijack] .apijack/skills and settings.json 'skills' are ignored until .apijack.json sets 'name'");
+} else {
+    skillsDir = hasProjectSkills ? projectSkillsDir! : undefined;
+    builtinSkills = projectSettings.skills?.builtin;
+}
+
 // 9. Create CLI
 //    `name` stays apijack so storage paths (~/.apijack/) and env-var prefix
 //    (APIJACK_*) are unaffected. `programName`, `description`, and `version`
@@ -179,6 +202,8 @@ const cli = createCli({
     configPath: join(configDir, 'config.json'),
     customCommandDefaults: projectSettings.customCommands?.defaults,
     disableCommands: projectSettings.disableCommands,
+    skillsDir,
+    builtinSkills,
 });
 
 // 10. Register project-level extensions

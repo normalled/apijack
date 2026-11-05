@@ -1,15 +1,25 @@
 ---
 name: write-routine
-description: Use when building apijack YAML routines — workflow automations that chain CLI commands with variables, loops, conditions, and assertions
+description: Use when building {{cli}} routines — YAML workflow automations that chain {{cli}} commands with variables, loops, conditions, and assertions
 ---
 
-# Writing apijack Routines
+# Writing {{cli}} Routines
 
-Routines are YAML workflows that chain CLI commands. They live in `~/.<cli>/routines/` (or `.apijack/routines/` in project mode).
+Routines are YAML workflows that chain `{{cli}}` commands. Each routine is one YAML file in the routines directory — run `{{cli}} routine dir` to find it; don't guess the path.
+
+## Workflow
+
+1. **Discover** the commands you need: `{{cli}} <command> -o routine-step` (see below).
+2. **Locate** the routines directory: `{{cli}} routine dir`.
+3. **Write** `<dir>/<name>.yaml`. Subfolders group routines: `<dir>/setup/env.yaml` is run as `setup/env`.
+4. **Check** it: `{{cli}} routine validate <name>`. This also fails if the file landed in the wrong place.
+5. **Run** it: `{{cli}} routine run <name> --dry-run` first, then without `--dry-run`.
+
+For choices no command answers — the routine's name, which folder it belongs in, how to split a workflow into sub-routines, sensible variable defaults — use your judgement, and ask the user when you aren't sure.
 
 ## IMPORTANT: Always Prefer Routines
 
-**ALWAYS use routines** for multi-step workflows. Routines support variables, loops, randomization, and output capture — use `create_routine` + `run_routine` instead of multiple `run_commands` calls. Only fall back to `run_commands` when each call needs unique LLM-generated values that can't be expressed as variables or built-in functions.
+**ALWAYS use routines** for multi-step workflows. Routines support variables, loops, randomization, and output capture — write a routine and run it with `{{cli}} routine run` instead of running several `{{cli}}` commands one by one. Only fall back to individual commands when each call needs unique values that can't be expressed as variables or built-in functions.
 
 ## IMPORTANT: Use Loops, Not Hardcoded Steps
 
@@ -40,17 +50,15 @@ When a routine repeats an operation N times, **always use `range` or `forEach`**
 
 ## Discover Commands First
 
-Use `get_routine_templates` to get YAML step templates for multiple commands at once:
+Append `-o routine-step` to any command to print it as a ready-to-use routine step instead of running it, with every available arg shown (optional ones commented out):
 
-```json
-get_routine_templates({ commands: [
-  { command: "todos create", args: { "--title": "example" } },
-  { command: "todos patch", args: { "--id": "xxx", "--color": "#fff" } },
-  { command: "todos delete" }
-]})
+```bash
+{{cli}} todos create --title example -o routine-step
+{{cli}} todos patch --id xxx --color "#fff" -o routine-step
+{{cli}} todos delete -o routine-step
 ```
 
-This returns each command as a ready-to-use routine step with all available args shown. Use `describe_command` for the full argument schema (types, required/optional, descriptions).
+Use `{{cli}} --help` to list command groups and `{{cli}} <group> <command> --help` for the full argument list (required/optional, descriptions).
 
 ## Routine Structure
 
@@ -103,7 +111,7 @@ Example — skip creation when an entity already exists:
 
 Variables can reference other variables in defaults: `run_id: "run-$_timestamp"`.
 
-Override at runtime: `<cli> routine run my-routine --set project_name=prod`.
+Override at runtime: `{{cli}} routine run my-routine --set project_name=prod`.
 
 ## Output Capture and References
 
@@ -255,16 +263,17 @@ Built-in commands available in routines:
 ## Routine Commands
 
 ```bash
-<cli> routine run <name>                   # Execute
-<cli> routine run <name> --set key=value   # Override variables
-<cli> --config <env> routine run <name>    # Run against another configured environment
-<cli> routine run <name> --dry-run         # Preview without executing
-<cli> routine run <name> --json            # Emit RoutineResult as JSON to stdout
-<cli> routine run <name> -s / --quiet      # Print only what the routine's commands print (failures still on stderr)
-<cli> routine validate <name>              # Check YAML structure
-<cli> routine test <name>                  # Run spec/test file
-<cli> routine list                         # List available
-<cli> routine list --tree                  # Show tree structure
+{{cli}} routine run <name>                   # Execute
+{{cli}} routine run <name> --set key=value   # Override variables
+{{cli}} --config <env> routine run <name>    # Run against another configured environment
+{{cli}} routine run <name> --dry-run         # Preview without executing
+{{cli}} routine run <name> --json            # Emit RoutineResult as JSON to stdout
+{{cli}} routine run <name> -s / --quiet      # Print only what the routine's commands print (failures still on stderr)
+{{cli}} routine validate <name>              # Check YAML structure
+{{cli}} routine test <name>                  # Run spec/test file
+{{cli}} routine list                         # List available
+{{cli}} routine list --tree                  # Show tree structure
+{{cli}} routine dir                          # Print the directory routine files live in
 ```
 
 ## Custom Resolvers

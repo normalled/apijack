@@ -1,5 +1,5 @@
-import { homedir } from 'os';
 import { join, resolve } from 'path';
+import { userHome } from '../home';
 
 export interface PluginPaths {
     userDataDir: string;
@@ -8,7 +8,7 @@ export interface PluginPaths {
 }
 
 export function getPluginPaths(_version: string): PluginPaths {
-    const userDataDir = join(homedir(), '.apijack');
+    const userDataDir = join(userHome(), '.apijack');
 
     return {
         userDataDir,

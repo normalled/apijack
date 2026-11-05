@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { installPlugin } from '../../src/plugin/install';
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -72,11 +72,26 @@ describe('installPlugin()', () => {
         expect(manifest.version).toBe('0.1.0');
     });
 
-    test('copies skills into plugin dir', async () => {
+    test('clearSkills: false keeps the plugin\'s skills', async () => {
+        const kept = join(testMarketplaceDir, 'apijack', 'skills', 'write-routine');
+        mkdirSync(kept, { recursive: true });
+        writeFileSync(join(kept, 'SKILL.md'), 'old plugin skill');
+
+        const { opts } = makeOpts({ clearSkills: false });
+        await installPlugin(opts);
+
+        expect(readFileSync(join(kept, 'SKILL.md'), 'utf-8')).toBe('old plugin skill');
+    });
+
+    test('does not copy skills and clears a stale skills dir', async () => {
+        const stale = join(testMarketplaceDir, 'apijack', 'skills', 'write-routine');
+        mkdirSync(stale, { recursive: true });
+        writeFileSync(join(stale, 'SKILL.md'), 'old plugin skill');
+
         const { opts } = makeOpts();
         const result = await installPlugin(opts);
-        expect(existsSync(join(result.pluginDir, 'skills', 'write-routine', 'SKILL.md'))).toBe(true);
-        expect(existsSync(join(result.pluginDir, 'skills', 'setup-api', 'SKILL.md'))).toBe(true);
+
+        expect(existsSync(join(result.pluginDir, 'skills'))).toBe(false);
     });
 
     test('writes .mcp.json with CLAUDE_PLUGIN_ROOT reference', async () => {

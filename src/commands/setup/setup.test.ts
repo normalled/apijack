@@ -1,5 +1,9 @@
 import { describe, test, expect, mock } from 'bun:test';
-import { setupAction, setupUrlDefault, DEFAULT_SETUP_URL } from './setup';
+import { mkdirSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { Command } from 'commander';
+import { setupAction, setupUrlDefault, DEFAULT_SETUP_URL, registerSetupCommand } from './setup';
 
 describe('setupUrlDefault', () => {
     test('falls back to localhost:8080 when no defaultUrl is configured', () => {
@@ -72,5 +76,42 @@ describe('setupAction', () => {
             verify: verifyFn,
             save: saveFn,
         })).rejects.toThrow('disk full');
+    });
+});
+
+describe('registerSetupCommand afterSave', () => {
+    test('afterSave is awaited after a successful save', async () => {
+        const dir = join(tmpdir(), `apijack-setup-aftersave-${Date.now()}`);
+        mkdirSync(dir, { recursive: true });
+        const answers = ['dev', 'http://127.0.0.1:9', 'me@example.com'];
+        const events: string[] = [];
+        const origLog = console.log;
+        const origErr = console.error;
+        console.log = (...a: unknown[]) => events.push(`log:${a.join(' ')}`);
+        console.error = () => {};
+
+        try {
+            const program = new Command();
+            registerSetupCommand(program, 'testcli', {
+                configPath: join(dir, 'config.json'),
+                io: {
+                    prompt: async () => answers.shift() ?? '',
+                    hiddenPrompt: async () => 'secret',
+                },
+                afterSave: async () => {
+                    await Promise.resolve();
+                    events.push('afterSave');
+                },
+            });
+
+            await program.parseAsync(['node', 'testcli', 'setup']);
+        } finally {
+            console.log = origLog;
+            console.error = origErr;
+            rmSync(dir, { recursive: true, force: true });
+        }
+
+        expect(events.at(-1)).toBe('afterSave');
+        expect(events.some(e => e.startsWith("log:Switched to 'dev'"))).toBe(true);
     });
 });

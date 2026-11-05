@@ -5,61 +5,62 @@ import { installPlugin } from './install';
 import { uninstallPlugin } from './uninstall';
 import { getPluginPaths } from './paths';
 
+/**
+ * `plugin install`: install the CLI's skills the new way first, so clearing
+ * the plugin's copies doesn't take them away. If that fails, keep the copies.
+ * Old versions' `upgrade` runs exactly this command, so the migration has to
+ * live here rather than in the post-update refresh.
+ */
+export async function pluginInstallAction(deps: {
+    /** Returns `keepPluginSkills: true` when the plugin's copies must stay (nothing replaced them). */
+    migrateSkills?: () => void | { keepPluginSkills?: boolean } | Promise<void | { keepPluginSkills?: boolean }>;
+    install: (opts: { clearSkills: boolean }) => Promise<void>;
+}): Promise<void> {
+    let clearSkills = true;
+
+    try {
+        const outcome = await deps.migrateSkills?.();
+
+        if (outcome && outcome.keepPluginSkills) clearSkills = false;
+    } catch (err) {
+        clearSkills = false;
+        console.error(
+            `Installing Claude Code skills failed (${err instanceof Error ? err.message : String(err)}); `
+            + "keeping the plugin's copies.",
+        );
+    }
+
+    await deps.install({ clearSkills });
+}
+
 export function registerPluginCommand(
     program: Command,
-    _cliName: string,
+    displayName: string,
     version: string,
+    opts?: {
+        /** Installs the CLI's skills as personal skills when the plugin still holds them. Throws on failure. */
+        migrateSkills?: () => void | { keepPluginSkills?: boolean } | Promise<void | { keepPluginSkills?: boolean }>;
+    },
 ): void {
     const plugin = program
         .command('plugin')
-        .description('Manage Claude Code plugin registration');
+        .description('(deprecated) Manage Claude Code plugin registration');
+
+    plugin.hook('preAction', () => {
+        const message = "'plugin' is deprecated and will be removed in a future major release.";
+
+        process.stderr.write(`${message} Skills: run '${displayName} skills install'.\n`);
+    });
 
     plugin
         .command('install')
         .description('Register as a Claude Code plugin')
         .option('--cli-invocation <args...>', 'How to invoke this CLI (e.g., bun run src/cli.ts)')
         .option('--generated-dir <dir>', 'Path to generated files directory', '.apijack/generated')
-        .action(async (opts: { cliInvocation?: string[]; generatedDir?: string }) => {
-            const paths = getPluginPaths(version);
-
-            const cliInvocation = opts.cliInvocation ?? process.argv.slice(0, 2);
-
-            // Build the bundle if it doesn't exist
-            const bundlePath = resolve(paths.sourceDir, 'dist', 'mcp-server.bundle.js');
-
-            if (!existsSync(bundlePath)) {
-                console.log('Building MCP server bundle...');
-                const buildScript = resolve(paths.sourceDir, 'scripts', 'build-plugin.ts');
-                const proc = Bun.spawn(['bun', 'run', buildScript], {
-                    stdout: 'inherit',
-                    stderr: 'inherit',
-                });
-                const exitCode = await proc.exited;
-
-                if (exitCode !== 0) {
-                    console.error('Bundle build failed.');
-                    process.exit(1);
-                }
-            }
-
-            const result = await installPlugin({
-                version,
-                userDataDir: paths.userDataDir,
-                marketplaceDir: paths.marketplaceDir,
-                sourceDir: paths.sourceDir,
-                cliInvocation,
-                generatedDir: opts.generatedDir ?? 'src/generated',
-            });
-
-            if (result.success) {
-                console.log(`\n${result.message}`);
-                console.log(`\n  Marketplace:   ${result.marketplaceDir}`);
-                console.log(`  Plugin dir:    ${result.pluginDir}`);
-                console.log(`  User data:     ${paths.userDataDir}`);
-                console.log(`  CLI invocation: ${cliInvocation.join(' ')}`);
-                console.log('\nIn Claude Code, run /reload-plugins to activate.');
-            }
-        });
+        .action((cmdOpts: { cliInvocation?: string[]; generatedDir?: string }) => pluginInstallAction({
+            migrateSkills: opts?.migrateSkills,
+            install: ({ clearSkills }) => runPluginInstall(version, cmdOpts, clearSkills),
+        }));
 
     plugin
         .command('uninstall')
@@ -156,4 +157,50 @@ export function registerPluginCommand(
                 console.error('Failed to read plugin config.');
             }
         });
+}
+
+async function runPluginInstall(
+    version: string,
+    opts: { cliInvocation?: string[]; generatedDir?: string },
+    clearSkills: boolean,
+): Promise<void> {
+    const paths = getPluginPaths(version);
+    const cliInvocation = opts.cliInvocation ?? process.argv.slice(0, 2);
+
+    // Build the bundle if it doesn't exist
+    const bundlePath = resolve(paths.sourceDir, 'dist', 'mcp-server.bundle.js');
+
+    if (!existsSync(bundlePath)) {
+        console.log('Building MCP server bundle...');
+        const buildScript = resolve(paths.sourceDir, 'scripts', 'build-plugin.ts');
+        const proc = Bun.spawn(['bun', 'run', buildScript], {
+            stdout: 'inherit',
+            stderr: 'inherit',
+        });
+        const exitCode = await proc.exited;
+
+        if (exitCode !== 0) {
+            console.error('Bundle build failed.');
+            process.exit(1);
+        }
+    }
+
+    const result = await installPlugin({
+        version,
+        userDataDir: paths.userDataDir,
+        marketplaceDir: paths.marketplaceDir,
+        sourceDir: paths.sourceDir,
+        cliInvocation,
+        generatedDir: opts.generatedDir ?? 'src/generated',
+        clearSkills,
+    });
+
+    if (result.success) {
+        console.log(`\n${result.message}`);
+        console.log(`\n  Marketplace:   ${result.marketplaceDir}`);
+        console.log(`  Plugin dir:    ${result.pluginDir}`);
+        console.log(`  User data:     ${paths.userDataDir}`);
+        console.log(`  CLI invocation: ${cliInvocation.join(' ')}`);
+        console.log('\nIn Claude Code, run /reload-plugins to activate.');
+    }
 }

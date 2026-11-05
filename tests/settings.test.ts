@@ -168,6 +168,40 @@ describe('loadProjectSettings()', () => {
             );
         });
 
+        test('reads skills.builtin', () => {
+            mkdirSync(testRoot, { recursive: true });
+            writeFileSync(join(testRoot, 'settings.json'), JSON.stringify({ skills: { builtin: false } }));
+
+            const settings = loadProjectSettings(testRoot);
+
+            expect(settings.skills?.builtin).toBe(false);
+            expect(warnSpy).not.toHaveBeenCalled();
+        });
+
+        test('strips skills.builtin when not a boolean and warns', () => {
+            mkdirSync(testRoot, { recursive: true });
+            writeFileSync(join(testRoot, 'settings.json'), JSON.stringify({ skills: { builtin: 'no' } }));
+
+            const settings = loadProjectSettings(testRoot);
+
+            expect(settings.skills?.builtin).toBeUndefined();
+            expect(warnSpy).toHaveBeenCalledWith(
+                "[apijack] .apijack/settings.json: 'skills.builtin' must be a boolean — ignoring",
+            );
+        });
+
+        test('strips skills when it is not an object and warns', () => {
+            mkdirSync(testRoot, { recursive: true });
+            writeFileSync(join(testRoot, 'settings.json'), JSON.stringify({ skills: true }));
+
+            const settings = loadProjectSettings(testRoot);
+
+            expect(settings.skills).toBeUndefined();
+            expect(warnSpy).toHaveBeenCalledWith(
+                "[apijack] .apijack/settings.json: 'skills' must be an object — ignoring",
+            );
+        });
+
         test('leaves a valid settings file unchanged with no warnings, including unknown keys', () => {
             mkdirSync(testRoot, { recursive: true });
             const valid = {

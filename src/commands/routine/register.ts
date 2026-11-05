@@ -58,6 +58,13 @@ export function registerRoutineCommand(
         .description('Manage and run routines');
 
     routine
+        .command('dir')
+        .description('Print the directory routine files are read from')
+        .action(() => {
+            console.log(routinesDir);
+        });
+
+    routine
         .command('list [path]')
         .description('List available routines (optionally drill into a group)')
         .option('--tree', 'Show full tree structure')

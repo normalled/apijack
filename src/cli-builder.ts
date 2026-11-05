@@ -25,7 +25,19 @@ import { registerSetupCommand, setupAction, setupUrlDefault } from './commands/s
 import { registerConfigCommand } from './commands/config/register';
 import { registerGenerateCommand } from './commands/generate/generate';
 import { registerUpgradeCommand } from './commands/upgrade/upgrade';
-import { shouldReinstallPlugin } from './post-update';
+import { REFRESH_SKILLS_ENV, shouldReinstallPlugin } from './post-update';
+import {
+    printSkillsResult,
+    registerSkillsCommand,
+    skillsInstallAction,
+    skillsMigrateFromPluginAction,
+    skillsUpdateAction,
+    type SkillsContext,
+} from './commands/skills/skills';
+import { collectSkillSources } from './skills/sources';
+import { BUILTIN_SKILLS_DIR, claudeDir, claudeSkillsDir, skillsStatePath } from './skills/paths';
+import { skillsNotice } from './skills/notice';
+import { offerSkillsInstall } from './skills/offer';
 import { commandGates } from './command-gates';
 import { getPluginPaths } from './plugin/paths';
 import { registerMcpCommand } from './commands/mcp/mcp';
@@ -68,6 +80,9 @@ export interface RunRoutineOptions {
     dryRun?: boolean;
 }
 
+/** Still registered, but left out of the bare command listing. */
+const DEPRECATED_COMMANDS = new Set(['plugin']);
+
 function showCustomHelp(
     program: Command,
     displayName: string,
@@ -93,7 +108,9 @@ function showCustomHelp(
     console.log(`  ${'-h, --help'.padEnd(30)} display help for command`);
 
     // Core commands
-    const core = program.commands.filter(c => builtinCommands.has(c));
+    const core = program.commands.filter(
+        c => builtinCommands.has(c) && (showAll || !DEPRECATED_COMMANDS.has(c.name())),
+    );
     const custom = program.commands.filter(c => !builtinCommands.has(c) && customCommandNames.has(c.name()));
     const api = program.commands.filter(
         c => !builtinCommands.has(c) && !customCommandNames.has(c.name()) && c.name() !== 'help',
@@ -137,6 +154,15 @@ export function createCli(options: CliOptions): Cli {
     const pluginRegistry = new PluginRegistry();
     const cliName = options.name;
     const displayName = options.programName ?? options.name;
+
+    // Both names end up in paths, prompts and skill names; one that slugs to
+    // nothing would produce `~/.` or `-write-routine`. Refuse it up front.
+    for (const [label, value] of [['name', cliName], ['programName', displayName]] as const) {
+        if (!/[\p{L}\p{N}]/u.test(value)) {
+            throw new Error(`CLI ${label} '${value}' must contain at least one letter or digit`);
+        }
+    }
+
     const configOpts = options.configPath ? { configPath: options.configPath } : undefined;
     const configDir = options.configPath
         ? resolve(options.configPath, '..')
@@ -145,6 +171,47 @@ export function createCli(options: CliOptions): Cli {
     const generatedDir = options.generatedDir ?? join(process.cwd(), 'src', 'generated');
     const { mcpEnabled, pluginEnabled } = commandGates(options.disableCommands);
     const defaultRequiresAuth = options.customCommandDefaults?.requiresAuth ?? false;
+    let skillSourceWarningsShown = false;
+    const collectSources = () => collectSkillSources({
+        builtinDir: BUILTIN_SKILLS_DIR,
+        projectDir: options.skillsDir,
+        includeBuiltin: options.builtinSkills ?? true,
+        cli: displayName,
+    });
+    const skillsCtx: SkillsContext = {
+        cli: displayName,
+        claudeDir: claudeDir(),
+        skillsDir: claudeSkillsDir(),
+        statePath: skillsStatePath(),
+        marketplaceDir: getPluginPaths(options.version).marketplaceDir,
+        loadSources: () => {
+            const { sources, warnings } = collectSources();
+
+            if (!skillSourceWarningsShown) {
+                skillSourceWarningsShown = true;
+
+                for (const w of warnings) process.stderr.write(`${displayName}: skills: ${w}\n`);
+            }
+
+            return sources;
+        },
+    };
+    // Set once `run()` has registered the built-in `skills` command (an API or
+    // project command of the same name wins, and then there's nothing to offer).
+    let skillsRegistered = false;
+    const offerSkills = async (): Promise<void> => {
+        if (!skillsRegistered) return;
+
+        try {
+            await offerSkillsInstall(skillsCtx, {
+                isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+                ask: q => prompt(q, ''),
+                install: () => printSkillsResult(skillsInstallAction(skillsCtx, [], {})),
+            });
+        } catch (err) {
+            process.stderr.write(`${displayName}: skills: ${(err as Error).message}\n`);
+        }
+    };
     const effectiveRequiresAuth = (explicit: boolean | undefined): boolean =>
         explicit ?? defaultRequiresAuth;
     // The environment this invocation uses: a leading `--config <name>` (run() sets
@@ -382,6 +449,24 @@ export function createCli(options: CliOptions): Cli {
         return routineRuntime;
     }
 
+    /** Whether an API group or project command claims the `skills` name. */
+    async function skillsNameTaken(): Promise<boolean> {
+        if (consumerCommands.some(c => c.name === 'skills')) return true;
+
+        try {
+            const mod = await import(resolve(generatedDir, 'commands'));
+
+            if (typeof mod.registerGeneratedCommands !== 'function') return false;
+
+            const scratch = new Command();
+            mod.registerGeneratedCommands(scratch, {}, () => {});
+
+            return scratch.commands.some(c => c.name() === 'skills' || c.aliases().includes('skills'));
+        } catch {
+            return false;
+        }
+    }
+
     const cli: Cli = {
         command(name: string, registrar: CommandRegistrar, cmdOpts?: CommandOptions): void {
             consumerCommands.push({ name, registrar, requiresAuth: cmdOpts?.requiresAuth });
@@ -419,6 +504,14 @@ export function createCli(options: CliOptions): Cli {
         },
 
         async run(): Promise<void> {
+            // Re-spawned by an update (see post-update.ts): refresh this CLI's
+            // installed skills from the new version and stop. Handled before argv
+            // is read so it can't collide with an API's own `skills` group.
+            if (process.env[REFRESH_SKILLS_ENV] === '1') {
+                printSkillsResult(skillsUpdateAction(skillsCtx, { ifInstalled: true }));
+                process.exit(0);
+            }
+
             // Load aliases once; reused both for early best-effort token resolution
             // (so pre-build argv reads see through aliases) and for the late
             // validated argv rewrite that runs just before parseAsync.
@@ -547,6 +640,7 @@ export function createCli(options: CliOptions): Cli {
                     configPath: options.configPath,
                     displayName,
                     defaultUrl: options.defaultUrl,
+                    afterSave: offerSkills,
                 });
                 registerConfigCommand(program, cliName, {
                     configPath: options.configPath,
@@ -574,7 +668,18 @@ export function createCli(options: CliOptions): Cli {
                 }
 
                 if (pluginEnabled) {
-                    registerPluginCommand(program, cliName, options.version);
+                    registerPluginCommand(program, displayName, options.version, {
+                        migrateSkills: () => {
+                            // Only a CLI with its own `skills` command can manage what this
+                            // installs; otherwise keep the plugin's copies so nothing is lost.
+                            if (!skillsRegistered) return { keepPluginSkills: true };
+
+                            const result = skillsMigrateFromPluginAction(skillsCtx);
+                            printSkillsResult(result);
+
+                            return { keepPluginSkills: result.keepPluginSkills };
+                        },
+                    });
                 }
 
                 registerPluginsCommand(program, pluginRegistry, options.version);
@@ -582,6 +687,7 @@ export function createCli(options: CliOptions): Cli {
 
             // 4. Resolve auth
             let environment = currentEnvironment();
+            let offerSkillsAfterRegistration = false;
             let resolved = environment?.auth ?? null;
 
             const cmd = effectiveArgv2;
@@ -598,6 +704,9 @@ export function createCli(options: CliOptions): Cli {
                 // that name is an ordinary API command and needs auth.
                 ...(mcpEnabled ? ['mcp'] : []),
                 ...(pluginEnabled ? ['plugin'] : []),
+                // The built-in `skills` gives way to an API group or project command
+                // of that name (step 10b); then it's theirs, and needs auth.
+                ...(cmd === 'skills' && await skillsNameTaken() ? [] : ['skills']),
             ]);
             const isVersion = leadingOptions.some(o => o.flag === '--version' || o.flag === '-V');
             const isHelpOrVersion = isVersion
@@ -634,6 +743,8 @@ export function createCli(options: CliOptions): Cli {
 
                     console.log(`Saved environment '${envName}' to ~/.${cliName}/config.json`);
                     console.log(`Switched to '${envName}'\n`);
+                    // Asked once `skills` is registered (below), when we know whether it exists.
+                    offerSkillsAfterRegistration = true;
                 } else {
                     console.error('Setup cancelled.');
                     process.exit(2);
@@ -897,6 +1008,15 @@ export function createCli(options: CliOptions): Cli {
                 });
             }
 
+            // 10b. Built-in `skills`, registered last so an API group or project
+            // command with the same name wins instead of crashing Commander.
+            if (!program.commands.some(c => c.name() === 'skills' || c.aliases().includes('skills'))) {
+                markBuiltins(() => registerSkillsCommand(program, skillsCtx));
+                skillsRegistered = true;
+            }
+
+            if (offerSkillsAfterRegistration) await offerSkills();
+
             // 11. Build dispatcher
             let commandMap:
                 | Record<
@@ -1099,6 +1219,24 @@ export function createCli(options: CliOptions): Cli {
             }
 
             // 14. Parse and execute
+            if (skillsRegistered) {
+                try {
+                    // Quiet sources: the notice runs on every command, and a bad project
+                    // skill is reported by the `skills` commands, not on each run.
+                    const notice = skillsNotice({ ...skillsCtx, loadSources: () => collectSources().sources }, {
+                        stdoutTTY: Boolean(process.stdout.isTTY),
+                        stderrTTY: Boolean(process.stderr.isTTY),
+                        argv: process.argv.slice(2),
+                        command: effectiveArgv2,
+                        subcommand: effectiveArgv3,
+                    });
+
+                    if (notice) process.stderr.write(`${notice}\n`);
+                } catch {
+                    // A notice must never break the command.
+                }
+            }
+
             await program.parseAsync();
         },
     };

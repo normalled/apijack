@@ -48,19 +48,21 @@ apijack --help              # See all generated commands
 
 > **New to apijack?** Follow the [Quickstart](https://github.com/normalled/apijack/wiki/Quickstart) guide with a working example API.
 
-## Claude Code Plugin
+## Claude Code Skills
 
-Install as a Claude Code plugin to let Claude interact with your APIs directly:
+Install apijack's Claude Code skills so Claude can set up APIs and write routines with the CLI:
 
 ```bash
-apijack plugin install
+apijack skills install
 ```
 
-Then in Claude Code, run `/reload-plugins`. The plugin exposes MCP tools and skills for setup, code generation, command execution, and routine authoring.
+`apijack setup` offers to do this for you. The skills land in `~/.claude/skills/` and running Claude Code sessions pick them up. A CLI built on apijack ships its own skills the same way: `<cli> skills install`.
+
+The older `apijack plugin install` is deprecated and no longer installs skills. If you have it installed, `apijack upgrade` (or `apijack plugin install`) installs the skills the new way for you before removing the plugin's copies.
 
 **Example prompt:**
 
-> "Use /setup-api to connect apijack to my todo list API at http://localhost:8080, then use /write-routine to automate an e2e test: create 10 todos and then delete them all."
+> "Use /apijack-setup-api to connect apijack to my todo list API at http://localhost:8080, then use /apijack-write-routine to automate an e2e test: create 10 todos and then delete them all."
 
 For other MCP-compatible editors (Cursor, Windsurf, etc.), see [MCP Server Integration](https://github.com/normalled/apijack/wiki/MCP-Server-Integration).
 
@@ -91,7 +93,7 @@ See [Building a CLI](https://github.com/normalled/apijack/wiki/Building-a-CLI) f
 ## Features
 
 - **OpenAPI codegen** -- types, client, and Commander commands from any spec ([details](https://github.com/normalled/apijack/wiki/Code-Generation-Internals))
-- **Claude Code plugin** -- one-command setup, MCP server, AI-integrated skills
+- **Claude Code skills** -- `skills install` adds routine-writing and setup skills; CLIs built on apijack ship their own
 - **Pluggable auth strategies** -- Basic, Bearer, API Key, Session/CSRF, or build your own ([details](https://github.com/normalled/apijack/wiki/Authentication-Strategies))
 - **Secure credential handling** -- dev URLs stored locally, production APIs require env vars ([details](https://github.com/normalled/apijack/wiki/Authentication-Configuration))
 - **Multi-environment config** -- switch between dev/staging/prod with `config switch` ([details](https://github.com/normalled/apijack/wiki/Managing-Environments))
