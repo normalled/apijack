@@ -442,6 +442,72 @@ describe('built-in commands', () => {
     });
 });
 
+describe('disableCommands', () => {
+    let originalArgv: string[];
+    let originalExit: typeof process.exit;
+
+    beforeEach(() => {
+        originalArgv = process.argv;
+        originalExit = process.exit;
+        (process as any).exit = (code?: number) => {
+            throw new Error(`process.exit(${code ?? 0})`);
+        };
+    });
+
+    afterEach(() => {
+        process.argv = originalArgv;
+        (process as any).exit = originalExit;
+    });
+
+    async function runWith(argv: string[], overrides: Partial<CliOptions> = {}): Promise<string> {
+        const cli = createCli(makeOptions(overrides));
+        process.argv = ['node', 'testcli', ...argv];
+        const origErrWrite = process.stderr.write;
+        const errs: string[] = [];
+        process.stderr.write = (chunk: any) => {
+            errs.push(typeof chunk === 'string' ? chunk : chunk.toString());
+
+            return true;
+        };
+
+        try {
+            const out = await captureOutput(() => cli.run());
+
+            return out + '\n' + errs.join('');
+        } finally {
+            process.stderr.write = origErrWrite;
+        }
+    }
+
+    test('mcp and plugin are listed by default', async () => {
+        const output = await runWith(['--help']);
+
+        expect(output).toMatch(/^\s+mcp\s/m);
+        expect(output).toMatch(/^\s+plugin\s/m);
+    });
+
+    test("disableCommands: ['mcp'] removes mcp and plugin", async () => {
+        const output = await runWith(['--help'], { disableCommands: ['mcp'] });
+
+        expect(output).not.toMatch(/^\s+mcp\s/m);
+        expect(output).not.toMatch(/^\s+plugin\s/m);
+        expect(output).toMatch(/^\s+plugins\s/m);
+    });
+
+    test("disableCommands: ['plugin'] removes only plugin", async () => {
+        const output = await runWith(['--help'], { disableCommands: ['plugin'] });
+
+        expect(output).toMatch(/^\s+mcp\s/m);
+        expect(output).not.toMatch(/^\s+plugin\s/m);
+    });
+
+    test('a disabled command is unknown to Commander', async () => {
+        const output = await runWith(['mcp'], { disableCommands: ['mcp'] });
+
+        expect(output).toContain("unknown command 'mcp'");
+    });
+});
+
 describe('displayName threaded through subcommand registrar hints (#91)', () => {
     let originalArgv: string[];
     let originalExit: typeof process.exit;

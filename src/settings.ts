@@ -1,7 +1,10 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { DISABLEABLE_COMMANDS, type DisableableCommand } from './types';
 
 export interface ProjectSettings {
+    /** Optional built-in commands to turn off. See `CliOptions.disableCommands`. */
+    disableCommands?: DisableableCommand[];
     customCommands?: {
         defaults?: {
             requiresAuth?: boolean;
@@ -69,6 +72,25 @@ function validateProjectSettings(parsed: unknown): ProjectSettings {
                     delete auth.refreshOn;
                 }
             }
+        }
+    }
+
+    if ('disableCommands' in settings) {
+        const disable = settings.disableCommands as unknown;
+
+        if (!Array.isArray(disable)) {
+            warnAndIgnore('disableCommands', 'an array of command names');
+            delete settings.disableCommands;
+        } else {
+            const allowed = DISABLEABLE_COMMANDS.map(c => `'${c}'`).join(', ');
+
+            settings.disableCommands = disable.filter((entry, i): entry is DisableableCommand => {
+                const ok = DISABLEABLE_COMMANDS.includes(entry as DisableableCommand);
+
+                if (!ok) warnAndIgnore(`disableCommands[${i}]`, `one of ${allowed}`);
+
+                return ok;
+            });
         }
     }
 

@@ -12,6 +12,8 @@ import { findProjectConfig, loadProjectConfig, resolveConfigDir } from '../src/p
 import { loadProjectAuth, loadProjectCommands, loadProjectDispatchers, loadProjectPlugins, loadProjectResolvers } from '../src/project-loader';
 import { loadProjectSettings } from '../src/settings';
 import { checkForUpdate } from '../src/updater';
+import { shouldReinstallPlugin } from '../src/post-update';
+import { getPluginPaths } from '../src/plugin/paths';
 import { getActiveEnvConfig } from '../src/config';
 import { takeLeadingOption } from '../src/leading-options';
 import pkg from '../package.json';
@@ -22,9 +24,6 @@ const CLI_NAME = 'apijack';
 // 1. Ensure global data dir exists
 const globalDir = join(homedir(), '.apijack');
 mkdirSync(globalDir, { recursive: true });
-
-// 2. Check for updates (24h throttle)
-await checkForUpdate(VERSION, globalDir);
 
 // 3. Detect project mode
 const projectConfigPath = findProjectConfig(process.cwd());
@@ -148,6 +147,20 @@ const projectSettings = projectRoot
     ? loadProjectSettings(join(projectRoot, '.apijack'))
     : {};
 
+// 8b. Check for updates (throttled). Runs after the settings load so a
+//     project that turned off `mcp` / `plugin` doesn't get `plugin install`
+//     re-run after updating.
+const disableCommands = projectSettings.disableCommands ?? [];
+const mcpEnabled = !disableCommands.includes('mcp');
+
+await checkForUpdate(VERSION, globalDir, {
+    reinstallPlugin: shouldReinstallPlugin({
+        mcpEnabled,
+        pluginEnabled: mcpEnabled && !disableCommands.includes('plugin'),
+        marketplaceDir: getPluginPaths(VERSION).marketplaceDir,
+    }),
+});
+
 // 9. Create CLI
 //    `name` stays apijack so storage paths (~/.apijack/) and env-var prefix
 //    (APIJACK_*) are unaffected. `programName`, `description`, and `version`
@@ -168,6 +181,7 @@ const cli = createCli({
     defaultUrl: projectConfig?.defaultUrl,
     configPath: join(configDir, 'config.json'),
     customCommandDefaults: projectSettings.customCommands?.defaults,
+    disableCommands: projectSettings.disableCommands,
 });
 
 // 10. Register project-level extensions

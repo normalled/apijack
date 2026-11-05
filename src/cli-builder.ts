@@ -25,6 +25,8 @@ import { registerSetupCommand, setupAction, setupUrlDefault } from './commands/s
 import { registerConfigCommand } from './commands/config/register';
 import { registerGenerateCommand } from './commands/generate/generate';
 import { registerUpgradeCommand } from './commands/upgrade/upgrade';
+import { shouldReinstallPlugin } from './post-update';
+import { getPluginPaths } from './plugin/paths';
 import { registerMcpCommand } from './commands/mcp/mcp';
 import { registerRoutineCommand, loadBuiltinRoutines } from './commands/routine/register';
 import { prompt, hiddenPrompt } from './prompt';
@@ -149,6 +151,9 @@ export function createCli(options: CliOptions): Cli {
         : join(homedir(), `.${cliName}`);
     const routinesDir = join(configDir, 'routines');
     const generatedDir = options.generatedDir ?? join(process.cwd(), 'src', 'generated');
+    // `plugin` registers the MCP server, so turning off `mcp` turns it off too.
+    const mcpEnabled = !options.disableCommands?.includes('mcp');
+    const pluginEnabled = mcpEnabled && !options.disableCommands?.includes('plugin');
     const defaultRequiresAuth = options.customCommandDefaults?.requiresAuth ?? false;
     const effectiveRequiresAuth = (explicit: boolean | undefined): boolean =>
         explicit ?? defaultRequiresAuth;
@@ -549,15 +554,28 @@ export function createCli(options: CliOptions): Cli {
                 displayName,
                 sessions: { configDir, currentEnvironment },
             });
-            registerUpgradeCommand(program, options.version);
-            registerMcpCommand(
-                program,
-                cliName,
-                resolve(options.generatedDir || 'src/generated'),
-                join(homedir(), '.' + options.name, 'routines'),
-                { environment: () => selectedEnvironment, configPath: options.configPath },
-            );
-            registerPluginCommand(program, cliName, options.version);
+            registerUpgradeCommand(program, options.version, {
+                reinstallPlugin: () => shouldReinstallPlugin({
+                    mcpEnabled,
+                    pluginEnabled,
+                    marketplaceDir: getPluginPaths(options.version).marketplaceDir,
+                }),
+            });
+
+            if (mcpEnabled) {
+                registerMcpCommand(
+                    program,
+                    cliName,
+                    resolve(options.generatedDir || 'src/generated'),
+                    join(homedir(), '.' + options.name, 'routines'),
+                    { environment: () => selectedEnvironment, configPath: options.configPath },
+                );
+            }
+
+            if (pluginEnabled) {
+                registerPluginCommand(program, cliName, options.version);
+            }
+
             registerPluginsCommand(program, pluginRegistry, options.version);
 
             // 4. Resolve auth

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { prompt } from './prompt';
+import { defaultSpawnCli, refreshAfterUpdate } from './post-update';
 
 interface UpdateCheckData {
     lastChecked: string;
@@ -42,6 +43,7 @@ export function saveUpdateCheck(dataDir: string, latestVersion: string): void {
 export async function checkForUpdate(
     currentVersion: string,
     dataDir: string,
+    opts?: { reinstallPlugin?: boolean },
 ): Promise<void> {
     if (process.env.APIJACK_SKIP_UPDATE) return;
 
@@ -77,13 +79,10 @@ export async function checkForUpdate(
             const exitCode = await proc.exited;
 
             if (exitCode === 0) {
-                // Update Claude Code plugin registration to new version
-                const pluginProc = Bun.spawn([...process.argv.slice(0, 2), 'plugin', 'install'], {
-                    stdout: 'inherit',
-                    stderr: 'inherit',
-                    env: { ...process.env, APIJACK_SKIP_UPDATE: '1' },
+                await refreshAfterUpdate({
+                    reinstallPlugin: opts?.reinstallPlugin ?? false,
+                    spawnCli: defaultSpawnCli(),
                 });
-                await pluginProc.exited;
 
                 console.log(`Updated to v${latest}. Re-running command...\n`);
                 const reProc = Bun.spawn(process.argv, {
