@@ -25,13 +25,13 @@ import { registerSetupCommand, setupAction, setupUrlDefault } from './commands/s
 import { registerConfigCommand } from './commands/config/register';
 import { registerGenerateCommand } from './commands/generate/generate';
 import { registerUpgradeCommand } from './commands/upgrade/upgrade';
-import { REFRESH_SKILLS_ENV, shouldReinstallPlugin } from './post-update';
+import { REFRESH_SKILLS_ENV, REFRESH_THEN_PLUGIN_INSTALL, shouldReinstallPlugin } from './post-update';
 import {
     LEFTOVER_PLUGIN_WARNING,
     printSkillsResult,
     registerSkillsCommand,
+    skillsAfterUpdateAction,
     skillsInstallAction,
-    skillsUpdateAction,
     type SkillsContext,
 } from './commands/skills/skills';
 import { collectSkillSources } from './skills/sources';
@@ -506,11 +506,17 @@ export function createCli(options: CliOptions): Cli {
             // Re-spawned by an update (see post-update.ts): refresh this CLI's
             // installed skills from the new version and stop. Handled before argv
             // is read so it can't collide with an API's own `skills` group.
-            if (process.env[REFRESH_SKILLS_ENV] === '1') {
-                const result = skillsUpdateAction(skillsCtx, { ifInstalled: true });
-                // The update may re-run `plugin install` next; telling the user to
-                // uninstall that plugin here would contradict it.
-                printSkillsResult({ ...result, warnings: result.warnings.filter(w => w !== LEFTOVER_PLUGIN_WARNING) });
+            const refresh = process.env[REFRESH_SKILLS_ENV];
+
+            if (refresh === '1' || refresh === REFRESH_THEN_PLUGIN_INSTALL) {
+                const result = skillsAfterUpdateAction(skillsCtx, { allowMigration: !(await skillsNameTaken()) });
+                // When `plugin install` runs next, telling the user to uninstall
+                // that plugin here would contradict it.
+                const warnings = refresh === REFRESH_THEN_PLUGIN_INSTALL
+                    ? result.warnings.filter(w => w !== LEFTOVER_PLUGIN_WARNING)
+                    : result.warnings;
+
+                printSkillsResult({ ...result, warnings });
                 process.exit(0);
             }
 

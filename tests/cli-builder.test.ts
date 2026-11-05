@@ -2264,13 +2264,37 @@ describe('skills wiring', () => {
             cli: 'testcli', skill: 'write-routine', source: 'builtin', hash: 'sha256:old', installedAt: 'x',
         }));
         mkdirSync(join(tmpHome, '.apijack', 'plugin-marketplace'), { recursive: true });
-        process.env.APIJACK_REFRESH_SKILLS = '1';
+        process.env.APIJACK_REFRESH_SKILLS = 'then-plugin-install';
 
         const { out, exitCode } = await run([]);
 
         expect(exitCode).toBe(0);
         expect(out).toContain('updated testcli-write-routine');
         expect(out).not.toContain('old apijack Claude Code plugin');
+    });
+
+    test('an upgrade does not migrate when an API group owns the skills name', async () => {
+        writeGenerated({ skills: 'API skills group' });
+        mkdirSync(join(tmpHome, '.apijack', 'plugin-marketplace'), { recursive: true });
+        process.env.APIJACK_REFRESH_SKILLS = '1';
+
+        const { exitCode } = await run([]);
+
+        expect(exitCode).toBe(0);
+        expect(existsSync(join(claudeConfigDir, 'skills', 'testcli-write-routine'))).toBe(false);
+    });
+
+    test('an upgrade moves old-plugin users onto personal skills', async () => {
+        mkdirSync(join(tmpHome, '.apijack', 'plugin-marketplace'), { recursive: true });
+        process.env.APIJACK_REFRESH_SKILLS = '1';
+
+        const { out, exitCode } = await run([]);
+
+        expect(exitCode).toBe(0);
+        expect(out).toContain('installed testcli-write-routine');
+        expect(existsSync(join(claudeConfigDir, 'skills', 'testcli-write-routine', 'SKILL.md'))).toBe(true);
+        // No plugin install follows (plain '1'), so the old plugin is still there: say so.
+        expect(out).toContain('old apijack Claude Code plugin');
     });
 
     test('a non-ASCII CLI name is fine', () => {

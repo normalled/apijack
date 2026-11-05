@@ -125,6 +125,38 @@ export function skillsUpdateAction(ctx: SkillsContext, opts: { ifInstalled?: boo
     return { lines, warnings: [...warnings, ...leftoverWarnings(ctx)] };
 }
 
+/**
+ * What an upgrade does with skills. Users of the old Claude Code plugin got
+ * their skills from it, and `plugin install` no longer ships them. So when the
+ * plugin is present and this CLI has never installed skills the new way (and
+ * the user hasn't declined), install them rather than let the upgrade take
+ * them away. Otherwise refresh whatever is installed.
+ *
+ * `allowMigration: false` when the CLI has no `skills` command (an API group or
+ * project command owns the name): there'd be no way to manage what we install.
+ */
+export function skillsAfterUpdateAction(
+    ctx: SkillsContext,
+    opts: { allowMigration?: boolean } = {},
+): SkillsActionResult {
+    if (ownedInstalls(ctx.cli, ctx.skillsDir).length > 0) return skillsUpdateAction(ctx, { ifInstalled: true });
+
+    const state = readCliState(ctx.statePath, ctx.cli);
+    const migrate = (opts.allowMigration ?? true)
+        && existsSync(ctx.marketplaceDir)
+        && state.seen === undefined
+        && !state.declined;
+
+    if (!migrate) return { lines: [], warnings: [] };
+
+    const result = skillsInstallAction(ctx, [], {});
+
+    return {
+        lines: [`${ctx.cli}'s Claude Code skills now install as personal skills; installing them:`, ...result.lines],
+        warnings: result.warnings,
+    };
+}
+
 export function skillsStatusAction(ctx: SkillsContext): { entries: SkillStatusEntry[]; warnings: string[] } {
     const { rendered } = renderAll(ctx);
 

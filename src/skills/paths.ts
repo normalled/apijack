@@ -1,20 +1,20 @@
-import { homedir } from 'os';
 import { join, resolve } from 'path';
+import { userHome } from '../home';
 
 type Env = Record<string, string | undefined>;
 
 /** Claude Code's config directory: `$CLAUDE_CONFIG_DIR` when set, else `~/.claude`. */
-export function claudeDir(env: Env = process.env, home: string = homedir()): string {
+export function claudeDir(env: Env = process.env, home: string = userHome()): string {
     return env.CLAUDE_CONFIG_DIR || join(home, '.claude');
 }
 
 /** Where Claude Code looks for personal skills. */
-export function claudeSkillsDir(env: Env = process.env, home: string = homedir()): string {
+export function claudeSkillsDir(env: Env = process.env, home: string = userHome()): string {
     return join(claudeDir(env, home), 'skills');
 }
 
 /** Per-user skills bookkeeping (declines, notice throttle, seen skills), keyed by CLI. */
-export function skillsStatePath(home: string = homedir()): string {
+export function skillsStatePath(home: string = userHome()): string {
     return join(home, '.apijack', 'skills-state.json');
 }
 

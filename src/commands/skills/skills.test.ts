@@ -8,12 +8,13 @@ import {
     registerSkillsCommand,
     skillsInstallAction,
     skillsStatusAction,
+    skillsAfterUpdateAction,
     skillsUninstallAction,
     skillsUpdateAction,
     type SkillsContext,
 } from './skills';
 import { collectSkillSources } from '../../skills/sources';
-import { readCliState } from '../../skills/state';
+import { patchCliState, readCliState } from '../../skills/state';
 
 let root: string;
 let sourcesDir: string;
@@ -211,5 +212,78 @@ describe('registerSkillsCommand()', () => {
 
         expect(skills.commands.map(c => c.name())).toEqual(['install', 'update', 'status', 'uninstall']);
         expect(skills.commands.find(c => c.name() === 'update')!.options).toEqual([]);
+    });
+});
+
+describe('skillsAfterUpdateAction() (runs after an upgrade)', () => {
+    test('does nothing when no skills are installed and the old plugin is absent', () => {
+        addSource('a');
+
+        expect(skillsAfterUpdateAction(ctx)).toEqual({ lines: [], warnings: [] });
+        expect(installed('a')).toBe(false);
+    });
+
+    test('migrates: installs the skills when the old plugin is present and nothing is installed yet', () => {
+        addSource('a');
+        addSource('b');
+        mkdirSync(ctx.marketplaceDir, { recursive: true });
+
+        const result = skillsAfterUpdateAction(ctx);
+
+        expect(installed('a')).toBe(true);
+        expect(installed('b')).toBe(true);
+        expect(result.lines[0]).toBe("mycli's Claude Code skills now install as personal skills; installing them:");
+        expect(readCliState(ctx.statePath, 'mycli').seen).toEqual(['a', 'b']);
+    });
+
+    test('does not migrate a CLI that installed skills before (e.g. after skills uninstall)', () => {
+        addSource('a');
+        skillsInstallAction(ctx, [], {});
+        skillsUninstallAction(ctx);
+        mkdirSync(ctx.marketplaceDir, { recursive: true });
+
+        expect(skillsAfterUpdateAction(ctx)).toEqual({ lines: [], warnings: [] });
+        expect(installed('a')).toBe(false);
+    });
+
+    test('does not migrate when the user declined the setup offer', () => {
+        addSource('a');
+        patchCliState(ctx.statePath, 'mycli', { declined: true });
+        mkdirSync(ctx.marketplaceDir, { recursive: true });
+
+        expect(skillsAfterUpdateAction(ctx)).toEqual({ lines: [], warnings: [] });
+    });
+
+    test('does not migrate when the CLI has no skills command to manage them', () => {
+        addSource('a');
+        mkdirSync(ctx.marketplaceDir, { recursive: true });
+
+        expect(skillsAfterUpdateAction(ctx, { allowMigration: false })).toEqual({ lines: [], warnings: [] });
+        expect(installed('a')).toBe(false);
+    });
+
+    test('a conflict during migration is a warning, not a claim it was installed', () => {
+        addSource('a');
+        mkdirSync(join(ctx.skillsDir, 'mycli-a'), { recursive: true });
+        writeFileSync(join(ctx.skillsDir, 'mycli-a', 'SKILL.md'), 'user content');
+        mkdirSync(ctx.marketplaceDir, { recursive: true });
+
+        const result = skillsAfterUpdateAction(ctx);
+
+        expect(result.lines).not.toContain('installed mycli-a');
+        expect(result.warnings.join('\n')).toContain('skipped mycli-a');
+        expect(readFileSync(join(ctx.skillsDir, 'mycli-a', 'SKILL.md'), 'utf-8')).toBe('user content');
+    });
+
+    test('updates as usual once skills are installed', () => {
+        addSource('a');
+        skillsInstallAction(ctx, [], {});
+        writeFileSync(join(sourcesDir, 'a', 'SKILL.md'), '---\nname: a\n---\nv2 {{cli}}\n');
+        mkdirSync(ctx.marketplaceDir, { recursive: true });
+
+        const result = skillsAfterUpdateAction(ctx);
+
+        expect(result.lines.join('\n')).toContain('updated mycli-a');
+        expect(result.lines.join('\n')).not.toContain('installed for you');
     });
 });

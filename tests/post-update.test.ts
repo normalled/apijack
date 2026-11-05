@@ -46,13 +46,36 @@ describe('refreshAfterUpdate()', () => {
         };
     }
 
-    test('refreshes skills (via APIJACK_REFRESH_SKILLS, no argv) before re-running plugin install', async () => {
+    test('refreshes skills (via APIJACK_REFRESH_SKILLS, no argv), saying a plugin install follows, then re-runs it', async () => {
         const r = recorder();
         await refreshAfterUpdate({ reinstallPlugin: true, spawnCli: r.spawnCli });
         expect(r.calls).toEqual([
-            { args: [], env: { APIJACK_REFRESH_SKILLS: '1' } },
+            { args: [], env: { APIJACK_REFRESH_SKILLS: 'then-plugin-install' } },
             { args: ['plugin', 'install'] },
         ]);
+    });
+
+    test('skips plugin install when the skills refresh fails, so the plugin keeps its skills', async () => {
+        const calls: string[][] = [];
+        const errors: string[] = [];
+        const origErr = console.error;
+        console.error = (...a: unknown[]) => errors.push(a.join(' '));
+
+        try {
+            await refreshAfterUpdate({
+                reinstallPlugin: true,
+                spawnCli: async (args) => {
+                    calls.push(args);
+
+                    return args.length === 0 ? 1 : 0;
+                },
+            });
+        } finally {
+            console.error = origErr;
+        }
+
+        expect(calls).toEqual([[]]);
+        expect(errors.join('\n')).toContain('not re-running plugin install');
     });
 
     test('only refreshes skills when reinstallPlugin is false', async () => {
