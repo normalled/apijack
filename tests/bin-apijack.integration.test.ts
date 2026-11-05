@@ -226,3 +226,63 @@ describe('bin/apijack.ts .apijack/settings.json disableCommands', () => {
         }
     });
 });
+
+describe('bin/apijack.ts project skills', () => {
+    const base = join(tmpdir(), `apijack-bin-skills-${Date.now()}-${process.pid}`);
+
+    function project(dir: string, config: Record<string, unknown>, skills: string[]): string {
+        const root = join(base, dir);
+        mkdirSync(join(root, '.home'), { recursive: true });
+        writeFileSync(join(root, '.apijack.json'), JSON.stringify(config));
+
+        for (const s of skills) {
+            mkdirSync(join(root, '.apijack', 'skills', s), { recursive: true });
+            writeFileSync(join(root, '.apijack', 'skills', s, 'SKILL.md'), `---\nname: ${s}\n---\nuse {{cli}}\n`);
+        }
+
+        return root;
+    }
+
+    async function status(root: string): Promise<RunResult> {
+        const proc = Bun.spawn([process.execPath, binPath, 'skills', 'status'], {
+            cwd: root,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: {
+                ...process.env,
+                HOME: join(root, '.home'),
+                CLAUDE_CONFIG_DIR: join(root, '.home', '.claude'),
+                APIJACK_SKIP_UPDATE: '1',
+            },
+        });
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
+
+        return { stdout, stderr, exitCode: await proc.exited };
+    }
+
+    afterAll(() => {
+        rmSync(base, { recursive: true, force: true });
+    });
+
+    test('a named project ships its own skills plus write-routine, prefixed with its name', async () => {
+        const result = await status(project('named', { name: 'acme' }, ['deploy']));
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('acme-deploy');
+        expect(result.stdout).toContain('acme-write-routine');
+        expect(result.stdout).not.toContain('setup-api');
+    });
+
+    test('project skills without a name in .apijack.json are ignored with a warning', async () => {
+        const result = await status(project('unnamed', {}, ['deploy']));
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stderr).toContain(
+            "[apijack] .apijack/skills and settings.json 'skills' are ignored until .apijack.json sets 'name'",
+        );
+        expect(result.stdout).not.toContain('deploy');
+        expect(result.stdout).toContain('apijack-write-routine');
+        expect(result.stdout).toContain('apijack-setup-api');
+    });
+});

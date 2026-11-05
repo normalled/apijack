@@ -72,17 +72,12 @@ export async function installPlugin(opts: InstallOptions): Promise<InstallResult
             cpSync(bundleSrc, join(distDir, 'mcp-server.bundle.js'));
         }
 
-        // 3. Copy skills (clear first to remove stale entries from previous versions)
+        // 3. Skills now install as personal skills (`<cli> skills install`). Clear
+        //    the ones earlier versions copied here so they aren't loaded twice.
         const skillsDst = join(pluginDir, 'skills');
 
         if (existsSync(skillsDst)) {
             rmSync(skillsDst, { recursive: true, force: true });
-        }
-
-        const skillsSrc = join(sourceDir, 'skills');
-
-        if (existsSync(skillsSrc)) {
-            cpSync(skillsSrc, skillsDst, { recursive: true });
         }
 
         // 4. Write runtime config for the MCP entry point

@@ -54,17 +54,22 @@ export function registerSetupCommand(
         displayName?: string;
         /** URL pre-filled in the setup prompt. Defaults to `DEFAULT_SETUP_URL`. */
         defaultUrl?: string;
+        /** Runs after credentials are saved (e.g. the Claude Code skills offer). */
+        afterSave?: () => Promise<void>;
+        /** Prompt functions; overridable for tests. */
+        io?: { prompt: typeof prompt; hiddenPrompt: typeof hiddenPrompt };
     },
 ): void {
     const displayName = opts?.displayName ?? cliName;
     const urlDefault = setupUrlDefault(opts?.defaultUrl);
+    const io = opts?.io ?? { prompt, hiddenPrompt };
     const action = async (cmdOpts: { allowInsecureStorage?: boolean }) => {
         console.log(`${displayName} Setup\n`);
 
-        const envName = await prompt('Environment name [default]: ', 'default');
-        const url = await prompt(`URL [${urlDefault}]: `, urlDefault);
-        const user = await prompt('Username/Email: ');
-        const password = await hiddenPrompt('Password: ');
+        const envName = await io.prompt('Environment name [default]: ', 'default');
+        const url = await io.prompt(`URL [${urlDefault}]: `, urlDefault);
+        const user = await io.prompt('Username/Email: ');
+        const password = await io.hiddenPrompt('Password: ');
 
         if (!user || !password) {
             console.error('Setup cancelled.');
@@ -97,6 +102,8 @@ export function registerSetupCommand(
 
         console.log(`Saved environment '${envName}' to ~/.${cliName}/config.json`);
         console.log(`Switched to '${envName}'\n`);
+
+        await opts?.afterSave?.();
     };
 
     program

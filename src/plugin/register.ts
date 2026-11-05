@@ -7,12 +7,18 @@ import { getPluginPaths } from './paths';
 
 export function registerPluginCommand(
     program: Command,
-    _cliName: string,
+    displayName: string,
     version: string,
 ): void {
     const plugin = program
         .command('plugin')
-        .description('Manage Claude Code plugin registration');
+        .description('(deprecated) Manage Claude Code plugin registration');
+
+    plugin.hook('preAction', () => {
+        const message = "'plugin' is deprecated and will be removed in a future major release.";
+
+        process.stderr.write(`${message} Skills: run '${displayName} skills install'.\n`);
+    });
 
     plugin
         .command('install')

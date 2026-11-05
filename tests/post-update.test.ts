@@ -34,27 +34,30 @@ describe('shouldReinstallPlugin()', () => {
 
 describe('refreshAfterUpdate()', () => {
     function recorder() {
-        const calls: string[][] = [];
+        const calls: { args: string[]; env?: Record<string, string> }[] = [];
 
         return {
             calls,
-            spawnCli: async (args: string[]) => {
-                calls.push(args);
+            spawnCli: async (args: string[], env?: Record<string, string>) => {
+                calls.push(env ? { args, env } : { args });
 
                 return 0;
             },
         };
     }
 
-    test('re-runs plugin install when reinstallPlugin is true', async () => {
+    test('refreshes skills (via APIJACK_REFRESH_SKILLS, no argv) before re-running plugin install', async () => {
         const r = recorder();
         await refreshAfterUpdate({ reinstallPlugin: true, spawnCli: r.spawnCli });
-        expect(r.calls).toEqual([['plugin', 'install']]);
+        expect(r.calls).toEqual([
+            { args: [], env: { APIJACK_REFRESH_SKILLS: '1' } },
+            { args: ['plugin', 'install'] },
+        ]);
     });
 
-    test('spawns nothing when reinstallPlugin is false', async () => {
+    test('only refreshes skills when reinstallPlugin is false', async () => {
         const r = recorder();
         await refreshAfterUpdate({ reinstallPlugin: false, spawnCli: r.spawnCli });
-        expect(r.calls).toEqual([]);
+        expect(r.calls).toEqual([{ args: [], env: { APIJACK_REFRESH_SKILLS: '1' } }]);
     });
 });

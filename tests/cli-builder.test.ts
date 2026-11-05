@@ -572,6 +572,74 @@ describe('disableCommands', () => {
     });
 });
 
+describe('plugin deprecation', () => {
+    let originalArgv: string[];
+    let originalExit: typeof process.exit;
+    let originalHome: string | undefined;
+    let tmpHome: string;
+
+    beforeEach(() => {
+        originalArgv = process.argv;
+        originalExit = process.exit;
+        originalHome = process.env.HOME;
+        tmpHome = join(tmpdir(), `plugin-deprecation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        mkdirSync(tmpHome, { recursive: true });
+        process.env.HOME = tmpHome;
+        (process as any).exit = (code?: number) => {
+            throw new Error(`process.exit(${code ?? 0})`);
+        };
+    });
+
+    afterEach(() => {
+        process.argv = originalArgv;
+        (process as any).exit = originalExit;
+
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+
+        rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    async function run(argv: string[]): Promise<{ out: string; err: string }> {
+        const cli = createCli(makeOptions());
+        process.argv = ['node', 'testcli', ...argv];
+        const origErrWrite = process.stderr.write;
+        const errs: string[] = [];
+        process.stderr.write = (chunk: any) => {
+            errs.push(typeof chunk === 'string' ? chunk : chunk.toString());
+
+            return true;
+        };
+
+        try {
+            return { out: await captureOutput(() => cli.run()), err: errs.join('') };
+        } finally {
+            process.stderr.write = origErrWrite;
+        }
+    }
+
+    test('bare invocation hides plugin', async () => {
+        const { out } = await run([]);
+
+        expect(out).toMatch(/^\s+plugins\s/m);
+        expect(out).not.toMatch(/^\s+plugin\s/m);
+    });
+
+    test('--help lists plugin as deprecated', async () => {
+        const { out } = await run(['--help']);
+
+        expect(out).toMatch(/^\s+plugin\s+\(deprecated\) /m);
+    });
+
+    test('plugin subcommands print the deprecation warning to stderr', async () => {
+        const { err } = await run(['plugin', 'config', 'list']);
+
+        expect(err).toContain(
+            "'plugin' is deprecated and will be removed in a future major release. Skills: run 'testcli skills install'.",
+        );
+    });
+});
+
 describe('displayName threaded through subcommand registrar hints (#91)', () => {
     let originalArgv: string[];
     let originalExit: typeof process.exit;
@@ -2010,5 +2078,154 @@ steps:
 
         expect(stdout).toContain("Run 'testcli <command> --help' for details on any command.");
         expect(exitCode).toBe(0);
+    });
+});
+
+describe('skills wiring', () => {
+    let tmpHome: string;
+    let configPath: string;
+    let generatedDir: string;
+    let claudeConfigDir: string;
+    const saved: Record<string, string | undefined> = {};
+
+    beforeEach(() => {
+        tmpHome = join(tmpdir(), `skills-wiring-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        mkdirSync(join(tmpHome, '.testcli', 'routines'), { recursive: true });
+        configPath = join(tmpHome, '.testcli', 'config.json');
+        generatedDir = join(tmpHome, 'src', 'generated');
+        claudeConfigDir = join(tmpHome, '.claude');
+
+        for (const k of ['HOME', 'CLAUDE_CONFIG_DIR', 'APIJACK_REFRESH_SKILLS']) saved[k] = process.env[k];
+
+        process.env.HOME = tmpHome;
+        process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+        delete process.env.APIJACK_REFRESH_SKILLS;
+    });
+
+    afterEach(() => {
+        for (const [k, v] of Object.entries(saved)) {
+            if (v === undefined) delete process.env[k];
+            else process.env[k] = v;
+        }
+
+        rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    function writeGenerated(groups: Record<string, string>): void {
+        mkdirSync(generatedDir, { recursive: true });
+        writeFileSync(
+            join(generatedDir, 'commands.ts'),
+            'export function registerGeneratedCommands(program: any): void {\n'
+            + Object.entries(groups).map(([n, d]) => `    program.command(${JSON.stringify(n)}).description(${JSON.stringify(d)});\n`).join('')
+            + '}\n',
+        );
+        writeFileSync(join(generatedDir, 'client.ts'), 'export class ApiClient {}\n');
+    }
+
+    async function run(argv: string[], configure?: (cli: Cli) => void): Promise<{ out: string; exitCode?: number }> {
+        const cli = createCli(makeOptions({ configPath, generatedDir }));
+        configure?.(cli);
+        let out = '';
+        let exitCode: number | undefined;
+        const orig = {
+            argv: process.argv, log: console.log, err: console.error,
+            stdout: process.stdout.write, stderr: process.stderr.write, exit: process.exit,
+        };
+
+        try {
+            process.argv = ['node', 'testcli', ...argv];
+            console.log = (...a: unknown[]) => {
+                out += a.join(' ') + '\n';
+            };
+            console.error = (...a: unknown[]) => {
+                out += a.join(' ') + '\n';
+            };
+            process.stdout.write = ((c: string | Uint8Array) => {
+                out += String(c);
+
+                return true;
+            }) as never;
+            process.stderr.write = ((c: string | Uint8Array) => {
+                out += String(c);
+
+                return true;
+            }) as never;
+            process.exit = ((code?: number) => {
+                exitCode = code ?? 0;
+                throw new Error('__exit__');
+            }) as never;
+
+            try {
+                await cli.run();
+            } catch (e) {
+                if ((e as Error).message !== '__exit__') throw e;
+            }
+        } finally {
+            process.argv = orig.argv;
+            console.log = orig.log;
+            console.error = orig.err;
+            process.stdout.write = orig.stdout;
+            process.stderr.write = orig.stderr;
+            process.exit = orig.exit;
+        }
+
+        return { out, exitCode };
+    }
+
+    test('skills is listed as a core command', async () => {
+        const { out } = await run(['--help']);
+
+        expect(out).toMatch(/^\s+skills\s+Install this CLI's Claude Code skills/m);
+    });
+
+    test('an API group named skills wins and the CLI still starts', async () => {
+        writeGenerated({ skills: 'API skills group' });
+
+        const { out } = await run(['skills', '--help']);
+
+        expect(out).toContain('API skills group');
+        expect(out).not.toContain('Install or refresh skills');
+    });
+
+    test('a project command named skills wins', async () => {
+        const { out } = await run(['skills', '--help'], (cli) => {
+            cli.command('skills', (program) => {
+                program.command('skills').description('project skills command');
+            });
+        });
+
+        expect(out).toContain('project skills command');
+    });
+
+    test('a project command aliased skills wins and the CLI still starts', async () => {
+        const { out } = await run(['skills', '--help'], (cli) => {
+            cli.command('skillset', (program) => {
+                program.command('skillset').alias('skills').description('project skillset command');
+            });
+        });
+
+        expect(out).toContain('project skillset command');
+    });
+
+    test('routine dir prints the routines directory', async () => {
+        const { out } = await run(['routine', 'dir']);
+
+        expect(out.trim()).toBe(join(tmpHome, '.testcli', 'routines'));
+    });
+
+    test('APIJACK_REFRESH_SKILLS refreshes installed skills and exits before parsing argv', async () => {
+        const installDir = join(claudeConfigDir, 'skills', 'testcli-write-routine');
+        mkdirSync(installDir, { recursive: true });
+        writeFileSync(join(installDir, 'SKILL.md'), 'old');
+        writeFileSync(join(installDir, '.apijack-skill.json'), JSON.stringify({
+            cli: 'testcli', skill: 'write-routine', source: 'builtin', hash: 'sha256:old', installedAt: 'x',
+        }));
+        process.env.APIJACK_REFRESH_SKILLS = '1';
+
+        const { out, exitCode } = await run(['this-is-not-a-command']);
+
+        expect(exitCode).toBe(0);
+        expect(out).toContain('updated testcli-write-routine');
+        expect(JSON.parse(readFileSync(join(installDir, '.apijack-skill.json'), 'utf-8')).hash).not.toBe('sha256:old');
     });
 });

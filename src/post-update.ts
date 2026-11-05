@@ -1,7 +1,10 @@
 import { existsSync } from 'fs';
 
-/** Runs this CLI again with the given arguments; resolves with the exit code. */
-export type SpawnCli = (args: string[]) => Promise<number>;
+/** Runs this CLI again with the given arguments (and extra env); resolves with the exit code. */
+export type SpawnCli = (args: string[], env?: Record<string, string>) => Promise<number>;
+
+/** Env var that makes `run()` refresh installed skills and exit, before reading argv. */
+export const REFRESH_SKILLS_ENV = 'APIJACK_REFRESH_SKILLS';
 
 /**
  * Whether an update should re-run `plugin install`: only when the CLI still
@@ -18,6 +21,10 @@ export function shouldReinstallPlugin(opts: {
 
 /** Refresh what an update leaves stale. Runs after `upgrade` and the startup update prompt. */
 export async function refreshAfterUpdate(opts: { reinstallPlugin: boolean; spawnCli: SpawnCli }): Promise<void> {
+    // Signalled through the environment, not `skills update` argv: an API with
+    // its own `skills` command group would otherwise receive the call.
+    await opts.spawnCli([], { [REFRESH_SKILLS_ENV]: '1' });
+
     if (opts.reinstallPlugin) {
         await opts.spawnCli(['plugin', 'install']);
     }
@@ -25,11 +32,11 @@ export async function refreshAfterUpdate(opts: { reinstallPlugin: boolean; spawn
 
 /** Spawns the running CLI (same runtime and entry script) with inherited stdio. */
 export function defaultSpawnCli(): SpawnCli {
-    return async (args) => {
+    return async (args, env) => {
         const proc = Bun.spawn([...process.argv.slice(0, 2), ...args], {
             stdout: 'inherit',
             stderr: 'inherit',
-            env: { ...process.env, APIJACK_SKIP_UPDATE: '1' },
+            env: { ...process.env, APIJACK_SKIP_UPDATE: '1', ...env },
         });
 
         return proc.exited;

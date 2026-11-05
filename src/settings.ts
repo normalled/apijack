@@ -5,6 +5,10 @@ import { DISABLEABLE_COMMANDS, type DisableableCommand } from './types';
 export interface ProjectSettings {
     /** Optional built-in commands to turn off. See `CliOptions.disableCommands`. */
     disableCommands?: DisableableCommand[];
+    skills?: {
+        /** Ship apijack's built-in skills alongside the project's own. Default true. */
+        builtin?: boolean;
+    };
     customCommands?: {
         defaults?: {
             requiresAuth?: boolean;
@@ -72,6 +76,16 @@ function validateProjectSettings(parsed: unknown): ProjectSettings {
                     delete auth.refreshOn;
                 }
             }
+        }
+    }
+
+    if ('skills' in settings) {
+        if (!isPlainObject(settings.skills)) {
+            warnAndIgnore('skills', 'an object');
+            delete settings.skills;
+        } else if ('builtin' in settings.skills && typeof settings.skills.builtin !== 'boolean') {
+            warnAndIgnore('skills.builtin', 'a boolean');
+            delete settings.skills.builtin;
         }
     }
 
