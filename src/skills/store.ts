@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { installNameFor, MARKER_FILE, type RenderedSkill } from './render';
 
@@ -35,6 +35,13 @@ export function readMarker(dir: string): SkillMarker | null {
  * still carries the marker, but isn't ours to update or delete.
  */
 function ownedMarker(dir: string, cli: string): SkillMarker | null {
+    // A symlinked install (e.g. managed by dotfiles) isn't ours to rewrite or delete.
+    try {
+        if (lstatSync(dir).isSymbolicLink()) return null;
+    } catch {
+        return null;
+    }
+
     const marker = readMarker(dir);
 
     return marker?.cli === cli && basename(dir) === installNameFor(cli, marker.skill) ? marker : null;

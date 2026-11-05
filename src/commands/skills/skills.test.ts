@@ -8,7 +8,7 @@ import {
     registerSkillsCommand,
     skillsInstallAction,
     skillsStatusAction,
-    skillsAfterUpdateAction,
+    skillsMigrateFromPluginAction,
     skillsUninstallAction,
     skillsUpdateAction,
     type SkillsContext,
@@ -73,6 +73,14 @@ describe('skills install', () => {
         expect(installed('a')).toBe(true);
         expect(installed('b')).toBe(false);
         expect(readCliState(ctx.statePath, 'mycli').seen).toEqual(['a', 'b']);
+    });
+
+    test('install with only unknown names records nothing as seen', () => {
+        addSource('a');
+
+        skillsInstallAction(ctx, ['write-routin'], {});
+
+        expect(readCliState(ctx.statePath, 'mycli').seen).toBeUndefined();
     });
 
     test('an unknown skill name is a warning', () => {
@@ -184,17 +192,29 @@ describe('skills uninstall / status', () => {
     });
 });
 
+function pluginWithSkills(): void {
+    mkdirSync(join(ctx.marketplaceDir, 'apijack', 'skills', 'write-routine'), { recursive: true });
+    writeFileSync(join(ctx.marketplaceDir, 'apijack', 'skills', 'write-routine', 'SKILL.md'), 'old plugin skill');
+}
+
 describe('leftover plugin notice', () => {
-    test('appears for install, update and status when the old marketplace dir exists', () => {
+    test('appears for install, update and status while the old plugin still holds skills', () => {
         addSource('a');
-        mkdirSync(ctx.marketplaceDir, { recursive: true });
+        pluginWithSkills();
 
         expect(skillsInstallAction(ctx, [], {}).warnings).toContain(LEFTOVER_PLUGIN_WARNING);
         expect(skillsUpdateAction(ctx, {}).warnings).toContain(LEFTOVER_PLUGIN_WARNING);
         expect(skillsStatusAction(ctx).warnings).toContain(LEFTOVER_PLUGIN_WARNING);
         expect(LEFTOVER_PLUGIN_WARNING).toBe(
-            'The old apijack Claude Code plugin is still installed and may duplicate these skills. If no other CLI needs it: claude plugin uninstall apijack@apijack',
+            "The old apijack Claude Code plugin still has its own copies of these skills. 'plugin install' removes them and keeps its MCP server; 'claude plugin uninstall apijack@apijack' removes the whole plugin, MCP server included.",
         );
+    });
+
+    test('is absent when the plugin is installed but no longer holds skills', () => {
+        addSource('a');
+        mkdirSync(join(ctx.marketplaceDir, 'apijack'), { recursive: true });
+
+        expect(skillsInstallAction(ctx, [], {}).warnings).not.toContain(LEFTOVER_PLUGIN_WARNING);
     });
 
     test('is absent when the marketplace dir does not exist', () => {
@@ -215,24 +235,27 @@ describe('registerSkillsCommand()', () => {
     });
 });
 
-describe('skillsAfterUpdateAction() (runs after an upgrade)', () => {
-    test('does nothing when no skills are installed and the old plugin is absent', () => {
+describe('skillsMigrateFromPluginAction() (runs inside plugin install, before it clears the plugin\'s skills)', () => {
+    test('does nothing when the plugin holds no skills', () => {
         addSource('a');
+        mkdirSync(join(ctx.marketplaceDir, 'apijack'), { recursive: true });
 
-        expect(skillsAfterUpdateAction(ctx)).toEqual({ lines: [], warnings: [] });
+        expect(skillsMigrateFromPluginAction(ctx)).toEqual({ lines: [], warnings: [], keepPluginSkills: false });
         expect(installed('a')).toBe(false);
     });
 
-    test('migrates: installs the skills when the old plugin is present and nothing is installed yet', () => {
+    test('installs the skills when the plugin holds skills and nothing is installed the new way', () => {
         addSource('a');
         addSource('b');
-        mkdirSync(ctx.marketplaceDir, { recursive: true });
+        pluginWithSkills();
 
-        const result = skillsAfterUpdateAction(ctx);
+        const result = skillsMigrateFromPluginAction(ctx);
 
         expect(installed('a')).toBe(true);
         expect(installed('b')).toBe(true);
-        expect(result.lines[0]).toBe("mycli's Claude Code skills now install as personal skills; installing them:");
+        expect(result.lines[0]).toBe(
+            "mycli's Claude Code skills now install as personal skills; installing them before the plugin's copies are removed:",
+        );
         expect(readCliState(ctx.statePath, 'mycli').seen).toEqual(['a', 'b']);
     });
 
@@ -240,50 +263,71 @@ describe('skillsAfterUpdateAction() (runs after an upgrade)', () => {
         addSource('a');
         skillsInstallAction(ctx, [], {});
         skillsUninstallAction(ctx);
-        mkdirSync(ctx.marketplaceDir, { recursive: true });
+        pluginWithSkills();
 
-        expect(skillsAfterUpdateAction(ctx)).toEqual({ lines: [], warnings: [] });
+        expect(skillsMigrateFromPluginAction(ctx)).toEqual({ lines: [], warnings: [], keepPluginSkills: false });
         expect(installed('a')).toBe(false);
+    });
+
+    test('does not migrate when skills are already installed the new way', () => {
+        addSource('a');
+        skillsInstallAction(ctx, [], {});
+        pluginWithSkills();
+
+        expect(skillsMigrateFromPluginAction(ctx)).toEqual({ lines: [], warnings: [], keepPluginSkills: false });
     });
 
     test('does not migrate when the user declined the setup offer', () => {
         addSource('a');
         patchCliState(ctx.statePath, 'mycli', { declined: true });
-        mkdirSync(ctx.marketplaceDir, { recursive: true });
+        pluginWithSkills();
 
-        expect(skillsAfterUpdateAction(ctx)).toEqual({ lines: [], warnings: [] });
+        expect(skillsMigrateFromPluginAction(ctx)).toEqual({ lines: [], warnings: [], keepPluginSkills: false });
     });
 
-    test('does not migrate when the CLI has no skills command to manage them', () => {
-        addSource('a');
-        mkdirSync(ctx.marketplaceDir, { recursive: true });
-
-        expect(skillsAfterUpdateAction(ctx, { allowMigration: false })).toEqual({ lines: [], warnings: [] });
-        expect(installed('a')).toBe(false);
-    });
-
-    test('a conflict during migration is a warning, not a claim it was installed', () => {
+    test('a conflict is a warning, and the plugin keeps its copies', () => {
         addSource('a');
         mkdirSync(join(ctx.skillsDir, 'mycli-a'), { recursive: true });
         writeFileSync(join(ctx.skillsDir, 'mycli-a', 'SKILL.md'), 'user content');
-        mkdirSync(ctx.marketplaceDir, { recursive: true });
+        pluginWithSkills();
 
-        const result = skillsAfterUpdateAction(ctx);
+        const result = skillsMigrateFromPluginAction(ctx);
 
         expect(result.lines).not.toContain('installed mycli-a');
         expect(result.warnings.join('\n')).toContain('skipped mycli-a');
-        expect(readFileSync(join(ctx.skillsDir, 'mycli-a', 'SKILL.md'), 'utf-8')).toBe('user content');
+        expect(result.keepPluginSkills).toBe(true);
     });
 
-    test('updates as usual once skills are installed', () => {
+    test('a CLI that ships no skills keeps the plugin\'s copies', () => {
+        pluginWithSkills();
+
+        expect(skillsMigrateFromPluginAction(ctx).keepPluginSkills).toBe(true);
+        expect(skillsMigrateFromPluginAction(ctx).keepPluginSkills).toBe(true);
+    });
+
+    test('a clean migration lets plugin install remove the copies', () => {
         addSource('a');
-        skillsInstallAction(ctx, [], {});
-        writeFileSync(join(sourcesDir, 'a', 'SKILL.md'), '---\nname: a\n---\nv2 {{cli}}\n');
-        mkdirSync(ctx.marketplaceDir, { recursive: true });
+        pluginWithSkills();
 
-        const result = skillsAfterUpdateAction(ctx);
+        expect(skillsMigrateFromPluginAction(ctx).keepPluginSkills).toBe(false);
+    });
 
-        expect(result.lines.join('\n')).toContain('updated mycli-a');
-        expect(result.lines.join('\n')).not.toContain('installed for you');
+    test('stray files in the plugin\'s skills dir are not skills', () => {
+        addSource('a');
+        mkdirSync(join(ctx.marketplaceDir, 'apijack', 'skills'), { recursive: true });
+        writeFileSync(join(ctx.marketplaceDir, 'apijack', 'skills', '.DS_Store'), '');
+        mkdirSync(join(ctx.marketplaceDir, 'apijack', 'skills', 'empty-dir'), { recursive: true });
+
+        expect(skillsMigrateFromPluginAction(ctx).lines).toEqual([]);
+        expect(skillsInstallAction(ctx, [], {}).warnings).not.toContain(LEFTOVER_PLUGIN_WARNING);
+    });
+
+    test('throws when the skills cannot be written, so plugin install can keep its copies', () => {
+        addSource('a');
+        pluginWithSkills();
+        mkdirSync(join(root, 'claude'), { recursive: true });
+        writeFileSync(join(root, 'claude', 'skills'), 'not a directory');
+
+        expect(() => skillsMigrateFromPluginAction(ctx)).toThrow();
     });
 });

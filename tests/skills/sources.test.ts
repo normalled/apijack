@@ -126,6 +126,7 @@ describe('built-in skills', () => {
 
         expect(description).toContain('{{cli}}');
         expect(description).not.toContain('apijack');
+        expect(text).toContain('# Writing {{cli}} Routines');
     });
 
     test('setup-api does not suggest running setup through Claude Code bash mode', () => {

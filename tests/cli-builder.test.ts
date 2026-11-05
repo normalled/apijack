@@ -2256,45 +2256,34 @@ describe('skills wiring', () => {
         expect(prompted).toBe(true);
     });
 
-    test('the post-update refresh does not print the leftover-plugin warning', async () => {
+    test('the post-update refresh does not warn about an old plugin that holds no skills', async () => {
         const installDir = join(claudeConfigDir, 'skills', 'testcli-write-routine');
         mkdirSync(installDir, { recursive: true });
         writeFileSync(join(installDir, 'SKILL.md'), 'old');
         writeFileSync(join(installDir, '.apijack-skill.json'), JSON.stringify({
             cli: 'testcli', skill: 'write-routine', source: 'builtin', hash: 'sha256:old', installedAt: 'x',
         }));
-        mkdirSync(join(tmpHome, '.apijack', 'plugin-marketplace'), { recursive: true });
-        process.env.APIJACK_REFRESH_SKILLS = 'then-plugin-install';
+        mkdirSync(join(tmpHome, '.apijack', 'plugin-marketplace', 'apijack'), { recursive: true });
+        process.env.APIJACK_REFRESH_SKILLS = '1';
 
         const { out, exitCode } = await run([]);
 
         expect(exitCode).toBe(0);
         expect(out).toContain('updated testcli-write-routine');
+        // The plugin holds no skills any more, so there's nothing to warn about.
         expect(out).not.toContain('old apijack Claude Code plugin');
     });
 
-    test('an upgrade does not migrate when an API group owns the skills name', async () => {
-        writeGenerated({ skills: 'API skills group' });
-        mkdirSync(join(tmpHome, '.apijack', 'plugin-marketplace'), { recursive: true });
+    test('the post-update refresh leaves migration to plugin install', async () => {
+        const pluginSkills = join(tmpHome, '.apijack', 'plugin-marketplace', 'apijack', 'skills', 'write-routine');
+        mkdirSync(pluginSkills, { recursive: true });
+        writeFileSync(join(pluginSkills, 'SKILL.md'), 'old plugin skill');
         process.env.APIJACK_REFRESH_SKILLS = '1';
 
         const { exitCode } = await run([]);
 
         expect(exitCode).toBe(0);
         expect(existsSync(join(claudeConfigDir, 'skills', 'testcli-write-routine'))).toBe(false);
-    });
-
-    test('an upgrade moves old-plugin users onto personal skills', async () => {
-        mkdirSync(join(tmpHome, '.apijack', 'plugin-marketplace'), { recursive: true });
-        process.env.APIJACK_REFRESH_SKILLS = '1';
-
-        const { out, exitCode } = await run([]);
-
-        expect(exitCode).toBe(0);
-        expect(out).toContain('installed testcli-write-routine');
-        expect(existsSync(join(claudeConfigDir, 'skills', 'testcli-write-routine', 'SKILL.md'))).toBe(true);
-        // No plugin install follows (plain '1'), so the old plugin is still there: say so.
-        expect(out).toContain('old apijack Claude Code plugin');
     });
 
     test('a non-ASCII CLI name is fine', () => {

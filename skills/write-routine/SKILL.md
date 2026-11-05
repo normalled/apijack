@@ -3,7 +3,7 @@ name: write-routine
 description: Use when building {{cli}} routines — YAML workflow automations that chain {{cli}} commands with variables, loops, conditions, and assertions
 ---
 
-# Writing apijack Routines
+# Writing {{cli}} Routines
 
 Routines are YAML workflows that chain `{{cli}}` commands. Each routine is one YAML file in the routines directory — run `{{cli}} routine dir` to find it; don't guess the path.
 

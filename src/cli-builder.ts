@@ -25,13 +25,13 @@ import { registerSetupCommand, setupAction, setupUrlDefault } from './commands/s
 import { registerConfigCommand } from './commands/config/register';
 import { registerGenerateCommand } from './commands/generate/generate';
 import { registerUpgradeCommand } from './commands/upgrade/upgrade';
-import { REFRESH_SKILLS_ENV, REFRESH_THEN_PLUGIN_INSTALL, shouldReinstallPlugin } from './post-update';
+import { REFRESH_SKILLS_ENV, shouldReinstallPlugin } from './post-update';
 import {
-    LEFTOVER_PLUGIN_WARNING,
     printSkillsResult,
     registerSkillsCommand,
-    skillsAfterUpdateAction,
     skillsInstallAction,
+    skillsMigrateFromPluginAction,
+    skillsUpdateAction,
     type SkillsContext,
 } from './commands/skills/skills';
 import { collectSkillSources } from './skills/sources';
@@ -172,6 +172,12 @@ export function createCli(options: CliOptions): Cli {
     const { mcpEnabled, pluginEnabled } = commandGates(options.disableCommands);
     const defaultRequiresAuth = options.customCommandDefaults?.requiresAuth ?? false;
     let skillSourceWarningsShown = false;
+    const collectSources = () => collectSkillSources({
+        builtinDir: BUILTIN_SKILLS_DIR,
+        projectDir: options.skillsDir,
+        includeBuiltin: options.builtinSkills ?? true,
+        cli: displayName,
+    });
     const skillsCtx: SkillsContext = {
         cli: displayName,
         claudeDir: claudeDir(),
@@ -179,12 +185,7 @@ export function createCli(options: CliOptions): Cli {
         statePath: skillsStatePath(),
         marketplaceDir: getPluginPaths(options.version).marketplaceDir,
         loadSources: () => {
-            const { sources, warnings } = collectSkillSources({
-                builtinDir: BUILTIN_SKILLS_DIR,
-                projectDir: options.skillsDir,
-                includeBuiltin: options.builtinSkills ?? true,
-                cli: displayName,
-            });
+            const { sources, warnings } = collectSources();
 
             if (!skillSourceWarningsShown) {
                 skillSourceWarningsShown = true;
@@ -506,17 +507,8 @@ export function createCli(options: CliOptions): Cli {
             // Re-spawned by an update (see post-update.ts): refresh this CLI's
             // installed skills from the new version and stop. Handled before argv
             // is read so it can't collide with an API's own `skills` group.
-            const refresh = process.env[REFRESH_SKILLS_ENV];
-
-            if (refresh === '1' || refresh === REFRESH_THEN_PLUGIN_INSTALL) {
-                const result = skillsAfterUpdateAction(skillsCtx, { allowMigration: !(await skillsNameTaken()) });
-                // When `plugin install` runs next, telling the user to uninstall
-                // that plugin here would contradict it.
-                const warnings = refresh === REFRESH_THEN_PLUGIN_INSTALL
-                    ? result.warnings.filter(w => w !== LEFTOVER_PLUGIN_WARNING)
-                    : result.warnings;
-
-                printSkillsResult({ ...result, warnings });
+            if (process.env[REFRESH_SKILLS_ENV] === '1') {
+                printSkillsResult(skillsUpdateAction(skillsCtx, { ifInstalled: true }));
                 process.exit(0);
             }
 
@@ -676,7 +668,18 @@ export function createCli(options: CliOptions): Cli {
                 }
 
                 if (pluginEnabled) {
-                    registerPluginCommand(program, displayName, options.version);
+                    registerPluginCommand(program, displayName, options.version, {
+                        migrateSkills: () => {
+                            // Only a CLI with its own `skills` command can manage what this
+                            // installs; otherwise keep the plugin's copies so nothing is lost.
+                            if (!skillsRegistered) return { keepPluginSkills: true };
+
+                            const result = skillsMigrateFromPluginAction(skillsCtx);
+                            printSkillsResult(result);
+
+                            return { keepPluginSkills: result.keepPluginSkills };
+                        },
+                    });
                 }
 
                 registerPluginsCommand(program, pluginRegistry, options.version);
@@ -1218,7 +1221,9 @@ export function createCli(options: CliOptions): Cli {
             // 14. Parse and execute
             if (skillsRegistered) {
                 try {
-                    const notice = skillsNotice(skillsCtx, {
+                    // Quiet sources: the notice runs on every command, and a bad project
+                    // skill is reported by the `skills` commands, not on each run.
+                    const notice = skillsNotice({ ...skillsCtx, loadSources: () => collectSources().sources }, {
                         stdoutTTY: Boolean(process.stdout.isTTY),
                         stderrTTY: Boolean(process.stderr.isTTY),
                         argv: process.argv.slice(2),

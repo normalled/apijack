@@ -395,7 +395,7 @@ A leading `--config <name>` runs a single invocation against any environment in 
 | `skills status [--json]` | Each skill's status: `not installed`, `up to date`, `outdated`, `conflict` or `orphaned` |
 | `skills uninstall` | Remove every skill this CLI installed |
 
-`plugin` (the old Claude Code plugin, which registers the MCP server) is deprecated. It's left out of the bare command listing, marked `(deprecated)` in `--help`, and `plugin install` no longer copies skills. An update installs the skills the new way for anyone who has the old plugin installed and no skills installed through `skills install` yet, so nobody loses them.
+`plugin` (the old Claude Code plugin, which registers the MCP server) is deprecated. It's left out of the bare command listing, marked `(deprecated)` in `--help`, and `plugin install` no longer copies skills. Before removing the plugin's copies, `plugin install` (which `upgrade` re-runs) installs the skills the new way for anyone who hasn't installed them through `skills install` yet, so nobody loses them.
 
 ## MCP Server
 

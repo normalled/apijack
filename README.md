@@ -58,7 +58,7 @@ apijack skills install
 
 `apijack setup` offers to do this for you. The skills land in `~/.claude/skills/` and running Claude Code sessions pick them up. A CLI built on apijack ships its own skills the same way: `<cli> skills install`.
 
-The older `apijack plugin install` is deprecated and no longer installs skills. If you have it installed, `apijack upgrade` installs the skills the new way for you.
+The older `apijack plugin install` is deprecated and no longer installs skills. If you have it installed, `apijack upgrade` (or `apijack plugin install`) installs the skills the new way for you before removing the plugin's copies.
 
 **Example prompt:**
 

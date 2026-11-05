@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { RenderedSkill } from '../../src/skills/render';
@@ -147,5 +147,25 @@ describe('ownership requires the expected directory name', () => {
         expect(skillStatuses('mycli', [rendered('a')], skillsDir)).toEqual([
             { skill: 'a', installName: 'mycli-a', status: 'conflict' },
         ]);
+    });
+});
+
+describe('symlinked install directories', () => {
+    test('are not owned: a conflict in status, ignored by ownedInstalls, refused by removeOwned', () => {
+        const real = join(skillsDir, '..', `dotfiles-${Date.now()}`, 'mycli-a');
+        writeSkill({ ...rendered('a'), installName: 'mycli-a' }, 'mycli', join(real, '..'));
+        mkdirSync(skillsDir, { recursive: true });
+        symlinkSync(real, join(skillsDir, 'mycli-a'));
+
+        try {
+            expect(skillStatuses('mycli', [rendered('a')], skillsDir)).toEqual([
+                { skill: 'a', installName: 'mycli-a', status: 'conflict' },
+            ]);
+            expect(ownedInstalls('mycli', skillsDir)).toEqual([]);
+            expect(removeOwned(join(skillsDir, 'mycli-a'), 'mycli')).toBe(false);
+            expect(existsSync(join(real, 'SKILL.md'))).toBe(true);
+        } finally {
+            rmSync(join(real, '..'), { recursive: true, force: true });
+        }
     });
 });

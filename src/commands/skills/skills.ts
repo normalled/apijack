@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { existsSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { renderSkill, type RenderedSkill } from '../../skills/render';
 import type { SkillSource } from '../../skills/sources';
@@ -26,12 +26,25 @@ export type SkillsContext = {
 export type SkillsActionResult = { lines: string[]; warnings: string[] };
 
 export const LEFTOVER_PLUGIN_WARNING = [
-    'The old apijack Claude Code plugin is still installed and may duplicate these skills.',
-    'If no other CLI needs it: claude plugin uninstall apijack@apijack',
+    'The old apijack Claude Code plugin still has its own copies of these skills.',
+    "'plugin install' removes them and keeps its MCP server;",
+    "'claude plugin uninstall apijack@apijack' removes the whole plugin, MCP server included.",
 ].join(' ');
 
+/** Whether the old plugin still holds skills it copied in (which `plugin install` now removes). */
+export function pluginHasSkills(ctx: SkillsContext): boolean {
+    const dir = join(ctx.marketplaceDir, 'apijack', 'skills');
+
+    try {
+        return readdirSync(dir, { withFileTypes: true })
+            .some(e => e.isDirectory() && existsSync(join(dir, e.name, 'SKILL.md')));
+    } catch {
+        return false;
+    }
+}
+
 function leftoverWarnings(ctx: SkillsContext): string[] {
-    return existsSync(ctx.marketplaceDir) ? [LEFTOVER_PLUGIN_WARNING] : [];
+    return pluginHasSkills(ctx) ? [LEFTOVER_PLUGIN_WARNING] : [];
 }
 
 function renderAll(ctx: SkillsContext): { sources: SkillSource[]; rendered: RenderedSkill[] } {
@@ -71,7 +84,10 @@ export function skillsInstallAction(
         lines.push(`installed ${r.installName}`);
     }
 
-    patchCliState(ctx.statePath, ctx.cli, { seen: sources.map(s => s.name) });
+    // A run whose every name was a typo chose nothing; don't record it as a choice.
+    if (names.length === 0 || selected.length > 0) {
+        patchCliState(ctx.statePath, ctx.cli, { seen: sources.map(s => s.name) });
+    }
 
     if (lines.length > 0) lines.push(`Skills written to ${ctx.skillsDir}`);
 
@@ -126,34 +142,44 @@ export function skillsUpdateAction(ctx: SkillsContext, opts: { ifInstalled?: boo
 }
 
 /**
- * What an upgrade does with skills. Users of the old Claude Code plugin got
- * their skills from it, and `plugin install` no longer ships them. So when the
- * plugin is present and this CLI has never installed skills the new way (and
- * the user hasn't declined), install them rather than let the upgrade take
- * them away. Otherwise refresh whatever is installed.
- *
- * `allowMigration: false` when the CLI has no `skills` command (an API group or
- * project command owns the name): there'd be no way to manage what we install.
+ * Run by `plugin install` before it removes the skills the old plugin copied
+ * in: if the plugin still holds skills and this CLI has never installed skills
+ * the new way (and the user hasn't declined), install them now so nobody loses
+ * them. Throws if they can't be written, so the caller can keep the copies.
  */
-export function skillsAfterUpdateAction(
+export function skillsMigrateFromPluginAction(
     ctx: SkillsContext,
-    opts: { allowMigration?: boolean } = {},
-): SkillsActionResult {
-    if (ownedInstalls(ctx.cli, ctx.skillsDir).length > 0) return skillsUpdateAction(ctx, { ifInstalled: true });
+): SkillsActionResult & { keepPluginSkills: boolean } {
+    const none = { lines: [], warnings: [], keepPluginSkills: false };
+
+    if (!pluginHasSkills(ctx)) return none;
+
+    const sourceCount = ctx.loadSources().length;
+
+    // Nothing could replace the plugin's copies, so keep them.
+    if (sourceCount === 0) return { ...none, keepPluginSkills: true };
+
+    if (ownedInstalls(ctx.cli, ctx.skillsDir).length > 0) return none;
 
     const state = readCliState(ctx.statePath, ctx.cli);
-    const migrate = (opts.allowMigration ?? true)
-        && existsSync(ctx.marketplaceDir)
-        && state.seen === undefined
-        && !state.declined;
 
-    if (!migrate) return { lines: [], warnings: [] };
+    if (state.seen !== undefined || state.declined) return none;
 
     const result = skillsInstallAction(ctx, [], {});
+    const installed = result.lines.filter(l => l.startsWith('installed ')).length;
+    // Something was skipped (a directory this CLI doesn't own sits at its
+    // path): keep the plugin's copies rather than leave that skill nowhere.
+    const keepPluginSkills = installed < sourceCount;
 
     return {
-        lines: [`${ctx.cli}'s Claude Code skills now install as personal skills; installing them:`, ...result.lines],
-        warnings: result.warnings,
+        lines: [
+            keepPluginSkills
+                ? `${ctx.cli}'s Claude Code skills now install as personal skills; installing them (some were skipped, so the plugin keeps its copies):`
+                : `${ctx.cli}'s Claude Code skills now install as personal skills; installing them before the plugin's copies are removed:`,
+            ...result.lines,
+        ],
+        warnings: keepPluginSkills ? result.warnings : result.warnings.filter(w => w !== LEFTOVER_PLUGIN_WARNING),
+        keepPluginSkills,
     };
 }
 
