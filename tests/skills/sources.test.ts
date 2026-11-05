@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test';
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { collectSkillSources } from '../../src/skills/sources';
@@ -64,6 +64,27 @@ describe('collectSkillSources()', () => {
         expect(sources.map(s => s.name)).toEqual(['good']);
         expect(warnings.length).toBe(1);
         expect(warnings[0]).toContain('Bad_Name');
+    });
+
+    test('follows a symlinked skill directory', () => {
+        skill(join(root, 'elsewhere'), 'linked');
+        mkdirSync(projectDir, { recursive: true });
+        symlinkSync(join(root, 'elsewhere', 'linked'), join(projectDir, 'linked'));
+
+        const { sources, warnings } = collectSkillSources({ builtinDir, projectDir, includeBuiltin: true, cli: 'mycli' });
+
+        expect(sources.map(s => s.name)).toEqual(['linked']);
+        expect(warnings).toEqual([]);
+    });
+
+    test('a broken symlinked skill directory is a warning', () => {
+        mkdirSync(projectDir, { recursive: true });
+        symlinkSync(join(root, 'nowhere'), join(projectDir, 'dangling'));
+
+        const { sources, warnings } = collectSkillSources({ builtinDir, projectDir, includeBuiltin: true, cli: 'mycli' });
+
+        expect(sources).toEqual([]);
+        expect(warnings.join('\n')).toContain('dangling');
     });
 
     test('a missing project or builtin dir yields no sources and no warnings', () => {

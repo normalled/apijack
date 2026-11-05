@@ -32,6 +32,13 @@ const projectConfig = projectConfigPath ? loadProjectConfig(projectConfigPath) :
 const configDir = resolveConfigDir(projectConfigPath);
 const projectRoot = projectConfigPath ? dirname(projectConfigPath) : null;
 
+// 3a. A project name with no letter or digit would brand help, prompts and
+//     skill names with nothing — fail with a message that points at the file.
+if (projectConfig?.name !== undefined && !/[\p{L}\p{N}]/u.test(projectConfig.name)) {
+    console.error("[apijack] .apijack.json 'name' must contain at least one letter or digit");
+    process.exit(1);
+}
+
 // Load .env from project root (Bun auto-loads from cwd, which may differ when invoked via symlink)
 if (projectRoot) {
     const envPath = join(projectRoot, '.env');

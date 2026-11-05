@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test';
-import { mkdirSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { installNameFor, renderSkill } from '../../src/skills/render';
@@ -30,6 +30,16 @@ describe('installNameFor()', () => {
         expect(installNameFor('My CLI', 'write-routine')).toBe('my-cli-write-routine');
         expect(installNameFor('acme2', 'x')).toBe('acme2-x');
         expect(installNameFor('--Acme__Tool--', 'x')).toBe('acme-tool-x');
+    });
+
+    test('keeps non-ASCII letters', () => {
+        expect(installNameFor('工具', 'x')).toBe('工具-x');
+        expect(installNameFor('Ünïcode CLI', 'x')).toBe('ünïcode-cli-x');
+    });
+
+    test('refuses a CLI name with no letters or digits', () => {
+        expect(() => installNameFor('---', 'x')).toThrow(/at least one letter or digit/);
+        expect(() => installNameFor('', 'x')).toThrow(/at least one letter or digit/);
     });
 });
 
@@ -88,5 +98,75 @@ describe('renderSkill()', () => {
         expect(r.files.map(f => f.path)).toEqual(['SKILL.md', 'ref/a.md', 'z.md']);
         expect(r.skill).toBe('write-routine');
         expect(r.source).toBe('builtin');
+    });
+});
+
+describe('renderSkill() frontmatter edge cases', () => {
+    const fm = (r: ReturnType<typeof renderSkill>) => text(r, 'SKILL.md');
+
+    test('a UTF-8 BOM before the frontmatter keeps a single block', () => {
+        const r = renderSkill(source({ 'SKILL.md': '\uFEFF---\nname: w\ndescription: d\n---\nbody\n' }), 'mycli');
+
+        expect(fm(r)).toBe('---\nname: mycli-write-routine\ndescription: d\n---\nbody\n');
+    });
+
+    test('no newline after the closing --- keeps a single block', () => {
+        const r = renderSkill(source({ 'SKILL.md': '---\nname: w\ndescription: d\n---' }), 'mycli');
+
+        expect(fm(r)).toBe('---\nname: mycli-write-routine\ndescription: d\n---\n');
+    });
+
+    test('an empty frontmatter block gets the name', () => {
+        const r = renderSkill(source({ 'SKILL.md': '---\n---\nbody\n' }), 'mycli');
+
+        expect(fm(r)).toBe('---\nname: mycli-write-routine\n---\nbody\n');
+    });
+
+    test('CRLF frontmatter is rewritten in place', () => {
+        const r = renderSkill(source({ 'SKILL.md': '---\r\nname: w\r\ndescription: d\r\n---\r\nbody\r\n' }), 'mycli');
+
+        expect(fm(r)).toBe('---\nname: mycli-write-routine\ndescription: d\n---\nbody\r\n');
+    });
+});
+
+describe('renderSkill() symlinks', () => {
+    test('follows symlinked files and directories inside a skill', () => {
+        const shared = join(root, 'shared');
+        mkdirSync(join(shared, 'ref'), { recursive: true });
+        writeFileSync(join(shared, 'notes.md'), 'notes for {{cli}}');
+        writeFileSync(join(shared, 'ref', 'a.md'), 'a');
+        const src = source({ 'SKILL.md': 'x' });
+        symlinkSync(join(shared, 'notes.md'), join(src.dir, 'notes.md'));
+        symlinkSync(join(shared, 'ref'), join(src.dir, 'ref'));
+
+        const r = renderSkill(src, 'mycli');
+
+        expect(r.files.map(f => f.path)).toEqual(['SKILL.md', 'notes.md', 'ref/a.md']);
+        expect(text(r, 'notes.md')).toBe('notes for mycli');
+    });
+
+    test('a directory reached through two symlinks is copied under both paths', () => {
+        const shared = join(root, 'shared2');
+        mkdirSync(shared, { recursive: true });
+        writeFileSync(join(shared, 'a.md'), 'a');
+        const src = source({ 'SKILL.md': 'x' });
+        symlinkSync(shared, join(src.dir, 'one'));
+        symlinkSync(shared, join(src.dir, 'two'));
+
+        expect(renderSkill(src, 'mycli').files.map(f => f.path)).toEqual(['SKILL.md', 'one/a.md', 'two/a.md']);
+    });
+
+    test('a symlink loop does not recurse forever', () => {
+        const src = source({ 'SKILL.md': 'x' });
+        symlinkSync(src.dir, join(src.dir, 'loop'));
+
+        expect(renderSkill(src, 'mycli').files.map(f => f.path)).toEqual(['SKILL.md']);
+    });
+
+    test('a broken symlink fails loudly, naming the skill and the link', () => {
+        const src = source({ 'SKILL.md': 'x' });
+        symlinkSync(join(root, 'missing.md'), join(src.dir, 'gone.md'));
+
+        expect(() => renderSkill(src, 'mycli')).toThrow(/write-routine.*gone\.md/);
     });
 });

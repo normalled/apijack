@@ -139,6 +139,25 @@ describe('skills update', () => {
     });
 });
 
+describe('output names the skills directory', () => {
+    test('update says where skills are, whether or not anything changed', () => {
+        addSource('a');
+        skillsInstallAction(ctx, [], {});
+
+        expect(skillsUpdateAction(ctx, {}).lines.join('\n')).toContain(ctx.skillsDir);
+
+        writeFileSync(join(sourcesDir, 'a', 'SKILL.md'), '---\nname: a\n---\nv2\n');
+        expect(skillsUpdateAction(ctx, {}).lines.join('\n')).toContain(ctx.skillsDir);
+    });
+
+    test('uninstall says where it removed skills from', () => {
+        addSource('a');
+        skillsInstallAction(ctx, [], {});
+
+        expect(skillsUninstallAction(ctx).lines.join('\n')).toContain(ctx.skillsDir);
+    });
+});
+
 describe('skills uninstall / status', () => {
     test('uninstall removes only owned directories', () => {
         addSource('a');

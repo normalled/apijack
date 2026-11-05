@@ -27,6 +27,7 @@ import { registerGenerateCommand } from './commands/generate/generate';
 import { registerUpgradeCommand } from './commands/upgrade/upgrade';
 import { REFRESH_SKILLS_ENV, shouldReinstallPlugin } from './post-update';
 import {
+    LEFTOVER_PLUGIN_WARNING,
     printSkillsResult,
     registerSkillsCommand,
     skillsInstallAction,
@@ -153,6 +154,15 @@ export function createCli(options: CliOptions): Cli {
     const pluginRegistry = new PluginRegistry();
     const cliName = options.name;
     const displayName = options.programName ?? options.name;
+
+    // Both names end up in paths, prompts and skill names; one that slugs to
+    // nothing would produce `~/.` or `-write-routine`. Refuse it up front.
+    for (const [label, value] of [['name', cliName], ['programName', displayName]] as const) {
+        if (!/[\p{L}\p{N}]/u.test(value)) {
+            throw new Error(`CLI ${label} '${value}' must contain at least one letter or digit`);
+        }
+    }
+
     const configOpts = options.configPath ? { configPath: options.configPath } : undefined;
     const configDir = options.configPath
         ? resolve(options.configPath, '..')
@@ -438,6 +448,24 @@ export function createCli(options: CliOptions): Cli {
         return routineRuntime;
     }
 
+    /** Whether an API group or project command claims the `skills` name. */
+    async function skillsNameTaken(): Promise<boolean> {
+        if (consumerCommands.some(c => c.name === 'skills')) return true;
+
+        try {
+            const mod = await import(resolve(generatedDir, 'commands'));
+
+            if (typeof mod.registerGeneratedCommands !== 'function') return false;
+
+            const scratch = new Command();
+            mod.registerGeneratedCommands(scratch, {}, () => {});
+
+            return scratch.commands.some(c => c.name() === 'skills' || c.aliases().includes('skills'));
+        } catch {
+            return false;
+        }
+    }
+
     const cli: Cli = {
         command(name: string, registrar: CommandRegistrar, cmdOpts?: CommandOptions): void {
             consumerCommands.push({ name, registrar, requiresAuth: cmdOpts?.requiresAuth });
@@ -479,7 +507,10 @@ export function createCli(options: CliOptions): Cli {
             // installed skills from the new version and stop. Handled before argv
             // is read so it can't collide with an API's own `skills` group.
             if (process.env[REFRESH_SKILLS_ENV] === '1') {
-                printSkillsResult(skillsUpdateAction(skillsCtx, { ifInstalled: true }));
+                const result = skillsUpdateAction(skillsCtx, { ifInstalled: true });
+                // The update may re-run `plugin install` next; telling the user to
+                // uninstall that plugin here would contradict it.
+                printSkillsResult({ ...result, warnings: result.warnings.filter(w => w !== LEFTOVER_PLUGIN_WARNING) });
                 process.exit(0);
             }
 
@@ -664,7 +695,9 @@ export function createCli(options: CliOptions): Cli {
                 // that name is an ordinary API command and needs auth.
                 ...(mcpEnabled ? ['mcp'] : []),
                 ...(pluginEnabled ? ['plugin'] : []),
-                'skills',
+                // The built-in `skills` gives way to an API group or project command
+                // of that name (step 10b); then it's theirs, and needs auth.
+                ...(cmd === 'skills' && await skillsNameTaken() ? [] : ['skills']),
             ]);
             const isVersion = leadingOptions.some(o => o.flag === '--version' || o.flag === '-V');
             const isHelpOrVersion = isVersion

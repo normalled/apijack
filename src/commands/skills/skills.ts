@@ -111,15 +111,16 @@ export function skillsUpdateAction(ctx: SkillsContext, opts: { ifInstalled?: boo
             lines.push(`installed ${entry.installName}`);
         } else if (entry.status === 'conflict' && !seen.has(entry.skill)) {
             warnings.push(conflictWarning(ctx, entry.installName));
-        } else if (entry.status === 'orphaned') {
-            removeOwned(join(ctx.skillsDir, entry.installName), ctx.cli);
+        } else if (entry.status === 'orphaned' && removeOwned(join(ctx.skillsDir, entry.installName), ctx.cli)) {
             lines.push(`removed ${entry.installName}`);
         }
     }
 
     patchCliState(ctx.statePath, ctx.cli, { seen: sources.map(s => s.name) });
 
-    if (lines.length === 0) lines.push(`Skills for ${ctx.cli} are up to date.`);
+    lines.push(lines.length === 0
+        ? `Skills for ${ctx.cli} are up to date in ${ctx.skillsDir}`
+        : `Skills updated in ${ctx.skillsDir}`);
 
     return { lines, warnings: [...warnings, ...leftoverWarnings(ctx)] };
 }
@@ -137,7 +138,9 @@ export function skillsUninstallAction(ctx: SkillsContext): SkillsActionResult {
         if (removeOwned(dir, ctx.cli)) lines.push(`removed ${dir.slice(ctx.skillsDir.length + 1)} (${marker.skill})`);
     }
 
-    if (lines.length === 0) lines.push(`No skills installed for ${ctx.cli}.`);
+    lines.push(lines.length === 0
+        ? `No skills installed for ${ctx.cli} in ${ctx.skillsDir}.`
+        : `Removed from ${ctx.skillsDir}`);
 
     return { lines, warnings: [] };
 }

@@ -274,6 +274,13 @@ describe('bin/apijack.ts project skills', () => {
         expect(result.stdout).not.toContain('setup-api');
     });
 
+    test('a .apijack.json name without a letter or digit fails loudly', async () => {
+        const result = await status(project('blank', { name: '' }, []));
+
+        expect(result.exitCode).not.toBe(0);
+        expect(result.stderr).toContain(".apijack.json 'name' must contain at least one letter or digit");
+    });
+
     test('project skills without a name in .apijack.json are ignored with a warning', async () => {
         const result = await status(project('unnamed', {}, ['deploy']));
 

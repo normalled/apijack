@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'fs';
+import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
 export type SkillSource = {
@@ -18,9 +18,22 @@ function scan(baseDir: string, source: SkillSource['source'], warnings: string[]
     const found: SkillSource[] = [];
 
     for (const entry of readdirSync(baseDir, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-
         const dir = join(baseDir, entry.name);
+
+        if (entry.isSymbolicLink()) {
+            let target;
+
+            try {
+                target = statSync(dir);
+            } catch {
+                warnings.push(`skill '${entry.name}' in ${baseDir} skipped: broken symlink`);
+                continue;
+            }
+
+            if (!target.isDirectory()) continue;
+        } else if (!entry.isDirectory()) {
+            continue;
+        }
 
         if (!existsSync(join(dir, 'SKILL.md'))) continue;
 

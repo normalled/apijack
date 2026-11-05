@@ -2207,6 +2207,81 @@ describe('skills wiring', () => {
         expect(out).toContain('project skillset command');
     });
 
+    async function firstRunPrompted(argv: string[], configure?: (cli: Cli) => void): Promise<boolean> {
+        const cli = createCli(makeOptions({ configPath, generatedDir }));
+        configure?.(cli);
+        const orig = { argv: process.argv, log: console.log, isTTY: process.stdin.isTTY, exit: process.exit };
+        let prompted = false;
+
+        (process.stdin as { isTTY?: boolean }).isTTY = true;
+        process.argv = ['node', 'testcli', ...argv];
+        console.log = (...a: unknown[]) => {
+            if (String(a[0]).startsWith('testcli Setup')) {
+                prompted = true;
+                throw new Error('__setup__');
+            }
+        };
+        process.exit = (() => {
+            throw new Error('__exit__');
+        }) as never;
+
+        try {
+            await cli.run().catch((e: Error) => {
+                if (e.message !== '__setup__' && e.message !== '__exit__') throw e;
+            });
+        } finally {
+            process.argv = orig.argv;
+            console.log = orig.log;
+            (process.stdin as { isTTY?: boolean }).isTTY = orig.isTTY;
+            process.exit = orig.exit;
+        }
+
+        return prompted;
+    }
+
+    test('an API group named skills gets the first-run setup; the built-in does not', async () => {
+        expect(await firstRunPrompted(['skills', 'status'])).toBe(false);
+
+        writeGenerated({ skills: 'API skills group' });
+        expect(await firstRunPrompted(['skills'])).toBe(true);
+    });
+
+    test('a project command named skills gets the first-run setup', async () => {
+        const prompted = await firstRunPrompted(['skills'], (cli) => {
+            cli.command('skills', (program) => {
+                program.command('skills').description('project skills command');
+            });
+        });
+
+        expect(prompted).toBe(true);
+    });
+
+    test('the post-update refresh does not print the leftover-plugin warning', async () => {
+        const installDir = join(claudeConfigDir, 'skills', 'testcli-write-routine');
+        mkdirSync(installDir, { recursive: true });
+        writeFileSync(join(installDir, 'SKILL.md'), 'old');
+        writeFileSync(join(installDir, '.apijack-skill.json'), JSON.stringify({
+            cli: 'testcli', skill: 'write-routine', source: 'builtin', hash: 'sha256:old', installedAt: 'x',
+        }));
+        mkdirSync(join(tmpHome, '.apijack', 'plugin-marketplace'), { recursive: true });
+        process.env.APIJACK_REFRESH_SKILLS = '1';
+
+        const { out, exitCode } = await run([]);
+
+        expect(exitCode).toBe(0);
+        expect(out).toContain('updated testcli-write-routine');
+        expect(out).not.toContain('old apijack Claude Code plugin');
+    });
+
+    test('a non-ASCII CLI name is fine', () => {
+        expect(() => createCli(makeOptions({ programName: '工具' }))).not.toThrow();
+    });
+
+    test('a CLI name without a letter or digit fails loudly', () => {
+        expect(() => createCli(makeOptions({ programName: '---' }))).toThrow(/at least one letter or digit/);
+        expect(() => createCli(makeOptions({ name: '' }))).toThrow(/at least one letter or digit/);
+    });
+
     test('routine dir prints the routines directory', async () => {
         const { out } = await run(['routine', 'dir']);
 
